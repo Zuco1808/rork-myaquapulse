@@ -11,7 +11,7 @@ import {
   SafeAreaView,
   Platform,
   Modal,
-  ScrollView
+  ScrollView as RNScrollView
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { 
@@ -828,7 +828,7 @@ export default function TasksScreen() {
               </View>
               
               {selectedTask && (
-                <ScrollView style={styles.detailScrollView}>
+                <RNScrollView style={styles.detailScrollView}>
                   <View style={styles.detailSection}>
                     <Text style={styles.detailSectionTitle}>Osnovne informacije</Text>
                     
@@ -933,7 +933,7 @@ export default function TasksScreen() {
                       />
                     </View>
                   )}
-                </ScrollView>
+                </RNScrollView>
               )}
             </View>
           </View>

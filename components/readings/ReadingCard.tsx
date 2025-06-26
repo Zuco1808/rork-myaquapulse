@@ -69,7 +69,7 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
               </Text>
             )}
           </View>
-          <StatusIndicator status={reading.status} />
+          <StatusIndicator status={reading.status as any} />
         </View>
         
         <View style={styles.content}>

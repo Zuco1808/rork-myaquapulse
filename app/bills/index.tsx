@@ -28,7 +28,7 @@ import {
   Menu,
   X,
   Mail,
-  Check
+  Check as CheckIcon
 } from 'lucide-react-native';
 import { Header } from '@/components/layout/Header';
 import { Card } from '@/components/ui/Card';
@@ -1033,7 +1033,7 @@ export default function BillsScreen() {
                       styles.checkbox,
                       selectAllBills && styles.checkboxSelected
                     ]}>
-                      {selectAllBills && <Check size={16} color="#fff" />}
+                      {selectAllBills && <CheckIcon size={16} color="#fff" />}
                     </View>
                     <Text style={styles.selectAllText}>Odaberi sve</Text>
                   </TouchableOpacity>
@@ -1056,7 +1056,7 @@ export default function BillsScreen() {
                         styles.checkbox,
                         selectedBills.includes(item.id) && styles.checkboxSelected
                       ]}>
-                        {selectedBills.includes(item.id) && <Check size={16} color="#fff" />}
+                        {selectedBills.includes(item.id) && <CheckIcon size={16} color="#fff" />}
                       </View>
                       
                       <View style={styles.bulkBillInfo}>

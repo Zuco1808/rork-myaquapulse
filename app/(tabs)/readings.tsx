@@ -32,6 +32,7 @@ import { MeterReading } from '@/types/location';
 // Extended reading type with meter info
 interface ExtendedReading extends MeterReading {
   meterSerialNumber?: string;
+  meterId: string; // Added to fix TypeScript error
 }
 
 export default function ReadingsScreen() {
