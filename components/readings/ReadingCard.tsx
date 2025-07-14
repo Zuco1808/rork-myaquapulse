@@ -91,7 +91,9 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
               <View style={styles.consumptionContainer}>
                 <Text style={styles.value}>{reading.consumption} m³</Text>
                 {hasAnomaly && (
-                  <AlertTriangle size={16} color={Colors.warning} style={styles.warningIcon} />
+                  <View style={styles.warningIcon}>
+                    <AlertTriangle size={16} color={Colors.warning} />
+                  </View>
                 )}
               </View>
             </View>
