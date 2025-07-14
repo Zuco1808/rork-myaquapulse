@@ -383,7 +383,9 @@ export const DrawerContent: React.FC<DrawerContentProps> = ({ onClose }) => {
       </ScrollView>
       
       <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-        <LogOut size={20} color={Colors.error} style={styles.logoutIcon} />
+        <View style={styles.logoutIcon}>
+          <LogOut size={20} color={Colors.error} />
+        </View>
         <Text style={styles.logoutText}>Odjava</Text>
       </TouchableOpacity>
     </View>
@@ -476,6 +478,8 @@ const styles = StyleSheet.create({
   },
   logoutIcon: {
     marginRight: 16,
+    width: 20,
+    alignItems: 'center',
   },
   logoutText: {
     fontSize: 16,
