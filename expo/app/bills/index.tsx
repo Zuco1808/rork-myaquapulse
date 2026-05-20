@@ -317,7 +317,7 @@ export default function BillsScreen() {
                   isOverdue && styles.overdueText
                 ]}
               >
-                Rok: {item.dueDate}
+                Rok: {new Date(item.dueDate).toLocaleDateString('de-DE')}
               </Text>
             </View>
           </View>
@@ -685,7 +685,7 @@ export default function BillsScreen() {
                     </View>
                     <View style={styles.billPdfDateItem}>
                       <Text style={styles.billPdfDateLabel}>Valuta,</Text>
-                      <Text style={styles.billPdfDateValue}>{pdfBill.dueDate}</Text>
+                      <Text style={styles.billPdfDateValue}>{new Date(pdfBill.dueDate).toLocaleDateString('de-DE')}</Text>
                     </View>
                   </View>
                   
@@ -760,7 +760,7 @@ export default function BillsScreen() {
                       <Text style={[styles.billPdfItemHeaderText, { flex: 1 }]}>PDV</Text>
                       <Text style={[styles.billPdfItemHeaderText, { flex: 1.5 }]}>Ukupno</Text>
                     </View>
-                    {pdfBill.items.map((item: any, index: number) => (
+                    {(pdfBill.items || []).map((item: any, index: number) => (
                       <View key={index} style={styles.billPdfItemRow}>
                         <Text style={[styles.billPdfItemText, { flex: 3 }]}>{item.description}</Text>
                         <Text style={[styles.billPdfItemText, { flex: 1 }]}>
