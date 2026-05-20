@@ -23,6 +23,21 @@ interface Profile {
   can_manage_companies: boolean;
   can_manage_billing: boolean;
   can_backup_data: boolean;
+  // Compatibility aliases
+  companyId?: string;
+  locationIds?: string[];
+  permissions?: {
+    canReadMeters: boolean;
+    canReportIssues: boolean;
+    canManageTasks: boolean;
+    canEditReadings: boolean;
+    canSendNotifications: boolean;
+    canViewAllData: boolean;
+    canManageUsers: boolean;
+    canManageCompanies: boolean;
+    canManageBilling: boolean;
+    canBackupData: boolean;
+  };
 }
 
 interface AuthState {
@@ -67,7 +82,24 @@ export const useAuthStore = create<AuthState>()(
               return;
             }
 
-            set({ user: profile, isLoading: false });
+            const mappedProfile = {
+              ...profile,
+              companyId: profile.company_id,
+              locationIds: [],
+              permissions: {
+                canReadMeters: profile.can_read_meters,
+                canReportIssues: profile.can_report_issues,
+                canManageTasks: profile.can_manage_tasks,
+                canEditReadings: profile.can_edit_readings,
+                canSendNotifications: profile.can_send_notifications,
+                canViewAllData: profile.can_view_all_data,
+                canManageUsers: profile.can_manage_users,
+                canManageCompanies: profile.can_manage_companies,
+                canManageBilling: profile.can_manage_billing,
+                canBackupData: profile.can_backup_data,
+              },
+            };
+            set({ user: mappedProfile, isLoading: false });
           }
         } catch (error) {
           set({ error: 'Doslo je do greske prilikom prijave', isLoading: false });
@@ -101,3 +133,5 @@ export const useAuthStore = create<AuthState>()(
     }
   )
 );
+
+
