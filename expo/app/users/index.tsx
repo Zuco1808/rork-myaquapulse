@@ -34,7 +34,7 @@ import { Avatar } from '@/components/ui/Avatar';
 import { Drawer } from '@/components/layout/Drawer';
 import { useAuthStore } from '@/store/auth-store';
 import Colors from '@/constants/colors';
-import { mockUsers } from '@/mocks/users';
+import { getUsers } from '@/lib/api/users';
 import { User } from '@/types/user';
 
 export default function UsersScreen() {
@@ -42,14 +42,30 @@ export default function UsersScreen() {
   const { user } = useAuthStore();
   
   // Users data
-  const [users, setUsers] = useState<User[]>(mockUsers);
-  const [filteredUsers, setFilteredUsers] = useState<User[]>(mockUsers);
+  const [users, setUsers] = useState<any[]>([]);
+  const [filteredUsers, setFilteredUsers] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const [filterRole, setFilterRole] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
   
+  const fetchUsers = async () => {
+    try {
+      const data = await getUsers();
+      setUsers(data);
+      setFilteredUsers(data);
+    } catch (err) {
+      console.error('Greska pri ucitavanju korisnika:', err);
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchUsers();
+  }, []);
+
   // Drawer state
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   
@@ -633,3 +649,5 @@ const styles = StyleSheet.create({
     shadowRadius: 3.84,
   },
 });
+
+
