@@ -25,7 +25,8 @@ import { ReadingCard } from '@/components/readings/ReadingCard';
 import { OCRCameraView } from '@/components/ocr/CameraView';
 import { OCRResult } from '@/components/ocr/OCRResult';
 import { useAuthStore } from '@/store/auth-store';
-import { mockReadings, mockMeters } from '@/mocks/locations';
+import { getReadings, createReading } from '@/lib/api/readings';
+import { getMeters } from '@/lib/api/meters';
 import Colors from '@/constants/colors';
 import { MeterReading } from '@/types/location';
 
@@ -47,65 +48,45 @@ export default function ReadingsScreen() {
   const [showAddReadingModal, setShowAddReadingModal] = useState(false);
   const [manualReading, setManualReading] = useState('');
   const [selectedMeterId, setSelectedMeterId] = useState('');
-  const [availableMeters, setAvailableMeters] = useState<typeof mockMeters>([]);
+  const [availableMeters, setAvailableMeters] = useState<any[]>([]);
   const [readings, setReadings] = useState<ExtendedReading[]>([]);
   const [filteredReadings, setFilteredReadings] = useState<ExtendedReading[]>([]);
   const [showFilters, setShowFilters] = useState(false);
   const [filterStatus, setFilterStatus] = useState('all');
   const [readingError, setReadingError] = useState('');
   
-  // Load readings and meters based on user role
-  useEffect(() => {
+  const fetchData = async () => {
     if (!user) {
-      router.replace('/login');
+      router.replace('/login' as any);
       return;
     }
-    
-    // Prepare extended readings with meter info
-    const extendedReadings = mockReadings.map(reading => {
-      const meter = mockMeters.find(m => m.id === reading.meterId);
-      // Find previous reading to get value for validation
-      const previousReadings = mockReadings
-        .filter(r => r.meterId === reading.meterId && r.readingDate < reading.readingDate)
-        .sort((a, b) => b.readingDate - a.readingDate);
-      
-      return {
-        ...reading,
-        meterSerialNumber: meter?.serialNumber,
-        previousValue: previousReadings.length > 0 ? previousReadings[0].value : undefined
-      };
-    });
-    
-    // Filter readings based on user role
-    let userReadings = extendedReadings;
-    let userMeters = mockMeters;
-    
-    if (user.role === 'citizen') {
-      // Citizens can only see their own meters
-      userMeters = mockMeters.filter(meter => meter.userId === user.id);
-      userReadings = extendedReadings.filter(reading => 
-        userMeters.some(meter => meter.id === reading.meterId)
-      );
+    try {
+      const [metersData, readingsData] = await Promise.all([
+        getMeters(),
+        getReadings(),
+      ]);
+      const userMeters = user.role === 'citizen'
+        ? metersData.filter((m: any) => m.userId === user.id)
+        : metersData;
+      const userReadings = user.role === 'citizen'
+        ? readingsData.filter((r: any) => userMeters.some((m: any) => m.id === r.meter_id))
+        : readingsData;
+      setAvailableMeters(userMeters);
+      setReadings(userReadings);
+      setFilteredReadings(userReadings);
+      if (userMeters.length > 0) setSelectedMeterId(userMeters[0].id);
+    } catch (err) {
+      console.error('Greska pri ucitavanju:', err);
     }
-    
-    setReadings(userReadings);
-    setFilteredReadings(userReadings);
-    setAvailableMeters(userMeters);
-    
-    // Set default selected meter if available
-    if (userMeters.length > 0) {
-      setSelectedMeterId(userMeters[0].id);
-    }
-    
-  }, [user, router]);
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, [user]);
   
-  const onRefresh = () => {
+  const onRefresh = async () => {
     setRefreshing(true);
-    
-    // Simulate refresh
-    setTimeout(() => {
-      setRefreshing(false);
-    }, 1000);
+    await fetchData();
   };
   
   const handleAddReading = () => {
@@ -787,3 +768,5 @@ const styles = StyleSheet.create({
     width: '100%',
   },
 });
+
+
