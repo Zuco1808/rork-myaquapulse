@@ -1,234 +1,106 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
-import { Image } from 'expo-image';
-import { Check, X, Edit2 } from 'lucide-react-native';
+import React, { useEffect, useState } from 'react';
+import { View, Text, StyleSheet, Image, ActivityIndicator, TouchableOpacity } from 'react-native';
+import { CheckCircle, XCircle, AlertTriangle, RefreshCw } from 'lucide-react-native';
 import { Button } from '../ui/Button';
-import { Input } from '../ui/Input';
 import Colors from '@/constants/colors';
+import { readMeterFromImage, OCRResult as OCRResultType } from '@/lib/api/ocr';
 
 interface OCRResultProps {
   imageUri: string;
-  onConfirm: (value: number) => void;
+  imageBase64: string;
+  onConfirm: (value: number, imageUri: string) => void;
   onRetry: () => void;
   onCancel: () => void;
 }
 
 export const OCRResult: React.FC<OCRResultProps> = ({
   imageUri,
+  imageBase64,
   onConfirm,
   onRetry,
   onCancel,
 }) => {
-  const [isProcessing, setIsProcessing] = useState(true);
-  const [ocrValue, setOcrValue] = useState<string>('');
-  const [isEditing, setIsEditing] = useState(false);
-  const [editedValue, setEditedValue] = useState<string>('');
-  
-  // Simulate OCR processing
-  React.useEffect(() => {
-    const timer = setTimeout(() => {
-      // Generate a random reading between 1000 and 9999
-      const randomReading = Math.floor(Math.random() * 9000) + 1000;
-      setOcrValue(randomReading.toString());
-      setEditedValue(randomReading.toString());
-      setIsProcessing(false);
-    }, 2000);
-    
-    return () => clearTimeout(timer);
-  }, []);
-  
-  const handleConfirm = () => {
-    const numericValue = parseFloat(isEditing ? editedValue : ocrValue);
-    if (!isNaN(numericValue)) {
-      onConfirm(numericValue);
+  const [loading, setLoading] = useState(true);
+  const [result, setResult] = useState<OCRResultType | null>(null);
+  const [manualValue, setManualValue] = useState('');
+
+  useEffect(() => {
+    processImage();
+  }, [imageBase64]);
+
+  const processImage = async () => {
+    setLoading(true);
+    const ocrResult = await readMeterFromImage(imageBase64);
+    setResult(ocrResult);
+    if (ocrResult.value) {
+      setManualValue(String(ocrResult.value));
     }
+    setLoading(false);
   };
-  
-  const toggleEdit = () => {
-    setIsEditing(!isEditing);
-  };
-  
+
+  if (loading) {
+    return (
+      <View style={styles.container}>
+        <Image source={{ uri: imageUri }} style={styles.image} resizeMode="contain" />
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={Colors.primary} />
+          <Text style={styles.loadingText}>Citanje vodomjera...</Text>
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Rezultat skeniranja</Text>
-        <TouchableOpacity 
-          style={styles.closeButton}
-          onPress={onCancel}
-          activeOpacity={0.7}
-        >
-          <X size={24} color={Colors.text} />
-        </TouchableOpacity>
-      </View>
-      
-      <View style={styles.imageContainer}>
-        <Image
-          source={{ uri: imageUri }}
-          style={styles.image}
-          contentFit="cover"
-        />
-      </View>
+      <Image source={{ uri: imageUri }} style={styles.image} resizeMode="contain" />
       
       <View style={styles.resultContainer}>
-        {isProcessing ? (
-          <View style={styles.processingContainer}>
-            <ActivityIndicator size="large" color={Colors.primary} />
-            <Text style={styles.processingText}>
-              Analiziranje slike...
-            </Text>
-          </View>
-        ) : (
+        {result?.readable ? (
           <>
-            <Text style={styles.resultLabel}>
-              Očitana vrijednost:
-            </Text>
-            
-            {isEditing ? (
-              <View style={styles.editContainer}>
-                <Input
-                  value={editedValue}
-                  onChangeText={setEditedValue}
-                  keyboardType="numeric"
-                  containerStyle={styles.input}
-                  autoFocus
-                />
-                <TouchableOpacity 
-                  style={styles.editButton}
-                  onPress={toggleEdit}
-                  activeOpacity={0.7}
-                >
-                  <Check size={24} color={Colors.success} />
-                </TouchableOpacity>
-              </View>
-            ) : (
-              <View style={styles.valueContainer}>
-                <Text style={styles.resultValue}>
-                  {ocrValue} m³
-                </Text>
-                <TouchableOpacity 
-                  style={styles.editButton}
-                  onPress={toggleEdit}
-                  activeOpacity={0.7}
-                >
-                  <Edit2 size={20} color={Colors.primary} />
-                </TouchableOpacity>
-              </View>
-            )}
-            
-            <Text style={styles.infoText}>
-              Provjerite da li je očitana vrijednost tačna. Ako nije, možete je ručno ispraviti.
+            <View style={styles.successRow}>
+              <CheckCircle size={24} color={Colors.success} />
+              <Text style={styles.successText}>Broj uspje�no procitan</Text>
+            </View>
+            <Text style={styles.valueText}>{result.value} m�</Text>
+            <Text style={styles.confidenceText}>
+              Pouzdanost: {result.confidence === 'high' ? 'Visoka' : result.confidence === 'medium' ? 'Srednja' : 'Niska'}
             </Text>
           </>
+        ) : (
+          <View style={styles.errorRow}>
+            <XCircle size={24} color={Colors.error} />
+            <Text style={styles.errorText}>Nije moguce procitati broj</Text>
+          </View>
         )}
-      </View>
-      
-      <View style={styles.footer}>
-        <Button
-          title="Ponovi skeniranje"
-          onPress={onRetry}
-          variant="outline"
-          style={styles.button}
-          disabled={isProcessing}
-        />
-        <Button
-          title="Potvrdi"
-          onPress={handleConfirm}
-          style={styles.button}
-          disabled={isProcessing}
-        />
+
+        <View style={styles.actions}>
+          {result?.readable && result.value && (
+            <Button
+              title={`Potvrdi: ${result.value} m\u00b3`}
+              onPress={() => onConfirm(result.value!, imageUri)}
+              style={styles.button}
+            />
+          )}
+          <Button title="Ponovi snimanje" onPress={onRetry} variant="outline" style={styles.button} />
+          <Button title="Odustani" onPress={onCancel} variant="outline" style={styles.button} />
+        </View>
       </View>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-  },
-  title: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: Colors.text,
-  },
-  closeButton: {
-    padding: 8,
-  },
-  imageContainer: {
-    height: 200,
-    margin: 16,
-    borderRadius: 8,
-    overflow: 'hidden',
-    backgroundColor: Colors.border,
-  },
-  image: {
-    width: '100%',
-    height: '100%',
-  },
-  resultContainer: {
-    padding: 16,
-    flex: 1,
-  },
-  processingContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 32,
-  },
-  processingText: {
-    fontSize: 16,
-    color: Colors.text,
-    marginTop: 16,
-  },
-  resultLabel: {
-    fontSize: 16,
-    color: Colors.textLight,
-    marginBottom: 8,
-  },
-  valueContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  resultValue: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: Colors.text,
-    marginRight: 16,
-  },
-  editContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  input: {
-    flex: 1,
-    marginBottom: 0,
-  },
-  editButton: {
-    padding: 8,
-  },
-  infoText: {
-    fontSize: 14,
-    color: Colors.textLight,
-    marginTop: 8,
-  },
-  footer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    padding: 16,
-    borderTopWidth: 1,
-    borderTopColor: Colors.border,
-  },
-  button: {
-    flex: 1,
-    marginHorizontal: 8,
-  },
+  container: { flex: 1, backgroundColor: '#000' },
+  image: { width: '100%', height: 250 },
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  loadingText: { color: '#fff', marginTop: 16, fontSize: 16 },
+  resultContainer: { flex: 1, padding: 24, backgroundColor: '#fff' },
+  successRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
+  successText: { color: Colors.success, fontSize: 16, marginLeft: 8, fontWeight: 'bold' },
+  valueText: { fontSize: 36, fontWeight: 'bold', color: Colors.text, textAlign: 'center', marginVertical: 16 },
+  confidenceText: { color: Colors.textLight, textAlign: 'center', marginBottom: 24 },
+  errorRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 24 },
+  errorText: { color: Colors.error, fontSize: 16, marginLeft: 8, fontWeight: 'bold' },
+  actions: { gap: 12 },
+  button: { marginTop: 8 },
 });

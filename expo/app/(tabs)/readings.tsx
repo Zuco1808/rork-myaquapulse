@@ -45,6 +45,7 @@ export default function ReadingsScreen() {
   const [showCamera, setShowCamera] = useState(false);
   const [showOCRResult, setShowOCRResult] = useState(false);
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
+  const [capturedImageBase64, setCapturedImageBase64] = useState<string>("");
   const [showAddReadingModal, setShowAddReadingModal] = useState(false);
   const [manualReading, setManualReading] = useState('');
   const [selectedMeterId, setSelectedMeterId] = useState('');
@@ -171,12 +172,12 @@ export default function ReadingsScreen() {
     setShowCamera(true);
   };
   
-  const handleCameraCapture = (imageUri: string) => {
+  const handleCameraCapture = (imageUri: string, imageBase64: string) => {
     setCapturedImage(imageUri);
+    setCapturedImageBase64(imageBase64);
     setShowCamera(false);
     setShowOCRResult(true);
   };
-  
   const handleOCRConfirm = (value: number) => {
     if (!validateReading(value)) {
       Alert.alert(
@@ -567,11 +568,11 @@ export default function ReadingsScreen() {
           onClose={() => setShowCamera(false)}
         />
       )}
-      
       {/* OCR Result View */}
       {showOCRResult && capturedImage && (
         <OCRResult
           imageUri={capturedImage}
+          imageBase64={capturedImageBase64}
           onConfirm={handleOCRConfirm}
           onRetry={handleOCRRetry}
           onCancel={handleOCRCancel}
@@ -768,5 +769,7 @@ const styles = StyleSheet.create({
     width: '100%',
   },
 });
+
+
 
 
