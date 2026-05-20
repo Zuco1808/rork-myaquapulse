@@ -33,22 +33,47 @@ import { Badge } from '@/components/ui/Badge';
 import { Drawer } from '@/components/layout/Drawer';
 import { useAuthStore } from '@/store/auth-store';
 import Colors from '@/constants/colors';
-import { mockLocations } from '@/mocks/locations';
-import { mockCompanies } from '@/mocks/companies';
 import { Location } from '@/types/location';
+import { getLocations, deleteLocation } from '@/lib/api/locations';
 
 export default function LocationsScreen() {
   const router = useRouter();
   const { user } = useAuthStore();
   
   // Locations data
-  const [locations, setLocations] = useState<Location[]>(mockLocations);
-  const [filteredLocations, setFilteredLocations] = useState<Location[]>(mockLocations);
+  const [locations, setLocations] = useState<Location[]>([]);
+  const [filteredLocations, setFilteredLocations] = useState<Location[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const [filterCompany, setFilterCompany] = useState('all');
   
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchLocations = async () => {
+    try {
+      setError(null);
+      const data = await getLocations();
+      setLocations(data);
+      setFilteredLocations(data);
+    } catch (err) {
+      setError('Greska pri ucitavanju lokacija');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchLocations();
+  }, []);
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await fetchLocations();
+  };
+
   // Drawer state
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   
@@ -59,11 +84,6 @@ export default function LocationsScreen() {
     }
   }, [user, router]);
   
-  const onRefresh = () => {
-    setRefreshing(true);
-    // In a real app, you would fetch locations from an API
-    setRefreshing(false);
-  };
   
   const applyFilters = () => {
     let filtered = [...locations];
@@ -136,8 +156,7 @@ export default function LocationsScreen() {
   };
   
   const getCompanyName = (companyId: string) => {
-    const company = mockCompanies.find(c => c.id === companyId);
-    return company ? company.name : 'Nepoznata kompanija';
+    return "Vodovod Sarajevo";
   };
   
   const renderLocationCard = ({ item }: { item: Location }) => {
@@ -279,21 +298,6 @@ export default function LocationsScreen() {
                 ]}>Sve</Text>
               </TouchableOpacity>
               
-              {mockCompanies.map(company => (
-                <TouchableOpacity
-                  key={company.id}
-                  style={[
-                    styles.filterOption,
-                    filterCompany === company.id && styles.filterOptionActive
-                  ]}
-                  onPress={() => handleFilterChange(company.id)}
-                >
-                  <Text style={[
-                    styles.filterOptionText,
-                    filterCompany === company.id && styles.filterOptionTextActive
-                  ]}>{company.name}</Text>
-                </TouchableOpacity>
-              ))}
             </View>
           </View>
         )}
@@ -472,3 +476,7 @@ const styles = StyleSheet.create({
     shadowRadius: 3.84,
   },
 });
+
+
+
+
