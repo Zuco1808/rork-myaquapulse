@@ -34,6 +34,7 @@ import { Drawer } from '@/components/layout/Drawer';
 import { useAuthStore } from '@/store/auth-store';
 import Colors from '@/constants/colors';
 import { WaterMeter, MeterReading } from '@/types/location';
+import { getMeters } from '@/lib/api/meters';
 
 // Mock meters data
 const mockMeters: any[] = [
@@ -116,6 +117,23 @@ export default function MetersScreen() {
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterLocation, setFilterLocation] = useState('all');
   
+  const fetchMeters = async () => {
+    try {
+      const data = await getMeters();
+      console.log("Meters data:", JSON.stringify(data));
+      setMeters(data);
+      setFilteredMeters(data);
+    } catch (err) {
+      console.error("Greska pri ucitavanju vodomjera:", err);
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchMeters();
+  }, []);
+
   // Drawer state
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   
@@ -722,5 +740,8 @@ const styles = StyleSheet.create({
     shadowRadius: 3.84,
   },
 });
+
+
+
 
 
