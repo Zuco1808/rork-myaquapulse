@@ -101,57 +101,14 @@ interface ExtendedMeter {
   lastReading?: MeterReading;
 }
 
-// Mock extended meters data
-const mockExtendedMeters: ExtendedMeter[] = [
-  {
-    ...mockMeters[0],
-    userName: 'Amina Hodžić',
-    locationName: 'Ilidža',
-    address: 'Zmaja od Bosne 8, Sarajevo',
-    lastReadingValue: 352.5,
-    lastReadingDate: '2023-05-10',
-  },
-  {
-    ...mockMeters[1],
-    userName: 'Emir Kovačević',
-    locationName: 'Centar',
-    address: 'Ferhadija 12, Sarajevo',
-    lastReadingValue: 128.7,
-    lastReadingDate: '2023-05-12',
-  },
-  {
-    ...mockMeters[2],
-    userName: 'Selma Begić',
-    locationName: 'Novi Grad',
-    address: 'Titova 18, Sarajevo',
-    lastReadingValue: 1245.8,
-    lastReadingDate: '2023-05-08',
-  },
-  {
-    ...mockMeters[3],
-    userName: 'Adnan Mehić',
-    locationName: 'Stari Grad',
-    address: 'Alipašina 22, Sarajevo',
-    lastReadingValue: 87.3,
-    lastReadingDate: '2023-05-11',
-  },
-  {
-    ...mockMeters[4],
-    userName: 'Lejla Hadžić',
-    locationName: 'Novo Sarajevo',
-    address: 'Koševo 5, Sarajevo',
-    lastReadingValue: 45.2,
-    lastReadingDate: '2023-05-09',
-  }
-];
 
 export default function MetersScreen() {
   const router = useRouter();
   const { user } = useAuthStore();
   
   // Meters data
-  const [meters, setMeters] = useState<ExtendedMeter[]>(mockExtendedMeters);
-  const [filteredMeters, setFilteredMeters] = useState<ExtendedMeter[]>(mockExtendedMeters);
+  const [meters, setMeters] = useState<any[]>([]);
+  const [filteredMeters, setFilteredMeters] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
@@ -294,7 +251,7 @@ export default function MetersScreen() {
     }
   };
   
-  const renderMeterCard = ({ item }: { item: ExtendedMeter }) => {
+  const renderMeterCard = ({ item }: { item: any }) => {
     const isActive = item.status === 'active';
     
     return (
@@ -765,3 +722,5 @@ const styles = StyleSheet.create({
     shadowRadius: 3.84,
   },
 });
+
+
