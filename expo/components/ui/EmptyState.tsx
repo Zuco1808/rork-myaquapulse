@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import Colors from '@/constants/colors';
 
 export interface EmptyStateProps {
+  style?: any;
   title: string;
   message: string;
   icon?: React.ReactNode;

@@ -55,7 +55,7 @@ export const BillCard: React.FC<BillCardProps> = ({
           </View>
           <View style={styles.headerContent}>
             <Text style={styles.title}>
-              Račun za {formatDate(bill.issueDate)}
+              Račun za {formatDate((bill.issueDate || bill.createdAt))}
             </Text>
             {meterSerialNumber && (
               <Text style={styles.meterNumber}>
@@ -63,7 +63,7 @@ export const BillCard: React.FC<BillCardProps> = ({
               </Text>
             )}
           </View>
-          <StatusIndicator status={bill.status} />
+          <StatusIndicator status={bill.status === 'issued' ? 'active' : bill.status === 'draft' ? 'inactive' : bill.status === 'cancelled' ? 'inactive' : bill.status as any} />
         </View>
         
         <View style={styles.content}>
@@ -86,7 +86,7 @@ export const BillCard: React.FC<BillCardProps> = ({
               ]}>
                 {formatDate(bill.dueDate)}
               </Text>
-              {bill.status === 'pending' && (
+              {bill.status === 'pending' || status === 'draft' && (
                 <View style={styles.daysContainer}>
                   <Clock size={14} color={isOverdue ? Colors.error : Colors.info} />
                   <Text style={[
@@ -102,10 +102,10 @@ export const BillCard: React.FC<BillCardProps> = ({
             </View>
           </View>
           
-          {bill.status === 'paid' && bill.paidDate && (
+          {bill.status === 'paid' && (bill.paidDate || bill.updatedAt || bill.createdAt) && (
             <View style={styles.row}>
               <Text style={styles.label}>Plaćeno:</Text>
-              <Text style={styles.value}>{formatDate(bill.paidDate)}</Text>
+              <Text style={styles.value}>{formatDate((bill.paidDate || bill.updatedAt || bill.createdAt))}</Text>
             </View>
           )}
         </View>

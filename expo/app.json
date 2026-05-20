@@ -33,7 +33,10 @@
         {
           "origin": "https://rork.app/"
         }
-      ]
+      ],
+      "expo-font",
+      "@react-native-community/datetimepicker",
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true

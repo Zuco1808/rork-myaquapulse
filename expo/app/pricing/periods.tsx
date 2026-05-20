@@ -122,7 +122,7 @@ export default function PeriodsScreen() {
   };
   
   const handlePeriodPress = (period: PricingPeriod) => {
-    router.push(`/pricing/periods/${period.id}`);
+    router.push(`/pricing/periods/${period.id}` as any);
   };
   
   const validateForm = () => {

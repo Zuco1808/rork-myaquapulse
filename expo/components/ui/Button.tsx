@@ -17,7 +17,7 @@ interface ButtonProps extends TouchableOpacityProps {
   size?: 'small' | 'medium' | 'large';
   isLoading?: boolean;
   disabled?: boolean;
-  style?: ViewStyle;
+  style?: ViewStyle | ViewStyle[] | (ViewStyle | undefined | false | null)[];
   textStyle?: TextStyle;
   leftIcon?: React.ReactNode;
   rightIcon?: React.ReactNode;

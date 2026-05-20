@@ -4,7 +4,7 @@ import Colors from '@/constants/colors';
 
 interface CardProps {
   children: React.ReactNode;
-  style?: ViewStyle;
+  style?: ViewStyle | ViewStyle[] | (ViewStyle | undefined | false | null)[];
   elevation?: number;
 }
 

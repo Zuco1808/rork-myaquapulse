@@ -42,16 +42,16 @@ export default function NotificationsScreen() {
     if (notification.relatedEntityType && notification.relatedEntityId) {
       switch (notification.relatedEntityType) {
         case 'meter':
-          router.push(`/meters/${notification.relatedEntityId}`);
+          router.push(`/meters/${notification.relatedEntityId}` as any);
           break;
         case 'reading':
-          router.push(`/readings/${notification.relatedEntityId}`);
+          router.push(`/readings/${notification.relatedEntityId}` as any);
           break;
         case 'bill':
-          router.push(`/bills/${notification.relatedEntityId}`);
+          router.push(`/bills/${notification.relatedEntityId}` as any);
           break;
         case 'task':
-          router.push(`/tasks/${notification.relatedEntityId}`);
+          router.push(`/tasks/${notification.relatedEntityId}` as any);
           break;
       }
     }
@@ -62,7 +62,7 @@ export default function NotificationsScreen() {
   };
   
   const handleSendNotification = () => {
-    router.push('/notifications/send');
+    router.push('/notifications/send' as any);
   };
   
   const renderHeader = () => {
@@ -113,7 +113,7 @@ export default function NotificationsScreen() {
         title="Nema notifikacija"
         message="Trenutno nemate novih notifikacija."
         icon={<Bell size={48} color={Colors.textLight} />}
-        style={styles.emptyState}
+        
       />
     );
   };

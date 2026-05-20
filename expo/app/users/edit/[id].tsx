@@ -210,7 +210,7 @@ export default function EditUserScreen() {
     if (currentUser.id === user.id) return true;
     
     // Check if current user can manage the target user's role
-    return canManageUser(currentUser.role, user.role);
+    return canManageUser(currentUser as any, user as any);
   };
   
   if (isLoading) {

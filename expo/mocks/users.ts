@@ -1,4 +1,4 @@
-import { User } from '@/types/user';
+import { User, getDefaultPermissions } from '@/types/user';
 
 export const mockUsers: User[] = [
   {
@@ -7,6 +7,7 @@ export const mockUsers: User[] = [
     email: 'superadmin@aquapulse.com',
     password: 'password',
     role: 'superadmin',
+    permissions: getDefaultPermissions('superadmin'),
     isActive: true,
     phone: '+387 61 123 456',
     address: 'Zmaja od Bosne 8, Sarajevo',
@@ -19,6 +20,7 @@ export const mockUsers: User[] = [
     email: 'admin@vodovod.com',
     password: 'password',
     role: 'admin',
+    permissions: getDefaultPermissions('admin'),
     isActive: true,
     phone: '+387 61 234 567',
     address: 'Ferhadija 12, Sarajevo',
@@ -31,6 +33,7 @@ export const mockUsers: User[] = [
     email: 'finance@vodovod.com',
     password: 'password',
     role: 'finance',
+    permissions: getDefaultPermissions('finance'),
     isActive: true,
     phone: '+387 61 345 678',
     address: 'Titova 18, Sarajevo',
@@ -43,6 +46,7 @@ export const mockUsers: User[] = [
     email: 'radnik@vodovod.com',
     password: 'password',
     role: 'worker',
+    permissions: getDefaultPermissions('worker'),
     isActive: true,
     phone: '+387 61 456 789',
     address: 'Alipašina 22, Sarajevo',
@@ -55,6 +59,7 @@ export const mockUsers: User[] = [
     email: 'gradjanin@email.com',
     password: 'password',
     role: 'citizen',
+    permissions: getDefaultPermissions('citizen'),
     isActive: true,
     phone: '+387 61 567 890',
     address: 'Koševo 5, Sarajevo',
@@ -67,6 +72,7 @@ export const mockUsers: User[] = [
     email: 'odrzavanje@vodovod.com',
     password: 'password',
     role: 'maintenance',
+    permissions: getDefaultPermissions('maintenance'),
     isActive: true,
     phone: '+387 61 678 901',
     address: 'Hamdije Kreševljakovića 15, Sarajevo',
@@ -79,6 +85,7 @@ export const mockUsers: User[] = [
     email: 'jasmina@email.com',
     password: 'password',
     role: 'citizen',
+    permissions: getDefaultPermissions('citizen'),
     isActive: false,
     phone: '+387 61 789 012',
     address: 'Branilaca Sarajeva 20, Sarajevo',
@@ -91,12 +98,9 @@ export const getUserByCredentials = (email: string, password: string): User | nu
   const user = mockUsers.find(
     (u) => u.email.toLowerCase() === email.toLowerCase() && u.password === password
   );
-  
   if (user) {
-    // Return user without password
-    const { password, ...userWithoutPassword } = user;
+    const { password: _pwd, ...userWithoutPassword } = user;
     return userWithoutPassword as User;
   }
-  
   return null;
 };

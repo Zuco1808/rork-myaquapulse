@@ -57,7 +57,7 @@ export const TaskCard: React.FC<TaskCardProps> = ({ task }) => {
     task.dueDate < Date.now();
   
   const handlePress = () => {
-    router.push(`/tasks/${task.id}`);
+    router.push(`/tasks/${task.id}` as any);
   };
   
   return (

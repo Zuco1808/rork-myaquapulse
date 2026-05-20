@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, ViewStyle, TextStyle } from 'react-native';
 import Colors from '@/constants/colors';
 
 export interface BadgeProps {
+  variant?: 'info' | 'primary' | 'success' | 'warning' | 'error';
   label: string;
   color?: string;
   size?: 'small' | 'medium' | 'large';

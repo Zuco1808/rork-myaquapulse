@@ -37,7 +37,7 @@ interface CompanyWithStatus extends Company {
 }
 
 // Convert mockCompanies to include status
-const companiesWithStatus: CompanyWithStatus[] = mockCompanies.map(company => ({
+const companiesWithStatus: CompanyWithStatus[] = mockCompanies.map((company: any) => ({
   ...company,
   status: company.id.includes('1') ? 'active' : 
           company.id.includes('2') ? 'inactive' : 'pending'
@@ -101,23 +101,23 @@ export default function CompaniesScreen() {
   };
   
   const handleAddCompany = () => {
-    router.push('/companies/add');
+    router.push('/companies/add' as any);
   };
   
   const handleEditCompany = (id: string) => {
-    router.push(`/companies/edit/${id}`);
+    router.push(`/companies/edit/${id}` as any);
   };
   
   const handleViewCompany = (id: string) => {
-    router.push(`/companies/${id}`);
+    router.push(`/companies/${id}` as any);
   };
   
   const handleViewLocations = (id: string) => {
-    router.push(`/locations?companyId=${id}`);
+    router.push(`/locations?companyId=${id}` as any);
   };
   
   const handleViewUsers = (id: string) => {
-    router.push(`/users?companyId=${id}`);
+    router.push(`/users?companyId=${id}` as any);
   };
   
   const handleDeleteCompany = (id: string, name: string) => {
@@ -246,7 +246,7 @@ export default function CompaniesScreen() {
         title="Kompanije"
         showBack
         leftIcon={<Menu size={24} color={Colors.text} />}
-        onLeftPress={() => router.push('/(tabs)')}
+        onLeftPress={() => router.push('/(tabs)' as any)}
       />
       
       <View style={styles.searchContainer}>

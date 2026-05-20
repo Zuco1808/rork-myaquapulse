@@ -25,7 +25,7 @@ import { ReadingCard } from '@/components/readings/ReadingCard';
 import { OCRCameraView } from '@/components/ocr/CameraView';
 import { OCRResult } from '@/components/ocr/OCRResult';
 import { useAuthStore } from '@/store/auth-store';
-import { mockReadings, mockWaterMeters } from '@/mocks/locations';
+import { mockReadings, mockMeters } from '@/mocks/locations';
 import Colors from '@/constants/colors';
 import { MeterReading } from '@/types/location';
 
@@ -47,7 +47,7 @@ export default function ReadingsScreen() {
   const [showAddReadingModal, setShowAddReadingModal] = useState(false);
   const [manualReading, setManualReading] = useState('');
   const [selectedMeterId, setSelectedMeterId] = useState('');
-  const [availableMeters, setAvailableMeters] = useState<typeof mockWaterMeters>([]);
+  const [availableMeters, setAvailableMeters] = useState<typeof mockMeters>([]);
   const [readings, setReadings] = useState<ExtendedReading[]>([]);
   const [filteredReadings, setFilteredReadings] = useState<ExtendedReading[]>([]);
   const [showFilters, setShowFilters] = useState(false);
@@ -63,7 +63,7 @@ export default function ReadingsScreen() {
     
     // Prepare extended readings with meter info
     const extendedReadings = mockReadings.map(reading => {
-      const meter = mockWaterMeters.find(m => m.id === reading.meterId);
+      const meter = mockMeters.find(m => m.id === reading.meterId);
       // Find previous reading to get value for validation
       const previousReadings = mockReadings
         .filter(r => r.meterId === reading.meterId && r.readingDate < reading.readingDate)
@@ -78,11 +78,11 @@ export default function ReadingsScreen() {
     
     // Filter readings based on user role
     let userReadings = extendedReadings;
-    let userMeters = mockWaterMeters;
+    let userMeters = mockMeters;
     
     if (user.role === 'citizen') {
       // Citizens can only see their own meters
-      userMeters = mockWaterMeters.filter(meter => meter.userId === user.id);
+      userMeters = mockMeters.filter(meter => meter.userId === user.id);
       userReadings = extendedReadings.filter(reading => 
         userMeters.some(meter => meter.id === reading.meterId)
       );

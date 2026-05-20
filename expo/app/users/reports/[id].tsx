@@ -26,7 +26,7 @@ import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Avatar } from '@/components/ui/Avatar';
 import { mockUsers } from '@/mocks/users';
-import { mockReadings, mockWaterMeters, mockBills } from '@/mocks/locations';
+import { mockReadings, mockMeters, mockBills } from '@/mocks/locations';
 import { getTasksByUser } from '@/mocks/tasks';
 import { User } from '@/types/user';
 import Colors from '@/constants/colors';
@@ -89,7 +89,7 @@ export default function UserReportsScreen() {
       
       const userTasks = getTasksByUser(user.id);
       completedTasks = userTasks.filter(t => t.status === 'completed').length;
-      pendingTasks = userTasks.filter(t => t.status === 'pending' || t.status === 'in_progress').length;
+      pendingTasks = userTasks.filter(t => t.status === 'pending'  || t.status === 'in_progress').length;
       
       // Calculate total consumption from readings
       totalConsumption = mockReadings
@@ -98,7 +98,7 @@ export default function UserReportsScreen() {
     } 
     else if (user.role === 'citizen') {
       // For citizens, get their meters and related readings/bills
-      const userMeters = mockWaterMeters.filter(m => m.userId === user.id);
+      const userMeters = mockMeters.filter(m => m.userId === user.id);
       const meterIds = userMeters.map(m => m.id);
       
       totalReadings = mockReadings.filter(r => meterIds.includes(r.meterId)).length;
@@ -112,13 +112,13 @@ export default function UserReportsScreen() {
       const userBills = mockBills.filter(b => b.userId === user.id);
       totalBills = userBills.length;
       totalPaid = userBills.filter(b => b.status === 'paid').length;
-      totalUnpaid = userBills.filter(b => b.status === 'pending' || b.status === 'overdue').length;
+      totalUnpaid = userBills.filter(b => b.status === 'pending'  || b.status === 'overdue').length;
     }
     else if (user.role === 'finance') {
       // For finance, show billing stats
       totalBills = mockBills.length;
       totalPaid = mockBills.filter(b => b.status === 'paid').length;
-      totalUnpaid = mockBills.filter(b => b.status === 'pending' || b.status === 'overdue').length;
+      totalUnpaid = mockBills.filter(b => b.status === 'pending'  || b.status === 'overdue').length;
       
       // Calculate total consumption
       totalConsumption = mockReadings
@@ -137,12 +137,12 @@ export default function UserReportsScreen() {
       // Calculate bills
       totalBills = mockBills.length;
       totalPaid = mockBills.filter(b => b.status === 'paid').length;
-      totalUnpaid = mockBills.filter(b => b.status === 'pending' || b.status === 'overdue').length;
+      totalUnpaid = mockBills.filter(b => b.status === 'pending'  || b.status === 'overdue').length;
       
       // Calculate tasks
       const allTasks = getTasksByUser(user.id);
       completedTasks = allTasks.filter(t => t.status === 'completed').length;
-      pendingTasks = allTasks.filter(t => t.status === 'pending' || t.status === 'in_progress').length;
+      pendingTasks = allTasks.filter(t => t.status === 'pending'  || t.status === 'in_progress').length;
     }
     
     setStats({

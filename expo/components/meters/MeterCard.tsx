@@ -30,7 +30,7 @@ export const MeterCard: React.FC<MeterCardProps> = ({
   };
   
   const handlePress = () => {
-    router.push(`/meters/${meter.id}`);
+    router.push(`/meters/${meter.id}` as any);
   };
   
   return (

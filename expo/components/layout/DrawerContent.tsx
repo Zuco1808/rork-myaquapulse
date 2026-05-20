@@ -41,7 +41,7 @@ export const DrawerContent: React.FC<DrawerContentProps> = ({ onClose }) => {
   const { user, logout } = useAuthStore();
   
   const handleNavigation = (path: string) => {
-    router.push(path);
+    router.push(path as any);
     onClose();
   };
   

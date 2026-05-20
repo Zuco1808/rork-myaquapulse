@@ -24,9 +24,9 @@ interface NotificationState {
   error: string | null;
   
   // Actions
-  fetchNotifications: (userId: string) => Promise<void>;
+  fetchNotifications: (userId?: string) => Promise<void>;
   markAsRead: (notificationId: string) => void;
-  markAllAsRead: (userId: string) => void;
+  markAllAsRead: (userId?: string) => void;
   deleteNotification: (notificationId: string) => void;
   sendNotification: (notification: any) => Promise<void>;
 }
@@ -39,7 +39,7 @@ export const useNotificationStore = create<NotificationState>()(
       isLoading: false,
       error: null,
       
-      fetchNotifications: async (userId: string) => {
+      fetchNotifications: async (userId?: string) => {
         set({ isLoading: true, error: null });
         
         try {
@@ -75,7 +75,7 @@ export const useNotificationStore = create<NotificationState>()(
         });
       },
       
-      markAllAsRead: (userId: string) => {
+      markAllAsRead: (userId?: string) => {
         const { notifications } = get();
         
         const updatedNotifications = notifications.map(notif =>

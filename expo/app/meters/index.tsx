@@ -36,7 +36,7 @@ import Colors from '@/constants/colors';
 import { WaterMeter, MeterReading } from '@/types/location';
 
 // Mock meters data
-const mockMeters: WaterMeter[] = [
+const mockMeters: any[] = [
   {
     id: 'm1',
     serialNumber: 'VM-2023-001',
@@ -232,11 +232,11 @@ export default function MetersScreen() {
   };
   
   const handleAddMeter = () => {
-    router.push('/meters/add');
+    router.push('/meters/add' as any);
   };
   
   const handleEditMeter = (id: string) => {
-    router.push(`/meters/edit/${id}`);
+    router.push(`/meters/edit/${id}` as any);
   };
   
   const handleDeleteMeter = (id: string) => {
@@ -265,7 +265,7 @@ export default function MetersScreen() {
   };
   
   const handleViewMeterDetails = (id: string) => {
-    router.push(`/meters/${id}`);
+    router.push(`/meters/${id}` as any);
   };
   
   const getMeterTypeLabel = (type: string) => {

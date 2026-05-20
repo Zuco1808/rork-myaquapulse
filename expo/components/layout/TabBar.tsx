@@ -58,7 +58,7 @@ export const TabBar: React.FC = () => {
   );
   
   const handleTabPress = (path: string) => {
-    router.push(path);
+    router.push(path as any);
   };
   
   const isActive = (path: string) => {

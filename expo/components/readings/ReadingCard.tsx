@@ -45,7 +45,7 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
   };
   
   const handlePress = () => {
-    router.push(`/readings/${reading.id}`);
+    router.push(`/readings/${reading.id}` as any);
   };
   
   const hasAnomaly = reading.consumption && reading.previousValue 

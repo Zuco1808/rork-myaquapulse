@@ -44,7 +44,7 @@ const mockAlerts: WaterAlert[] = [
     value: 45.2,
     threshold: 30,
     unit: 'm³',
-    createdAt: '2023-05-15T08:30:00Z',
+    createdAt: Date.now(),
     isResolved: false
   },
   {
@@ -58,10 +58,10 @@ const mockAlerts: WaterAlert[] = [
     locationName: 'Ferhadija 12, Sarajevo',
     companyId: 'c1',
     companyName: 'Vodovod Sarajevo',
-    value: null,
-    threshold: null,
-    unit: null,
-    createdAt: '2023-05-14T14:15:00Z',
+    value: undefined,
+    threshold: undefined,
+    unit: undefined,
+    createdAt: Date.now(),
     isResolved: true
   },
   {
@@ -78,7 +78,7 @@ const mockAlerts: WaterAlert[] = [
     value: 0.5,
     threshold: 2,
     unit: 'm³',
-    createdAt: '2023-05-13T10:45:00Z',
+    createdAt: Date.now(),
     isResolved: false
   },
   {
@@ -95,7 +95,7 @@ const mockAlerts: WaterAlert[] = [
     value: 48,
     threshold: 24,
     unit: 'h',
-    createdAt: '2023-05-12T22:10:00Z',
+    createdAt: Date.now(),
     isResolved: false
   },
   {
@@ -109,10 +109,10 @@ const mockAlerts: WaterAlert[] = [
     locationName: 'Koševo 5, Sarajevo',
     companyId: 'c1',
     companyName: 'Vodovod Sarajevo',
-    value: null,
-    threshold: null,
-    unit: null,
-    createdAt: '2023-05-11T16:20:00Z',
+    value: undefined,
+    threshold: undefined,
+    unit: undefined,
+    createdAt: Date.now(),
     isResolved: true
   }
 ];
@@ -171,10 +171,10 @@ export default function AlertsScreen() {
     // Apply search query
     if (searchQuery) {
       filtered = filtered.filter(alert => 
-        alert.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (alert.title || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
         alert.message.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        alert.meterName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        alert.locationName.toLowerCase().includes(searchQuery.toLowerCase())
+        (alert.meterName || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (alert.locationName || '').toLowerCase().includes(searchQuery.toLowerCase())
       );
     }
     
@@ -209,7 +209,7 @@ export default function AlertsScreen() {
   };
   
   const handleViewAlert = (id: string) => {
-    router.push(`/alerts/${id}`);
+    router.push(`/alerts/${id}` as any);
   };
   
   const handleResolveAlert = (id: string) => {
@@ -278,7 +278,7 @@ export default function AlertsScreen() {
             {renderAlertIcon(item.type, item.severity)}
             <View style={styles.alertInfo}>
               <Text style={styles.alertTitle}>{item.title}</Text>
-              <Text style={styles.alertDate}>{formatDate(item.createdAt)}</Text>
+              <Text style={styles.alertDate}>{formatDate(String(item.createdAt))}</Text>
             </View>
             {isResolved ? (
               <View style={styles.resolvedBadge}>
@@ -339,7 +339,7 @@ export default function AlertsScreen() {
         title="Alarmi"
         showBack
         leftIcon={<Menu size={24} color={Colors.text} />}
-        onLeftPress={() => router.push('/(tabs)')}
+        onLeftPress={() => router.push('/(tabs)' as any)}
       />
       
       <View style={styles.searchContainer}>

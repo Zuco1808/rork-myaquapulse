@@ -82,8 +82,8 @@ export default function UserGroupsScreen() {
   const handleEditGroup = (group: UserGroup) => {
     // Set form values
     setGroupName(group.name);
-    setGroupDescription(group.description);
-    setIsDefault(group.isDefault);
+    setGroupDescription(group.description ?? "");
+    setIsDefault(group.isDefault || false);
     setGroupType(group.type);
     
     // Reset errors

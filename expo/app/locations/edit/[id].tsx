@@ -70,8 +70,8 @@ export default function EditLocationScreen() {
         setCity(location.city || '');
         setPostalCode(location.postalCode || '');
         setCompanyId(location.companyId);
-        setLatitude(location.latitude ? location.latitude.toString() : '');
-        setLongitude(location.longitude ? location.longitude.toString() : '');
+        setLatitude(location.coordinates?.latitude ? location.coordinates?.latitude.toString() : '');
+        setLongitude(location.coordinates?.longitude ? location.coordinates?.longitude.toString() : '');
       } else {
         Alert.alert("Greška", "Lokacija nije pronađena.");
         router.back();

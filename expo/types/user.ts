@@ -1,4 +1,4 @@
-export type UserRole = 'superadmin' | 'admin' | 'finance' | 'worker' | 'citizen';
+export type UserRole = 'superadmin' | 'admin' | 'finance' | 'worker' | 'citizen' | 'maintenance';
 
 export interface UserPermissions {
   canReadMeters: boolean;
@@ -28,11 +28,10 @@ export interface User {
   updatedAt?: number;
   lastLogin?: number;
   companyId?: string;
-  locationIds?: string[]; // Multiple locations
-  meterIds?: string[]; // Multiple meters
+  locationIds?: string[];
+  meterIds?: string[];
 }
 
-// Default permissions based on role
 export const getDefaultPermissions = (role: UserRole): UserPermissions => {
   switch (role) {
     case 'superadmin':
@@ -87,9 +86,22 @@ export const getDefaultPermissions = (role: UserRole): UserPermissions => {
         canManageBilling: false,
         canBackupData: false
       };
+    case 'maintenance':
+      return {
+        canReadMeters: true,
+        canReportIssues: true,
+        canManageTasks: true,
+        canEditReadings: false,
+        canSendNotifications: false,
+        canViewAllData: false,
+        canManageUsers: false,
+        canManageCompanies: false,
+        canManageBilling: false,
+        canBackupData: false
+      };
     case 'citizen':
       return {
-        canReadMeters: false, // This can be toggled by admin/finance
+        canReadMeters: false,
         canReportIssues: true,
         canManageTasks: false,
         canEditReadings: false,
@@ -114,4 +126,54 @@ export const getDefaultPermissions = (role: UserRole): UserPermissions => {
         canBackupData: false
       };
   }
+};
+
+export type UserGroupType =
+  | 'residential'
+  | 'commercial'
+  | 'industrial'
+  | 'public'
+  | 'household'
+  | 'business'
+  | 'agriculture'
+  | 'livestock'
+  | 'other';
+
+export interface UserGroup {
+  id: string;
+  name: string;
+  type: UserGroupType;
+  description?: string;
+  discountPercent?: number;
+  isDefault?: boolean;
+  createdAt?: number;
+}
+
+export interface CompanyWithStatus {
+  id: string;
+  name: string;
+  address: string;
+  city: string;
+  postalCode: string;
+  country: string;
+  phone: string;
+  email: string;
+  website?: string;
+  logo?: string;
+  supportEmail?: string;
+  usersCount?: number;
+  locationsCount?: number;
+  metersCount?: number;
+  isActive?: boolean;
+  createdAt: number;
+  updatedAt?: number;
+}
+
+// Alias za Company koji se koristi u companies/index.tsx
+export type Company = CompanyWithStatus;
+
+export const canManageUser = (manager: User, target: User): boolean => {
+  if (manager.role === 'superadmin') return true;
+  if (manager.role === 'admin' && target.role !== 'superadmin') return true;
+  return false;
 };

@@ -32,35 +32,35 @@ export default function SupportScreen() {
       title: 'Prijava kvara',
       description: 'Prijavite kvar ili problem sa vodovodom',
       icon: <AlertTriangle size={24} color={Colors.error} />,
-      onPress: () => router.push('/support/report-issue'),
+      onPress: () => router.push('/support/report-issue' as any),
     },
     {
       id: 'contact',
       title: 'Kontakt',
       description: 'Kontaktirajte našu službu za korisnike',
       icon: <MessageSquare size={24} color={Colors.primary} />,
-      onPress: () => router.push('/support/contact'),
+      onPress: () => router.push('/support/contact' as any),
     },
     {
       id: 'faq',
       title: 'Često postavljena pitanja',
       description: 'Pronađite odgovore na najčešća pitanja',
       icon: <HelpCircle size={24} color={Colors.info} />,
-      onPress: () => router.push('/support/faq'),
+      onPress: () => router.push('/support/faq' as any),
     },
     {
       id: 'guides',
       title: 'Vodiči i uputstva',
       description: 'Korisni vodiči za korištenje aplikacije',
       icon: <FileText size={24} color={Colors.secondary} />,
-      onPress: () => router.push('/support/guides'),
+      onPress: () => router.push('/support/guides' as any),
     },
     {
       id: 'emergency',
       title: 'Hitni slučajevi',
       description: 'Brojevi telefona za hitne slučajeve',
       icon: <Phone size={24} color={Colors.warning} />,
-      onPress: () => router.push('/support/emergency'),
+      onPress: () => router.push('/support/emergency' as any),
     },
   ];
   
@@ -70,7 +70,7 @@ export default function SupportScreen() {
         title="Podrška"
         showBack
         leftIcon={<Menu size={24} color={Colors.text} />}
-        onLeftPress={() => router.push('/(tabs)')}
+        onLeftPress={() => router.push('/(tabs)' as any)}
       />
       
       <ScrollView style={styles.content}>

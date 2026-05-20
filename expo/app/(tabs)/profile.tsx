@@ -81,7 +81,7 @@ export default function ProfileScreen() {
   };
   
   const navigateTo = (path: string) => {
-    router.push(path);
+    router.push(path as any);
   };
   
   const getRoleName = () => {

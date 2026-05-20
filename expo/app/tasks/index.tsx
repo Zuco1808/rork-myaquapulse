@@ -291,7 +291,7 @@ export default function TasksScreen() {
   };
   
   const handleAddTask = () => {
-    router.push('/tasks/add');
+    router.push('/tasks/add' as any);
   };
   
   const handleViewTaskDetails = (task: Task) => {

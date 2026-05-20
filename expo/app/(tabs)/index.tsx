@@ -43,7 +43,7 @@ export default function HomeScreen() {
   }, [user, router]);
   
   const handleNavigate = (route: string) => {
-    router.push(route);
+    router.push(route as any);
   };
   
   // Define menu items based on user role
@@ -238,13 +238,13 @@ export default function HomeScreen() {
             <View style={styles.quickActionsButtons}>
               <Button
                 title="Očitaj vodomjer"
-                onPress={() => router.push('/readings')}
+                onPress={() => router.push('/readings' as any)}
                 style={styles.quickActionButton}
               />
               <Button
                 title="Prijavi problem"
                 variant="outline"
-                onPress={() => router.push('/support/report-issue')}
+                onPress={() => router.push('/support/report-issue' as any)}
                 style={styles.quickActionButton}
               />
             </View>
