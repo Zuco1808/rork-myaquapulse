@@ -37,210 +37,60 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { StatusIndicator } from '@/components/ui/StatusIndicator';
 import { Input } from '@/components/ui/Input';
 import { useAuthStore } from '@/store/auth-store';
+import { getBills } from '@/lib/api/bills';
 import { Drawer } from '@/components/layout/Drawer';
 import Colors from '@/constants/colors';
-
-// Bill type
-interface Bill {
-  id: string;
-  number: string;
-  userId: string;
-  userName: string;
-  userAddress: string;
-  userEmail?: string;
-  companyId: string;
-  companyName: string;
-  amount: number;
-  status: 'paid' | 'pending' | 'overdue';
-  dueDate: string;
-  paidDate: string | null;
-  period: string;
-  consumption: number;
-  items: Array<{
-    description: string;
-    amount: number;
-  }>;
-}
-
-// Mock bills data
-const mockBills: Bill[] = [
-  {
-    id: 'b1',
-    number: 'F-2023-001',
-    userId: 'u1',
-    userName: 'Amina Hodžić',
-    userAddress: 'Zmaja od Bosne 8, Sarajevo',
-    userEmail: 'amina.hodzic@example.com',
-    companyId: 'c1',
-    companyName: 'Vodovod Sarajevo',
-    amount: 45.80,
-    status: 'paid',
-    dueDate: '2023-05-15',
-    paidDate: '2023-05-10',
-    period: 'April 2023',
-    consumption: 12.5,
-    items: [
-      { description: 'Potrošnja vode', amount: 32.50 },
-      { description: 'Kanalizacija', amount: 8.30 },
-      { description: 'Održavanje', amount: 5.00 }
-    ]
-  },
-  {
-    id: 'b2',
-    number: 'F-2023-002',
-    userId: 'u2',
-    userName: 'Emir Kovačević',
-    userAddress: 'Ferhadija 12, Sarajevo',
-    userEmail: 'emir.kovacevic@example.com',
-    companyId: 'c1',
-    companyName: 'Vodovod Sarajevo',
-    amount: 68.20,
-    status: 'paid',
-    dueDate: '2023-05-15',
-    paidDate: '2023-05-12',
-    period: 'April 2023',
-    consumption: 18.3,
-    items: [
-      { description: 'Potrošnja vode', amount: 48.50 },
-      { description: 'Kanalizacija', amount: 12.70 },
-      { description: 'Održavanje', amount: 7.00 }
-    ]
-  },
-  {
-    id: 'b3',
-    number: 'F-2023-003',
-    userId: 'u3',
-    userName: 'Selma Begić',
-    userAddress: 'Titova 18, Sarajevo',
-    userEmail: 'selma.begic@example.com',
-    companyId: 'c1',
-    companyName: 'Vodovod Sarajevo',
-    amount: 52.40,
-    status: 'overdue',
-    dueDate: '2023-05-15',
-    paidDate: null,
-    period: 'April 2023',
-    consumption: 14.2,
-    items: [
-      { description: 'Potrošnja vode', amount: 37.20 },
-      { description: 'Kanalizacija', amount: 10.20 },
-      { description: 'Održavanje', amount: 5.00 }
-    ]
-  },
-  {
-    id: 'b4',
-    number: 'F-2023-004',
-    userId: 'u4',
-    userName: 'Adnan Mehić',
-    userAddress: 'Alipašina 22, Sarajevo',
-    userEmail: 'adnan.mehic@example.com',
-    companyId: 'c1',
-    companyName: 'Vodovod Sarajevo',
-    amount: 38.60,
-    status: 'pending',
-    dueDate: '2023-06-15',
-    paidDate: null,
-    period: 'Maj 2023',
-    consumption: 10.5,
-    items: [
-      { description: 'Potrošnja vode', amount: 27.30 },
-      { description: 'Kanalizacija', amount: 6.30 },
-      { description: 'Održavanje', amount: 5.00 }
-    ]
-  },
-  {
-    id: 'b5',
-    number: 'F-2023-005',
-    userId: 'u5',
-    userName: 'Lejla Hadžić',
-    userAddress: 'Koševo 5, Sarajevo',
-    userEmail: 'lejla.hadzic@example.com',
-    companyId: 'c1',
-    companyName: 'Vodovod Sarajevo',
-    amount: 42.10,
-    status: 'pending',
-    dueDate: '2023-06-15',
-    paidDate: null,
-    period: 'Maj 2023',
-    consumption: 11.8,
-    items: [
-      { description: 'Potrošnja vode', amount: 29.80 },
-      { description: 'Kanalizacija', amount: 7.30 },
-      { description: 'Održavanje', amount: 5.00 }
-    ]
-  }
-];
 
 export default function BillsScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const { user } = useAuthStore();
-  
-  // Get user ID from params if available
   const userId = params.userId as string;
-  
-  // Bills data
-  const [bills, setBills] = useState<Bill[]>(mockBills);
-  const [filteredBills, setFilteredBills] = useState<Bill[]>(mockBills);
+  const [bills, setBills] = useState<any[]>([]);
+  const [filteredBills, setFilteredBills] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterPeriod, setFilterPeriod] = useState('all');
-  
-  // Payment modal state
-  const [paymentModalVisible, setPaymentModalVisible] = useState(false);
-  const [selectedBill, setSelectedBill] = useState<Bill | null>(null);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+
+  const fetchBills = async () => {
+    try {
+      const data = await getBills();
+      const userFiltered = userId ? data.filter((b: any) => b.userId === userId) : data;
+      setBills(userFiltered);
+      setFilteredBills(userFiltered);
+    } catch (err) {
+      console.error('Greska:', err);
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  useEffect(() => { fetchBills(); }, []);
+  const [selectedBill, setSelectedBill] = useState<any>(null);
   const [paymentAmount, setPaymentAmount] = useState('');
-  
-  // PDF preview modal state
+  const [paymentModalVisible, setPaymentModalVisible] = useState(false);
+  const [bulkSelected, setBulkSelected] = useState<string[]>([]);
+  const [bulkMode, setBulkMode] = useState(false);
+  const [createModalVisible, setCreateModalVisible] = useState(false);
+  const [selectedUserId, setSelectedUserId] = useState('');
+  const [selectedMeterId, setSelectedMeterId] = useState('');
+  const [billAmount, setBillAmount] = useState('');
+  const [billPeriod, setBillPeriod] = useState('');
+  const [pdfBill, setPdfBill] = useState<any>(null);
   const [pdfModalVisible, setPdfModalVisible] = useState(false);
-  const [pdfBill, setPdfBill] = useState<Bill | null>(null);
-  
-  // Bulk operations modal state
-  const [bulkOperationModalVisible, setBulkOperationModalVisible] = useState(false);
   const [selectedBills, setSelectedBills] = useState<string[]>([]);
   const [selectAllBills, setSelectAllBills] = useState(false);
-  
-  // Drawer state
-  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-  
-  // Check if user has permission to access this screen
-  useEffect(() => {
-    if (!user) {
-      router.replace('/login');
-    }
-  }, [user, router]);
-  
-  // Load bills based on user role and params
-  useEffect(() => {
-    loadBills();
-  }, [user, userId]);
-  
-  const loadBills = () => {
-    let filteredData = [...mockBills];
-    
-    // Filter by user ID if provided
-    if (userId) {
-      filteredData = filteredData.filter(bill => bill.userId === userId);
-    }
-    
-    // Filter by user role
-    if (user && user.role === 'citizen') {
-      // Citizens can only see their own bills
-      filteredData = filteredData.filter(bill => bill.userId === user.id);
-    } else if (user && user.role === 'admin') {
-      // Admins can only see bills for their company
-      filteredData = filteredData.filter(bill => bill.companyId === user.companyId);
-    }
-    
-    setBills(filteredData);
-    setFilteredBills(filteredData);
-  };
+  const [bulkOperationModalVisible, setBulkOperationModalVisible] = useState(false);
+  const [emailModalVisible, setEmailModalVisible] = useState(false);
+  const [emailBill, setEmailBill] = useState<any>(null);
+
   
   const onRefresh = () => {
     setRefreshing(true);
-    loadBills();
+    fetchBills();
     setRefreshing(false);
   };
   
@@ -293,7 +143,7 @@ export default function BillsScreen() {
     router.push(`/bills/${id}`);
   };
   
-  const handlePayBill = (bill: Bill) => {
+  const handlePayBill = (bill: any) => {
     setSelectedBill(bill);
     setPaymentAmount(bill.amount.toFixed(2));
     setPaymentModalVisible(true);
@@ -328,7 +178,7 @@ export default function BillsScreen() {
     );
   };
   
-  const handleViewPdf = (bill: Bill) => {
+  const handleViewPdf = (bill: any) => {
     setPdfBill(bill);
     setPdfModalVisible(true);
   };
@@ -349,7 +199,7 @@ export default function BillsScreen() {
     );
   };
   
-  const handleSendEmail = (bill: Bill) => {
+  const handleSendEmail = (bill: any) => {
     Alert.alert(
       "Slanje računa",
       `Račun će biti poslan na email: ${bill.userEmail || 'korisnika'}`,
@@ -422,7 +272,7 @@ export default function BillsScreen() {
     );
   };
   
-  const renderBillCard = ({ item }: { item: Bill }) => {
+  const renderBillCard = ({ item }: { item: any }) => {
     const isPaid = item.status === 'paid';
     const isOverdue = item.status === 'overdue';
     
@@ -910,8 +760,7 @@ export default function BillsScreen() {
                       <Text style={[styles.billPdfItemHeaderText, { flex: 1 }]}>PDV</Text>
                       <Text style={[styles.billPdfItemHeaderText, { flex: 1.5 }]}>Ukupno</Text>
                     </View>
-                    
-                    {pdfBill.items.map((item, index) => (
+                    {pdfBill.items.map((item: any, index: number) => (
                       <View key={index} style={styles.billPdfItemRow}>
                         <Text style={[styles.billPdfItemText, { flex: 3 }]}>{item.description}</Text>
                         <Text style={[styles.billPdfItemText, { flex: 1 }]}>
@@ -1667,3 +1516,6 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
 });
+
+
+
