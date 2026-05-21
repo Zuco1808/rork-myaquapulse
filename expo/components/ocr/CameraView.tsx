@@ -172,7 +172,7 @@ export const OCRCameraView: React.FC<OCRCameraViewProps> = ({ onCapture, onClose
   const [facing, setFacing] = useState<CameraType>('back');
   const [capturing, setCapturing] = useState(false);
   const [zoom, setZoom] = useState(0);
-  const [flash, setFlash] = useState<FlashMode>('off');
+  const [flash, setFlash] = useState<any>('off');
   const cameraRef = useRef<any>(null);
 
   if (!permission) {
@@ -204,11 +204,11 @@ export const OCRCameraView: React.FC<OCRCameraViewProps> = ({ onCapture, onClose
 
   const handleZoom = (direction: 'in' | 'out') => {
     const newZoom = direction === 'in' ? Math.min(zoom + 0.1, 1) : Math.max(zoom - 0.1, 0);
-    setZoom(parseFloat(newZoom.toFixed(1)));
+  const [flash, setFlash] = useState<any>('off');
   };
 
   const toggleFlash = () => {
-    setFlash(f => f === 'off' ? 'torch' : 'off');
+    setFlash((f: any) => f === 'off' ? 'torch' : 'off');
   };
 
   return (
@@ -221,7 +221,7 @@ export const OCRCameraView: React.FC<OCRCameraViewProps> = ({ onCapture, onClose
             </TouchableOpacity>
             <Text style={styles.headerText}>Skenirajte vodomjer</Text>
             <TouchableOpacity style={styles.iconButton} onPress={toggleFlash}>
-              {flash === 'torch' ? <Zap size={24} color="#FFD700" /> : <ZapOff size={24} color="#fff" />}
+            {flash === 'torch' ? <Zap size={24} color={'#FFD700'} /> : <ZapOff size={24} color={'#fff'} />}
             </TouchableOpacity>
           </View>
 

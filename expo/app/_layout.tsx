@@ -2,7 +2,9 @@ import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { useFonts } from "expo-font";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
-import { useEffect } from "react";
+import { useEffect } from 'react';
+import { registerForPushNotifications, savePushToken } from '@/lib/notifications';
+import { useAuthStore } from '@/store/auth-store';
 import { Platform } from "react-native";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -35,6 +37,14 @@ export default function RootLayout() {
     if (loaded) {
       SplashScreen.hideAsync();
     }
+  const { user } = useAuthStore();
+  useEffect(() => {
+    if (user?.id) {
+      registerForPushNotifications().then(token => {
+        if (token) savePushToken(user.id, token);
+      });
+    }
+  }, [user?.id]);
   }, [loaded]);
 
   if (!loaded) {
