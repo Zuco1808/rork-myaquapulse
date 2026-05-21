@@ -560,24 +560,21 @@ export default function ReadingsScreen() {
           </View>
         </View>
       </Modal>
-      
-      {/* Camera View */}
-      {showCamera && (
+      <Modal visible={showCamera} animationType="slide" statusBarTranslucent={true} onRequestClose={() => setShowCamera(false)}>
         <OCRCameraView
           onCapture={handleCameraCapture}
           onClose={() => setShowCamera(false)}
         />
-      )}
-      {/* OCR Result View */}
-      {showOCRResult && capturedImage && (
+      </Modal>
+      <Modal visible={showOCRResult && !!capturedImage} animationType="slide" statusBarTranslucent={true} onRequestClose={handleOCRCancel}>
         <OCRResult
-          imageUri={capturedImage}
+          imageUri={capturedImage || ""}
           imageBase64={capturedImageBase64}
           onConfirm={handleOCRConfirm}
           onRetry={handleOCRRetry}
           onCancel={handleOCRCancel}
         />
-      )}
+      </Modal>
     </View>
   );
 }
