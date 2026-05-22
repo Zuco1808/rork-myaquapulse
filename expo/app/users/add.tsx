@@ -1,206 +1,159 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  ScrollView, 
-  TouchableOpacity, 
-  Alert,
-  SafeAreaView,
-  Platform
+import {
+  View, Text, StyleSheet, ScrollView,
+  TouchableOpacity, Alert, SafeAreaView, Platform
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { 
-  User, 
-  Mail, 
-  Phone, 
-  MapPin, 
-  Lock, 
-  Check, 
-  Building,
-  Menu,
-  ChevronLeft
-} from 'lucide-react-native';
+import { User, Mail, Phone, Lock } from 'lucide-react-native';
 import { Header } from '@/components/layout/Header';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
-import { Drawer } from '@/components/layout/Drawer';
 import { useAuthStore } from '@/store/auth-store';
+import { supabase } from '@/lib/supabase';
 import Colors from '@/constants/colors';
-import { mockCompanies } from '@/mocks/companies';
-import { mockLocations } from '@/mocks/locations';
-import { getDefaultPermissions } from '@/types/user';
+import { UserRole, WaterUtility } from '@/types/user';
 
 export default function AddUserScreen() {
   const router = useRouter();
   const { user } = useAuthStore();
-  
-  // Form state
-  const [name, setName] = useState('');
+
+  const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
-  const [address, setAddress] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [role, setRole] = useState('end_user');
+  const [role, setRole] = useState<UserRole>('end_user');
   const [isActive, setIsActive] = useState(true);
-  const [companyId, setCompanyId] = useState('');
-  const [locationId, setLocationId] = useState('');
-  const [neighborhood, setNeighborhood] = useState('');
-  const [building, setBuilding] = useState('');
-  const [meterNumber, setMeterNumber] = useState('');
-  
-  // User permissions
-  const [permissions, setPermissions] = useState(getDefaultPermissions('end_user'));
-  
-  // Form errors
+  const [selectedUtilityId, setSelectedUtilityId] = useState('');
+  const [utilities, setUtilities] = useState<WaterUtility[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+
   const [nameError, setNameError] = useState('');
   const [emailError, setEmailError] = useState('');
   const [passwordError, setPasswordError] = useState('');
   const [confirmPasswordError, setConfirmPasswordError] = useState('');
-  
-  // Drawer state
-  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-  
-  // Check if user has permission to access this screen
+
   useEffect(() => {
-    if (!user || (user.role !== 'super_admin' && user.role !== 'utility_admin')) {
+    if (!user || !['super_admin', 'utility_admin'].includes(user.role)) {
       router.replace('/login');
-    }
-  }, [user, router]);
-  
-  // Update permissions when role changes
-  useEffect(() => {
-    setPermissions(getDefaultPermissions(role as any));
-  }, [role]);
-  
-  const validateForm = () => {
-    let isValid = true;
-    
-    // Validate name
-    if (!name.trim()) {
-      setNameError('Ime i prezime je obavezno');
-      isValid = false;
-    } else {
-      setNameError('');
-    }
-    
-    // Validate email
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!email.trim()) {
-      setEmailError('Email je obavezan');
-      isValid = false;
-    } else if (!emailRegex.test(email)) {
-      setEmailError('Unesite validan email');
-      isValid = false;
-    } else {
-      setEmailError('');
-    }
-    
-    // Validate password
-    if (!password) {
-      setPasswordError('Lozinka je obavezna');
-      isValid = false;
-    } else if (password.length < 6) {
-      setPasswordError('Lozinka mora imati najmanje 6 karaktera');
-      isValid = false;
-    } else {
-      setPasswordError('');
-    }
-    
-    // Validate confirm password
-    if (password !== confirmPassword) {
-      setConfirmPasswordError('Lozinke se ne podudaraju');
-      isValid = false;
-    } else {
-      setConfirmPasswordError('');
-    }
-    
-    return isValid;
-  };
-  
-  const handleSubmit = () => {
-    if (!validateForm()) {
       return;
     }
-    
-    // In a real app, you would call an API to create the user
-    Alert.alert(
-      "Uspjeh",
-      "Korisnik je uspješno kreiran.",
-      [
-        { 
-          text: "OK", 
-          onPress: () => router.back() 
+    if (user.role === 'utility_admin' && user.utility_id) {
+      setSelectedUtilityId(user.utility_id);
+    }
+    if (user.role === 'super_admin') {
+      fetchUtilities();
+    }
+  }, [user]);
+
+  const fetchUtilities = async () => {
+    const { data } = await supabase
+      .from('water_utilities')
+      .select('*')
+      .eq('is_active', true)
+      .order('name');
+    setUtilities(data || []);
+  };
+
+  const availableRoles = (): UserRole[] => {
+    if (user?.role === 'super_admin') {
+      return ['utility_admin', 'finance', 'worker', 'end_user'];
+    }
+    return ['finance', 'worker', 'end_user'];
+  };
+
+  const getRoleLabel = (r: UserRole) => {
+    switch (r) {
+      case 'utility_admin': return 'Administrator';
+      case 'finance': return 'Finansije';
+      case 'worker': return 'Radnik';
+      case 'end_user': return 'Korisnik';
+      default: return r;
+    }
+  };
+
+  const validate = () => {
+    let valid = true;
+    if (!fullName.trim()) { setNameError('Ime i prezime je obavezno'); valid = false; } else setNameError('');
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!email.trim()) { setEmailError('Email je obavezan'); valid = false; }
+    else if (!emailRegex.test(email)) { setEmailError('Unesite validan email'); valid = false; }
+    else setEmailError('');
+    if (!password) { setPasswordError('Lozinka je obavezna'); valid = false; }
+    else if (password.length < 6) { setPasswordError('Lozinka mora imati najmanje 6 karaktera'); valid = false; }
+    else setPasswordError('');
+    if (password !== confirmPassword) { setConfirmPasswordError('Lozinke se ne podudaraju'); valid = false; }
+    else setConfirmPasswordError('');
+    return valid;
+  };
+
+  const handleSubmit = async () => {
+    if (!validate()) return;
+
+    const utilityId = user?.role === 'utility_admin' ? user.utility_id : selectedUtilityId;
+
+    if (!utilityId && role !== 'super_admin') {
+      Alert.alert('Greška', 'Molimo odaberite vodovod.');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      // Kreiraj auth korisnika
+      const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+        email: email.trim(),
+        password,
+        email_confirm: true,
+        user_metadata: {
+          full_name: fullName.trim(),
+          role,
         }
-      ]
-    );
+      });
+
+      if (authError) throw authError;
+
+      // Update profila s ispravnim podacima
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .update({
+          full_name: fullName.trim(),
+          phone: phone.trim() || null,
+          role,
+          utility_id: utilityId || null,
+          is_active: isActive,
+        })
+        .eq('id', authData.user.id);
+
+      if (profileError) throw profileError;
+
+      Alert.alert('Uspjeh', 'Korisnik je uspješno kreiran.', [
+        { text: 'OK', onPress: () => router.back() }
+      ]);
+    } catch (err: any) {
+      Alert.alert('Greška', err.message || 'Greška pri kreiranju korisnika.');
+    } finally {
+      setIsLoading(false);
+    }
   };
-  
-  const handleRoleChange = (selectedRole: string) => {
-    setRole(selectedRole);
-  };
-  
-  const handleStatusChange = (status: boolean) => {
-    setIsActive(status);
-  };
-  
-  const handleCompanyChange = (id: string) => {
-    setCompanyId(id);
-    // Reset location when company changes
-    setLocationId('');
-  };
-  
-  const handleLocationChange = (id: string) => {
-    setLocationId(id);
-  };
-  
-  const handlePermissionChange = (key: keyof typeof permissions, value: boolean) => {
-    setPermissions(prev => ({
-      ...prev,
-      [key]: value
-    }));
-  };
-  
-  // Filter locations based on selected company
-  const filteredLocations = companyId 
-    ? mockLocations.filter(location => location.companyId === companyId)
-    : [];
-  
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
-        <Header 
-          title="Dodaj korisnika"
-          showBack
-          showMenu={false}
-          onLeftPress={() => router.back()}
-        />
-        
-        <Drawer
-          isOpen={isDrawerOpen}
-          onClose={() => setIsDrawerOpen(false)}
-        />
-        
-        <ScrollView 
-          style={styles.scrollView}
-          contentContainerStyle={styles.scrollContent}
-        >
-          <Card style={styles.formCard}>
+        <Header title="Dodaj korisnika" showBack onLeftPress={() => router.back()} />
+        <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
+          <Card style={styles.card}>
             <Text style={styles.sectionTitle}>Osnovni podaci</Text>
-            
             <Input
-              label="Ime i prezime"
+              label="Ime i prezime *"
               placeholder="Unesite ime i prezime"
-              value={name}
-              onChangeText={setName}
+              value={fullName}
+              onChangeText={setFullName}
               error={nameError}
               leftIcon={<User size={20} color={Colors.textLight} />}
             />
-            
             <Input
-              label="Email"
+              label="Email *"
               placeholder="Unesite email"
               value={email}
               onChangeText={setEmail}
@@ -209,7 +162,6 @@ export default function AddUserScreen() {
               error={emailError}
               leftIcon={<Mail size={20} color={Colors.textLight} />}
             />
-            
             <Input
               label="Telefon"
               placeholder="Unesite telefon"
@@ -218,293 +170,85 @@ export default function AddUserScreen() {
               keyboardType="phone-pad"
               leftIcon={<Phone size={20} color={Colors.textLight} />}
             />
-            
             <Input
-              label="Adresa"
-              placeholder="Unesite adresu"
-              value={address}
-              onChangeText={setAddress}
-              leftIcon={<MapPin size={20} color={Colors.textLight} />}
-            />
-            
-            <Input
-              label="Lozinka"
-              placeholder="Unesite lozinku"
+              label="Lozinka *"
+              placeholder="Minimum 6 karaktera"
               value={password}
               onChangeText={setPassword}
               secureTextEntry
               error={passwordError}
               leftIcon={<Lock size={20} color={Colors.textLight} />}
             />
-            
             <Input
-              label="Potvrdi lozinku"
-              placeholder="Potvrdite lozinku"
+              label="Potvrdi lozinku *"
+              placeholder="Ponovite lozinku"
               value={confirmPassword}
               onChangeText={setConfirmPassword}
               secureTextEntry
               error={confirmPasswordError}
               leftIcon={<Lock size={20} color={Colors.textLight} />}
             />
-            
-            <Text style={styles.sectionTitle}>Uloga i status</Text>
-            
-            <Text style={styles.label}>Uloga korisnika:</Text>
+          </Card>
+
+          <Card style={styles.card}>
+            <Text style={styles.sectionTitle}>Uloga</Text>
             <View style={styles.roleOptions}>
-              {user?.role === 'super_admin' && (
+              {availableRoles().map(r => (
                 <TouchableOpacity
-                  style={[
-                    styles.roleOption,
-                    role === 'utility_admin' && styles.roleOptionActive
-                  ]}
-                  onPress={() => handleRoleChange('utility_admin')}
+                  key={r}
+                  style={[styles.roleOption, role === r && styles.roleOptionActive]}
+                  onPress={() => setRole(r)}
                 >
-                  <Text style={[
-                    styles.roleOptionText,
-                    role === 'utility_admin' && styles.roleOptionTextActive
-                  ]}>Administrator</Text>
+                  <Text style={[styles.roleOptionText, role === r && styles.roleOptionTextActive]}>
+                    {getRoleLabel(r)}
+                  </Text>
                 </TouchableOpacity>
-              )}
-              
-              <TouchableOpacity
-                style={[
-                  styles.roleOption,
-                  role === 'finance' && styles.roleOptionActive
-                ]}
-                onPress={() => handleRoleChange('finance')}
-              >
-                <Text style={[
-                  styles.roleOptionText,
-                  role === 'finance' && styles.roleOptionTextActive
-                ]}>Finansije</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity
-                style={[
-                  styles.roleOption,
-                  role === 'worker' && styles.roleOptionActive
-                ]}
-                onPress={() => handleRoleChange('worker')}
-              >
-                <Text style={[
-                  styles.roleOptionText,
-                  role === 'worker' && styles.roleOptionTextActive
-                ]}>Radnik</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity
-                style={[
-                  styles.roleOption,
-                  role === 'end_user' && styles.roleOptionActive
-                ]}
-                onPress={() => handleRoleChange('end_user')}
-              >
-                <Text style={[
-                  styles.roleOptionText,
-                  role === 'end_user' && styles.roleOptionTextActive
-                ]}>Građanin</Text>
-              </TouchableOpacity>
+              ))}
             </View>
-            
-            <Text style={styles.label}>Status korisnika:</Text>
+
+            <Text style={styles.label}>Status:</Text>
             <View style={styles.statusOptions}>
               <TouchableOpacity
-                style={[
-                  styles.statusOption,
-                  isActive && styles.statusOptionActive
-                ]}
-                onPress={() => handleStatusChange(true)}
+                style={[styles.statusOption, isActive && styles.statusOptionActive]}
+                onPress={() => setIsActive(true)}
               >
-                <Text style={[
-                  styles.statusOptionText,
-                  isActive && styles.statusOptionTextActive
-                ]}>Aktivan</Text>
+                <Text style={[styles.statusOptionText, isActive && styles.statusOptionTextActive]}>
+                  Aktivan
+                </Text>
               </TouchableOpacity>
-              
               <TouchableOpacity
-                style={[
-                  styles.statusOption,
-                  !isActive && styles.statusOptionActive
-                ]}
-                onPress={() => handleStatusChange(false)}
+                style={[styles.statusOption, !isActive && styles.statusOptionActive]}
+                onPress={() => setIsActive(false)}
               >
-                <Text style={[
-                  styles.statusOptionText,
-                  !isActive && styles.statusOptionTextActive
-                ]}>Neaktivan</Text>
+                <Text style={[styles.statusOptionText, !isActive && styles.statusOptionTextActive]}>
+                  Neaktivan
+                </Text>
               </TouchableOpacity>
             </View>
-            
-            {/* Permissions section */}
-            <Text style={styles.sectionTitle}>Dozvole</Text>
-            
-            {role === 'end_user' && (
-              <View style={styles.permissionItem}>
-                <Text style={styles.permissionLabel}>Dozvoli očitanje vodomjera</Text>
-                <TouchableOpacity
-                  style={[
-                    styles.permissionToggle,
-                    permissions.canReadMeters && styles.permissionToggleActive
-                  ]}
-                  onPress={() => handlePermissionChange('canReadMeters', !permissions.canReadMeters)}
-                >
-                  <View style={[
-                    styles.permissionToggleHandle,
-                    permissions.canReadMeters && styles.permissionToggleHandleActive
-                  ]} />
-                </TouchableOpacity>
-              </View>
-            )}
-            
-            {role === 'worker' && (
-              <>
-                <View style={styles.permissionItem}>
-                  <Text style={styles.permissionLabel}>Dozvoli prijavu kvarova</Text>
-                  <TouchableOpacity
-                    style={[
-                      styles.permissionToggle,
-                      permissions.canReadMeters && styles.permissionToggleActive
-                    ]}
-                    onPress={() => handlePermissionChange('canReadMeters', !permissions.canReadMeters)}
-                  >
-                    <View style={[
-                      styles.permissionToggleHandle,
-                      permissions.canReadMeters && styles.permissionToggleHandleActive
-                    ]} />
-                  </TouchableOpacity>
-                </View>
-                
-                <View style={styles.permissionItem}>
-                  <Text style={styles.permissionLabel}>Dozvoli upravljanje zadacima</Text>
-                  <TouchableOpacity
-                    style={[
-                      styles.permissionToggle,
-                      permissions.canManageTasks && styles.permissionToggleActive
-                    ]}
-                    onPress={() => handlePermissionChange('canManageTasks', !permissions.canManageTasks)}
-                  >
-                    <View style={[
-                      styles.permissionToggleHandle,
-                      permissions.canManageTasks && styles.permissionToggleHandleActive
-                    ]} />
-                  </TouchableOpacity>
-                </View>
-              </>
-            )}
-            
-            {/* Company and Location selection for citizens */}
-            {role === 'end_user' && (
-              <>
-                <Text style={styles.sectionTitle}>Podaci o lokaciji</Text>
-                
-                <Text style={styles.label}>Kompanija:</Text>
-                <View style={styles.optionsContainer}>
-                  {mockCompanies.map(company => (
-                    <TouchableOpacity
-                      key={company.id}
-                      style={[
-                        styles.option,
-                        companyId === company.id && styles.optionActive
-                      ]}
-                      onPress={() => handleCompanyChange(company.id)}
-                    >
-                      <Text style={[
-                        styles.optionText,
-                        companyId === company.id && styles.optionTextActive
-                      ]}>{company.name}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-                
-                {companyId && (
-                  <>
-                    <Text style={styles.label}>Lokacija:</Text>
-                    <View style={styles.optionsContainer}>
-                      {filteredLocations.map(location => (
-                        <TouchableOpacity
-                          key={location.id}
-                          style={[
-                            styles.option,
-                            locationId === location.id && styles.optionActive
-                          ]}
-                          onPress={() => handleLocationChange(location.id)}
-                        >
-                          <Text style={[
-                            styles.optionText,
-                            locationId === location.id && styles.optionTextActive
-                          ]}>{location.name}</Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                  </>
-                )}
-                
-                <Input
-                  label="Kvart"
-                  placeholder="Unesite kvart"
-                  value={neighborhood}
-                  onChangeText={setNeighborhood}
-                  leftIcon={<MapPin size={20} color={Colors.textLight} />}
-                />
-                
-                <Input
-                  label="Zgrada"
-                  placeholder="Unesite zgradu"
-                  value={building}
-                  onChangeText={setBuilding}
-                  leftIcon={<Building size={20} color={Colors.textLight} />}
-                />
-                
-                <Input
-                  label="Broj vodomjera"
-                  placeholder="Unesite broj vodomjera"
-                  value={meterNumber}
-                  onChangeText={setMeterNumber}
-                  leftIcon={<Check size={20} color={Colors.textLight} />}
-                />
-              </>
-            )}
-            
-            {/* Company selection for workers and finance */}
-            {(role === 'worker' || role === 'finance') && (
-              <>
-                <Text style={styles.sectionTitle}>Podaci o kompaniji</Text>
-                
-                <Text style={styles.label}>Kompanija:</Text>
-                <View style={styles.optionsContainer}>
-                  {mockCompanies.map(company => (
-                    <TouchableOpacity
-                      key={company.id}
-                      style={[
-                        styles.option,
-                        companyId === company.id && styles.optionActive
-                      ]}
-                      onPress={() => handleCompanyChange(company.id)}
-                    >
-                      <Text style={[
-                        styles.optionText,
-                        companyId === company.id && styles.optionTextActive
-                      ]}>{company.name}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </>
-            )}
           </Card>
-          
+
+          {user?.role === 'super_admin' && utilities.length > 0 && (
+            <Card style={styles.card}>
+              <Text style={styles.sectionTitle}>Vodovod</Text>
+              <View style={styles.roleOptions}>
+                {utilities.map(u => (
+                  <TouchableOpacity
+                    key={u.id}
+                    style={[styles.roleOption, selectedUtilityId === u.id && styles.roleOptionActive]}
+                    onPress={() => setSelectedUtilityId(u.id)}
+                  >
+                    <Text style={[styles.roleOptionText, selectedUtilityId === u.id && styles.roleOptionTextActive]}>
+                      {u.name}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </Card>
+          )}
+
           <View style={styles.actions}>
-            <Button
-              title="Otkaži"
-              variant="outline"
-              onPress={() => router.back()}
-              style={styles.cancelButton}
-            />
-            
-            <Button
-              title="Sačuvaj"
-              onPress={handleSubmit}
-              style={styles.submitButton}
-            />
+            <Button title="Otkaži" variant="outline" onPress={() => router.back()} style={styles.cancelButton} />
+            <Button title="Sačuvaj" onPress={handleSubmit} isLoading={isLoading} style={styles.submitButton} />
           </View>
         </ScrollView>
       </View>
@@ -513,149 +257,24 @@ export default function AddUserScreen() {
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    padding: 16,
-    paddingBottom: Platform.OS === 'android' ? 100 : 80, // Extra padding for Android
-  },
-  formCard: {
-    padding: 16,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: Colors.text,
-    marginBottom: 16,
-    marginTop: 8,
-  },
-  label: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: Colors.text,
-    marginBottom: 8,
-  },
-  roleOptions: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginBottom: 16,
-    gap: 8,
-  },
-  roleOption: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: Colors.highlight,
-    marginRight: 8,
-    marginBottom: 8,
-  },
-  roleOptionActive: {
-    backgroundColor: Colors.primary,
-  },
-  roleOptionText: {
-    fontSize: 14,
-    color: Colors.text,
-  },
-  roleOptionTextActive: {
-    color: '#fff',
-  },
-  statusOptions: {
-    flexDirection: 'row',
-    marginBottom: 16,
-  },
-  statusOption: {
-    flex: 1,
-    paddingVertical: 10,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  statusOptionActive: {
-    backgroundColor: Colors.primary,
-    borderColor: Colors.primary,
-  },
-  statusOptionText: {
-    fontSize: 14,
-    color: Colors.text,
-  },
-  statusOptionTextActive: {
-    color: '#fff',
-  },
-  permissionItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-  },
-  permissionLabel: {
-    fontSize: 14,
-    color: Colors.text,
-  },
-  permissionToggle: {
-    width: 50,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: Colors.disabled,
-    padding: 2,
-  },
-  permissionToggleActive: {
-    backgroundColor: Colors.primary,
-  },
-  permissionToggleHandle: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: '#fff',
-  },
-  permissionToggleHandleActive: {
-    transform: [{ translateX: 22 }],
-  },
-  optionsContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginBottom: 16,
-    gap: 8,
-  },
-  option: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: Colors.highlight,
-    marginRight: 8,
-    marginBottom: 8,
-  },
-  optionActive: {
-    backgroundColor: Colors.primary,
-  },
-  optionText: {
-    fontSize: 14,
-    color: Colors.text,
-  },
-  optionTextActive: {
-    color: '#fff',
-  },
-  actions: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 24,
-  },
-  cancelButton: {
-    flex: 1,
-    marginRight: 8,
-  },
-  submitButton: {
-    flex: 1,
-    marginLeft: 8,
-  },
+  safeArea: { flex: 1, backgroundColor: '#fff' },
+  container: { flex: 1, backgroundColor: '#fff' },
+  scrollView: { flex: 1 },
+  scrollContent: { padding: 16, paddingBottom: Platform.OS === 'android' ? 100 : 80 },
+  card: { padding: 16, marginBottom: 16 },
+  sectionTitle: { fontSize: 18, fontWeight: 'bold', color: Colors.text, marginBottom: 16, marginTop: 8 },
+  label: { fontSize: 14, fontWeight: '500', color: Colors.text, marginBottom: 8, marginTop: 8 },
+  roleOptions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 },
+  roleOption: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, backgroundColor: Colors.highlight },
+  roleOptionActive: { backgroundColor: Colors.primary },
+  roleOptionText: { fontSize: 14, color: Colors.text },
+  roleOptionTextActive: { color: '#fff' },
+  statusOptions: { flexDirection: 'row', marginBottom: 16 },
+  statusOption: { flex: 1, paddingVertical: 10, alignItems: 'center', borderWidth: 1, borderColor: Colors.border },
+  statusOptionActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
+  statusOptionText: { fontSize: 14, color: Colors.text },
+  statusOptionTextActive: { color: '#fff' },
+  actions: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 8 },
+  cancelButton: { flex: 1, marginRight: 8 },
+  submitButton: { flex: 1, marginLeft: 8 },
 });

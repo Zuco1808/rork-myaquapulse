@@ -1,265 +1,225 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  FlatList, 
-  TouchableOpacity, 
+import {
+  View,
+  Text,
+  StyleSheet,
+  FlatList,
+  TouchableOpacity,
   TextInput,
   RefreshControl,
   Alert
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { 
-  Building, 
-  Search, 
-  Plus, 
-  Edit2, 
-  Trash2, 
-  MapPin, 
-  Users, 
+import {
+  Building,
+  Search,
+  Plus,
+  Edit2,
+  Trash2,
+  MapPin,
+  Users,
   Filter,
-  Menu
 } from 'lucide-react-native';
 import { Header } from '@/components/layout/Header';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { StatusIndicator } from '@/components/ui/StatusIndicator';
 import { useAuthStore } from '@/store/auth-store';
-import { mockCompanies } from '@/mocks/companies';
+import { supabase } from '@/lib/supabase';
 import Colors from '@/constants/colors';
-import { Company } from '@/types/user';
-
-// Extended Company type with status
-interface CompanyWithStatus extends Company {
-  status: 'active' | 'inactive' | 'pending';
-}
-
-// Convert mockCompanies to include status
-const companiesWithStatus: CompanyWithStatus[] = mockCompanies.map((company: any) => ({
-  ...company,
-  status: company.id.includes('1') ? 'active' : 
-          company.id.includes('2') ? 'inactive' : 'pending'
-}));
+import { WaterUtility } from '@/types/user';
 
 export default function CompaniesScreen() {
   const router = useRouter();
   const { user } = useAuthStore();
-  const [companies, setCompanies] = useState<CompanyWithStatus[]>(companiesWithStatus);
-  const [filteredCompanies, setFilteredCompanies] = useState<CompanyWithStatus[]>(companiesWithStatus);
+  const [utilities, setUtilities] = useState<WaterUtility[]>([]);
+  const [filtered, setFiltered] = useState<WaterUtility[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [refreshing, setRefreshing] = useState(false);
-  const [showFilters, setShowFilters] = useState(false);
   const [filterStatus, setFilterStatus] = useState('all');
-  
-  // Check if user has permission to access this screen
+  const [showFilters, setShowFilters] = useState(false);
+
   useEffect(() => {
-    if (!user || user.role !== 'super_admin') {
+    if (!user || !['super_admin', 'distributor_admin'].includes(user.role)) {
       router.replace('/(tabs)');
+      return;
     }
-  }, [user, router]);
-  
-  const onRefresh = () => {
-    setRefreshing(true);
-    
-    // Simulate refresh
-    setTimeout(() => {
-      setCompanies(companiesWithStatus);
-      applyFilters(searchQuery, filterStatus);
-      setRefreshing(false);
-    }, 1000);
+    fetchUtilities();
+  }, [user]);
+
+  const fetchUtilities = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('water_utilities')
+        .select('*')
+        .order('name');
+
+      if (error) throw error;
+      setUtilities(data || []);
+      setFiltered(data || []);
+    } catch (err) {
+      console.error('Greška pri učitavanju vodovoda:', err);
+    }
   };
-  
-  const applyFilters = (query: string, status: string) => {
-    let filtered = [...companies];
-    
-    // Apply search query
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await fetchUtilities();
+    setRefreshing(false);
+  };
+
+  const applyFilters = (query: string, status: string, data: WaterUtility[]) => {
+    let result = [...data];
     if (query) {
-      filtered = filtered.filter(company => 
-        company.name.toLowerCase().includes(query.toLowerCase()) ||
-        (company.city ?? '').toLowerCase().includes(query.toLowerCase())
+      result = result.filter(u =>
+        u.name.toLowerCase().includes(query.toLowerCase()) ||
+        (u.city ?? '').toLowerCase().includes(query.toLowerCase())
       );
     }
-    
-    // Apply status filter
-    if (status !== 'all') {
-      filtered = filtered.filter(company => company.status === status);
-    }
-    
-    setFilteredCompanies(filtered);
+    if (status === 'active') result = result.filter(u => u.is_active);
+    if (status === 'inactive') result = result.filter(u => !u.is_active);
+    setFiltered(result);
   };
-  
+
   const handleSearch = (text: string) => {
     setSearchQuery(text);
-    applyFilters(text, filterStatus);
+    applyFilters(text, filterStatus, utilities);
   };
-  
+
   const handleFilterChange = (status: string) => {
     setFilterStatus(status);
-    applyFilters(searchQuery, status);
+    applyFilters(searchQuery, status, utilities);
   };
-  
-  const handleAddCompany = () => {
-    router.push('/companies/add' as any);
-  };
-  
-  const handleEditCompany = (id: string) => {
-    router.push(`/companies/edit/${id}` as any);
-  };
-  
-  const handleViewCompany = (id: string) => {
-    router.push(`/companies/${id}` as any);
-  };
-  
-  const handleViewLocations = (id: string) => {
-    router.push(`/locations?companyId=${id}` as any);
-  };
-  
-  const handleViewUsers = (id: string) => {
-    router.push(`/users?companyId=${id}` as any);
-  };
-  
-  const handleDeleteCompany = (id: string, name: string) => {
+
+  const handleDelete = (id: string, name: string) => {
     Alert.alert(
-      "Brisanje kompanije",
-      `Da li ste sigurni da želite obrisati kompaniju "${name}"?`,
+      'Brisanje vodovoda',
+      `Da li ste sigurni da želite obrisati "${name}"?`,
       [
+        { text: 'Odustani', style: 'cancel' },
         {
-          text: "Odustani",
-          style: "cancel"
-        },
-        { 
-          text: "Obriši", 
-          onPress: () => {
-            // Delete company logic
-            const updatedCompanies = companies.filter(company => company.id !== id);
-            setCompanies(updatedCompanies);
-            applyFilters(searchQuery, filterStatus);
-          },
-          style: "destructive"
+          text: 'Obriši',
+          style: 'destructive',
+          onPress: async () => {
+            const { error } = await supabase
+              .from('water_utilities')
+              .delete()
+              .eq('id', id);
+            if (!error) {
+              const updated = utilities.filter(u => u.id !== id);
+              setUtilities(updated);
+              applyFilters(searchQuery, filterStatus, updated);
+            }
+          }
         }
       ]
     );
   };
-  
-  const renderCompanyCard = ({ item }: { item: CompanyWithStatus }) => {
-    return (
-      <Card style={styles.companyCard}>
-        <TouchableOpacity 
-          style={styles.cardContent}
-          onPress={() => handleViewCompany(item.id)}
-          activeOpacity={0.7}
-        >
-          <View style={styles.companyHeader}>
-            <View style={styles.companyInfo}>
-              <Text style={styles.companyName}>{item.name}</Text>
-              <View style={styles.locationContainer}>
+
+  const handleToggleActive = async (id: string, current: boolean) => {
+    const { error } = await supabase
+      .from('water_utilities')
+      .update({ is_active: !current })
+      .eq('id', id);
+
+    if (!error) {
+      const updated = utilities.map(u =>
+        u.id === id ? { ...u, is_active: !current } : u
+      );
+      setUtilities(updated);
+      applyFilters(searchQuery, filterStatus, updated);
+    }
+  };
+
+  const renderCard = ({ item }: { item: WaterUtility }) => (
+    <Card style={styles.card}>
+      <TouchableOpacity
+        style={styles.cardContent}
+        onPress={() => router.push(`/companies/${item.id}` as any)}
+        activeOpacity={0.7}
+      >
+        <View style={styles.cardHeader}>
+          <View style={styles.cardInfo}>
+            <Text style={styles.cardName}>{item.name}</Text>
+            {item.city && (
+              <View style={styles.locationRow}>
                 <MapPin size={14} color={Colors.textLight} />
                 <Text style={styles.locationText}>{item.city}</Text>
               </View>
-            </View>
-            <StatusIndicator 
-              status={item.status}
-              labels={{
-                active: "Aktivna",
-                inactive: "Neaktivna",
-                pending: "Na čekanju"
-              }}
-            />
+            )}
           </View>
-          
-          <View style={styles.statsContainer}>
-            <View style={styles.statItem}>
-              <Users size={16} color={Colors.primary} />
-              <Text style={styles.statValue}>{item.usersCount}</Text>
-              <Text style={styles.statLabel}>Korisnika</Text>
-            </View>
-            
-            <View style={styles.statItem}>
-              <MapPin size={16} color={Colors.secondary} />
-              <Text style={styles.statValue}>{item.locationsCount}</Text>
-              <Text style={styles.statLabel}>Lokacija</Text>
-            </View>
-            
-            <View style={styles.statItem}>
-              <Building size={16} color={Colors.info} />
-              <Text style={styles.statValue}>{item.metersCount}</Text>
-              <Text style={styles.statLabel}>Vodomjera</Text>
-            </View>
+          <View style={[
+            styles.statusBadge,
+            { backgroundColor: item.is_active ? Colors.success : Colors.error }
+          ]}>
+            <Text style={styles.statusText}>
+              {item.is_active ? 'Aktivan' : 'Neaktivan'}
+            </Text>
           </View>
+        </View>
+
+        {item.pib && (
+          <Text style={styles.pib}>PIB: {item.pib}</Text>
+        )}
+      </TouchableOpacity>
+
+      <View style={styles.cardActions}>
+        <Button
+          title="Korisnici"
+          variant="outline"
+          size="small"
+          leftIcon={<Users size={16} color={Colors.primary} />}
+          onPress={() => router.push(`/users?utilityId=${item.id}` as any)}
+        />
+
+        <View style={{ flex: 1 }} />
+
+        <TouchableOpacity
+          style={styles.iconButton}
+          onPress={() => handleToggleActive(item.id, item.is_active)}
+        >
+          <Text style={{ fontSize: 12, color: item.is_active ? Colors.error : Colors.success }}>
+            {item.is_active ? 'Deaktiviraj' : 'Aktiviraj'}
+          </Text>
         </TouchableOpacity>
-        
-        <View style={styles.cardActions}>
-          <Button
-            title="Lokacije"
-            variant="outline"
-            size="small"
-            leftIcon={<MapPin size={16} color={Colors.primary} />}
-            onPress={() => handleViewLocations(item.id)}
-          />
-          
-          <Button
-            title="Korisnici"
-            variant="outline"
-            size="small"
-            leftIcon={<Users size={16} color={Colors.primary} />}
-            style={{ marginLeft: 8 }}
-            onPress={() => handleViewUsers(item.id)}
-          />
-          
-          <View style={{ flex: 1 }} />
-          
+
+        <TouchableOpacity
+          style={styles.iconButton}
+          onPress={() => router.push(`/companies/edit/${item.id}` as any)}
+        >
+          <Edit2 size={20} color={Colors.primary} />
+        </TouchableOpacity>
+
+        {user?.role === 'super_admin' && (
           <TouchableOpacity
             style={styles.iconButton}
-            onPress={() => handleEditCompany(item.id)}
-          >
-            <Edit2 size={20} color={Colors.primary} />
-          </TouchableOpacity>
-          
-          <TouchableOpacity
-            style={styles.iconButton}
-            onPress={() => handleDeleteCompany(item.id, item.name)}
+            onPress={() => handleDelete(item.id, item.name)}
           >
             <Trash2 size={20} color={Colors.error} />
           </TouchableOpacity>
-        </View>
-      </Card>
-    );
-  };
-  
-  const renderEmptyState = () => {
-    return (
-      <EmptyState
-        title="Nema kompanija"
-        message="Trenutno nema kompanija koje odgovaraju vašoj pretrazi."
-        icon={<Building size={48} color={Colors.textLight} />}
-        actionLabel="Dodaj novu kompaniju"
-        onAction={handleAddCompany}
-      />
-    );
-  };
-  
+        )}
+      </View>
+    </Card>
+  );
+
   return (
     <View style={styles.container}>
-      <Header 
-        title="Kompanije"
+      <Header
+        title="Vodovodi"
         showBack
-        leftIcon={<Menu size={24} color={Colors.text} />}
         onLeftPress={() => router.push('/(tabs)' as any)}
       />
-      
+
       <View style={styles.searchContainer}>
         <View style={styles.searchInputContainer}>
           <Search size={20} color={Colors.textLight} style={styles.searchIcon} />
           <TextInput
             style={styles.searchInput}
-            placeholder="Pretraži kompanije..."
+            placeholder="Pretraži vodovode..."
             value={searchQuery}
             onChangeText={handleSearch}
           />
         </View>
-        
         <TouchableOpacity
           style={styles.filterButton}
           onPress={() => setShowFilters(!showFilters)}
@@ -267,93 +227,60 @@ export default function CompaniesScreen() {
           <Filter size={20} color={Colors.primary} />
         </TouchableOpacity>
       </View>
-      
+
       {showFilters && (
         <View style={styles.filtersContainer}>
           <Text style={styles.filtersTitle}>Status:</Text>
           <View style={styles.filterOptions}>
-            <TouchableOpacity
-              style={[
-                styles.filterOption,
-                filterStatus === 'all' && styles.filterOptionActive
-              ]}
-              onPress={() => handleFilterChange('all')}
-            >
-              <Text style={[
-                styles.filterOptionText,
-                filterStatus === 'all' && styles.filterOptionTextActive
-              ]}>Sve</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity
-              style={[
-                styles.filterOption,
-                filterStatus === 'active' && styles.filterOptionActive
-              ]}
-              onPress={() => handleFilterChange('active')}
-            >
-              <Text style={[
-                styles.filterOptionText,
-                filterStatus === 'active' && styles.filterOptionTextActive
-              ]}>Aktivne</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity
-              style={[
-                styles.filterOption,
-                filterStatus === 'inactive' && styles.filterOptionActive
-              ]}
-              onPress={() => handleFilterChange('inactive')}
-            >
-              <Text style={[
-                styles.filterOptionText,
-                filterStatus === 'inactive' && styles.filterOptionTextActive
-              ]}>Neaktivne</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity
-              style={[
-                styles.filterOption,
-                filterStatus === 'pending' && styles.filterOptionActive
-              ]}
-              onPress={() => handleFilterChange('pending')}
-            >
-              <Text style={[
-                styles.filterOptionText,
-                filterStatus === 'pending' && styles.filterOptionTextActive
-              ]}>Na čekanju</Text>
-            </TouchableOpacity>
+            {['all', 'active', 'inactive'].map(s => (
+              <TouchableOpacity
+                key={s}
+                style={[styles.filterOption, filterStatus === s && styles.filterOptionActive]}
+                onPress={() => handleFilterChange(s)}
+              >
+                <Text style={[styles.filterOptionText, filterStatus === s && styles.filterOptionTextActive]}>
+                  {s === 'all' ? 'Svi' : s === 'active' ? 'Aktivni' : 'Neaktivni'}
+                </Text>
+              </TouchableOpacity>
+            ))}
           </View>
         </View>
       )}
-      
+
       <FlatList
-        data={filteredCompanies}
-        renderItem={renderCompanyCard}
-        keyExtractor={(item) => item.id}
+        data={filtered}
+        renderItem={renderCard}
+        keyExtractor={item => item.id}
         contentContainerStyle={styles.listContainer}
-        ListEmptyComponent={renderEmptyState}
+        ListEmptyComponent={
+          <EmptyState
+            title="Nema vodovoda"
+            message="Trenutno nema vodovoda u sistemu."
+            icon={<Building size={48} color={Colors.textLight} />}
+            actionLabel="Dodaj vodovod"
+            onAction={() => router.push('/companies/add' as any)}
+          />
+        }
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
       />
-      
-      <TouchableOpacity
-        style={styles.fab}
-        onPress={handleAddCompany}
-        activeOpacity={0.8}
-      >
-        <Plus size={24} color="#fff" />
-      </TouchableOpacity>
+
+      {user?.role === 'super_admin' && (
+        <TouchableOpacity
+          style={styles.fab}
+          onPress={() => router.push('/companies/add' as any)}
+          activeOpacity={0.8}
+        >
+          <Plus size={24} color="#fff" />
+        </TouchableOpacity>
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
+  container: { flex: 1, backgroundColor: '#fff' },
   searchContainer: {
     flexDirection: 'row',
     paddingHorizontal: 16,
@@ -369,14 +296,8 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     paddingHorizontal: 12,
   },
-  searchIcon: {
-    marginRight: 8,
-  },
-  searchInput: {
-    flex: 1,
-    height: 40,
-    color: Colors.text,
-  },
+  searchIcon: { marginRight: 8 },
+  searchInput: { flex: 1, height: 40, color: Colors.text },
   filterButton: {
     marginLeft: 12,
     width: 40,
@@ -391,86 +312,37 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: Colors.border,
   },
-  filtersTitle: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: Colors.text,
-    marginBottom: 8,
-  },
-  filterOptions: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
+  filtersTitle: { fontSize: 14, fontWeight: 'bold', color: Colors.text, marginBottom: 8 },
+  filterOptions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   filterOption: {
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 16,
     backgroundColor: Colors.highlight,
   },
-  filterOptionActive: {
-    backgroundColor: Colors.primary,
-  },
-  filterOptionText: {
-    fontSize: 12,
-    color: Colors.text,
-  },
-  filterOptionTextActive: {
-    color: '#fff',
-  },
-  listContainer: {
-    padding: 16,
-    paddingBottom: 80,
-  },
-  companyCard: {
-    marginBottom: 16,
-  },
-  cardContent: {
-    padding: 16,
-  },
-  companyHeader: {
+  filterOptionActive: { backgroundColor: Colors.primary },
+  filterOptionText: { fontSize: 12, color: Colors.text },
+  filterOptionTextActive: { color: '#fff' },
+  listContainer: { padding: 16, paddingBottom: 80 },
+  card: { marginBottom: 16 },
+  cardContent: { padding: 16 },
+  cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: 16,
+    marginBottom: 8,
   },
-  companyInfo: {
-    flex: 1,
+  cardInfo: { flex: 1 },
+  cardName: { fontSize: 18, fontWeight: 'bold', color: Colors.text, marginBottom: 4 },
+  locationRow: { flexDirection: 'row', alignItems: 'center' },
+  locationText: { fontSize: 14, color: Colors.textLight, marginLeft: 4 },
+  statusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
   },
-  companyName: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: Colors.text,
-    marginBottom: 4,
-  },
-  locationContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  locationText: {
-    fontSize: 14,
-    color: Colors.textLight,
-    marginLeft: 4,
-  },
-  statsContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  statItem: {
-    alignItems: 'center',
-    flex: 1,
-  },
-  statValue: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: Colors.text,
-    marginTop: 4,
-    marginBottom: 2,
-  },
-  statLabel: {
-    fontSize: 12,
-    color: Colors.textLight,
-  },
+  statusText: { fontSize: 12, color: '#fff', fontWeight: '500' },
+  pib: { fontSize: 13, color: Colors.textLight, marginTop: 4 },
   cardActions: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -478,10 +350,7 @@ const styles = StyleSheet.create({
     borderTopColor: Colors.border,
     padding: 12,
   },
-  iconButton: {
-    padding: 8,
-    marginLeft: 8,
-  },
+  iconButton: { padding: 8, marginLeft: 8 },
   fab: {
     position: 'absolute',
     bottom: 24,
