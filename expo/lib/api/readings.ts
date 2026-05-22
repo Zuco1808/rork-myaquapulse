@@ -2,36 +2,36 @@ import { supabase } from '@/lib/supabase';
 
 const mapReading = (r: any) => ({
   id: r.id,
-  meterId: r.meter_id,
-  value: r.value,
+  connection_id: r.connection_id,
+  utility_id: r.utility_id,
+  worker_id: r.worker_id,
+  meterId: r.connection_id,
+  value: r.reading_value,
   readingDate: new Date(r.reading_date).getTime(),
-  readBy: r.read_by,
-  readMethod: r.read_method,
-  imageUrl: r.image_url,
-  status: r.status,
-  consumption: r.consumption,
-  previousValue: r.previous_value,
-  notes: r.notes,
-  meterSerialNumber: r.water_meters?.serial_number,
-  locationName: r.water_meters?.locations?.name,
+  readBy: r.worker_id,
+  readMethod: r.reading_type,
+  imageUrl: r.photo_url,
+  status: (r.is_verified ? 'verified' : 'pending') as 'pending' | 'verified' | 'rejected',
+  notes: r.note,
+  meterSerialNumber: r.connections?.meter_serial,
   createdAt: new Date(r.created_at).getTime(),
 });
 
 export const getReadings = async () => {
   const { data, error } = await supabase
     .from('meter_readings')
-    .select('*, water_meters(serial_number, locations(name, address))')
+    .select('*, connections(meter_serial, address)')
     .order('reading_date', { ascending: false });
 
   if (error) throw error;
   return (data || []).map(mapReading);
 };
 
-export const getReadingsByMeter = async (meterId: string) => {
+export const getReadingsByConnection = async (connectionId: string) => {
   const { data, error } = await supabase
     .from('meter_readings')
-    .select('*')
-    .eq('meter_id', meterId)
+    .select('*, connections(meter_serial, address)')
+    .eq('connection_id', connectionId)
     .order('reading_date', { ascending: false });
 
   if (error) throw error;
@@ -39,33 +39,20 @@ export const getReadingsByMeter = async (meterId: string) => {
 };
 
 export const createReading = async (reading: {
-  meter_id: string;
-  value: number;
-  read_by: string;
-  read_method?: string;
-  image_url?: string;
-  notes?: string;
+  connection_id: string;
+  utility_id: string;
+  reading_value: number;
+  reading_type?: string;
+  photo_url?: string;
+  ocr_raw_text?: string;
+  note?: string;
 }) => {
-  const { data: lastReading } = await supabase
-    .from('meter_readings')
-    .select('value')
-    .eq('meter_id', reading.meter_id)
-    .eq('status', 'verified')
-    .order('reading_date', { ascending: false })
-    .limit(1)
-    .single();
-
-  const previousValue = lastReading?.value ?? null;
-  const consumption = previousValue !== null ? reading.value - previousValue : null;
-
   const { data, error } = await supabase
     .from('meter_readings')
     .insert({
       ...reading,
-      previous_value: previousValue,
-      consumption,
-      reading_date: new Date().toISOString(),
-      status: 'pending',
+      reading_date: new Date().toISOString().split('T')[0],
+      is_verified: false,
     })
     .select()
     .single();
@@ -74,14 +61,10 @@ export const createReading = async (reading: {
   return mapReading(data);
 };
 
-export const updateReadingStatus = async (
-  id: string,
-  status: 'verified' | 'rejected',
-  notes?: string
-) => {
+export const verifyReading = async (id: string, verified: boolean) => {
   const { data, error } = await supabase
     .from('meter_readings')
-    .update({ status, notes })
+    .update({ is_verified: verified })
     .eq('id', id)
     .select()
     .single();

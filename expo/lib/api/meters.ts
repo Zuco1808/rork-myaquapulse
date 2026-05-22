@@ -1,86 +1,86 @@
 import { supabase } from '@/lib/supabase';
 
-const mapMeter = (m: any) => ({
-  id: m.id,
-  serialNumber: m.serial_number,
-  type: m.type,
-  status: m.status,
-  installDate: new Date(m.install_date).getTime(),
-  locationId: m.location_id,
-  userId: m.user_id,
-  notes: m.notes,
-  locationName: m.locations?.name || '',
-  address: m.locations?.address || '',
-  userName: m.profiles?.name || '',
-  lastReading: m.last_reading || null,
-  createdAt: new Date(m.created_at).getTime(),
+const mapConnection = (c: any) => ({
+  id: c.id,
+  utility_id: c.utility_id,
+  user_id: c.user_id,
+  serialNumber: c.meter_serial,
+  address: c.address,
+  meter_type: c.meter_type,
+  user_group: c.user_group,
+  is_active: c.is_active,
+  userId: c.user_id,
+  userName: c.profiles?.full_name || '',
+  userEmail: c.profiles?.email || '',
+  createdAt: new Date(c.created_at).getTime(),
+  updatedAt: new Date(c.updated_at).getTime(),
 });
 
 export const getMeters = async () => {
   const { data, error } = await supabase
-    .from('water_meters')
-    .select('*, locations(name, address, city), profiles(name, email)')
+    .from('connections')
+    .select('*, profiles(full_name, email)')
     .order('created_at', { ascending: false });
 
   if (error) throw error;
-  return (data || []).map(mapMeter);
+  return (data || []).map(mapConnection);
 };
 
 export const getMeterById = async (id: string) => {
   const { data, error } = await supabase
-    .from('water_meters')
-    .select('*, locations(name, address, city), profiles(name, email)')
+    .from('connections')
+    .select('*, profiles(full_name, email)')
     .eq('id', id)
     .single();
 
   if (error) throw error;
-  return mapMeter(data);
+  return mapConnection(data);
 };
 
 export const getMetersByUser = async (userId: string) => {
   const { data, error } = await supabase
-    .from('water_meters')
-    .select('*, locations(name, address, city)')
+    .from('connections')
+    .select('*, profiles(full_name, email)')
     .eq('user_id', userId)
     .order('created_at', { ascending: false });
 
   if (error) throw error;
-  return (data || []).map(mapMeter);
+  return (data || []).map(mapConnection);
 };
 
 export const createMeter = async (meter: {
-  serial_number: string;
-  type: string;
-  location_id: string;
+  utility_id: string;
   user_id: string;
-  install_date?: string;
-  notes?: string;
+  address: string;
+  meter_serial: string;
+  meter_type?: string;
+  user_group?: string;
 }) => {
   const { data, error } = await supabase
-    .from('water_meters')
+    .from('connections')
     .insert(meter)
     .select()
     .single();
 
   if (error) throw error;
-  return mapMeter(data);
+  return mapConnection(data);
 };
 
 export const updateMeter = async (id: string, updates: Partial<{
-  serial_number: string;
-  type: string;
-  status: string;
-  location_id: string;
+  address: string;
+  meter_serial: string;
+  meter_type: string;
+  user_group: string;
+  is_active: boolean;
   user_id: string;
-  notes: string;
 }>) => {
   const { data, error } = await supabase
-    .from('water_meters')
+    .from('connections')
     .update(updates)
     .eq('id', id)
     .select()
     .single();
 
   if (error) throw error;
-  return mapMeter(data);
+  return mapConnection(data);
 };

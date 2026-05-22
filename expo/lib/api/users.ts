@@ -1,13 +1,29 @@
 import { supabase } from '@/lib/supabase';
+import { Profile, UserRole, getPermissions } from '@/types/user';
+
+const mapProfile = (p: any): Profile => ({
+  id: p.id,
+  full_name: p.full_name,
+  email: p.email,
+  phone: p.phone,
+  avatar_url: p.avatar_url,
+  role: p.role as UserRole,
+  distributor_id: p.distributor_id,
+  utility_id: p.utility_id,
+  is_active: p.is_active,
+  created_at: p.created_at,
+  updated_at: p.updated_at,
+  permissions: getPermissions(p.role as UserRole),
+});
 
 export const getUsers = async () => {
   const { data, error } = await supabase
     .from('profiles')
     .select('*')
-    .order('name');
+    .order('full_name');
 
   if (error) throw error;
-  return data;
+  return (data || []).map(mapProfile);
 };
 
 export const getUserById = async (id: string) => {
@@ -18,26 +34,28 @@ export const getUserById = async (id: string) => {
     .single();
 
   if (error) throw error;
-  return data;
+  return mapProfile(data);
+};
+
+export const getUsersByUtility = async (utilityId: string) => {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('utility_id', utilityId)
+    .order('full_name');
+
+  if (error) throw error;
+  return (data || []).map(mapProfile);
 };
 
 export const updateUser = async (id: string, updates: Partial<{
-  name: string;
+  full_name: string;
   phone: string;
-  address: string;
-  avatar: string;
+  avatar_url: string;
   role: string;
   is_active: boolean;
-  can_read_meters: boolean;
-  can_report_issues: boolean;
-  can_manage_tasks: boolean;
-  can_edit_readings: boolean;
-  can_send_notifications: boolean;
-  can_view_all_data: boolean;
-  can_manage_users: boolean;
-  can_manage_companies: boolean;
-  can_manage_billing: boolean;
-  can_backup_data: boolean;
+  utility_id: string;
+  distributor_id: string;
 }>) => {
   const { data, error } = await supabase
     .from('profiles')
@@ -47,12 +65,18 @@ export const updateUser = async (id: string, updates: Partial<{
     .single();
 
   if (error) throw error;
-  return data;
+  return mapProfile(data);
 };
 
-export const inviteUser = async (email: string, role: string, name: string) => {
+export const inviteUser = async (
+  email: string,
+  role: UserRole,
+  full_name: string,
+  utility_id?: string,
+  distributor_id?: string
+) => {
   const { data, error } = await supabase.auth.admin.inviteUserByEmail(email, {
-    data: { role, name }
+    data: { role, full_name, utility_id, distributor_id }
   });
 
   if (error) throw error;
