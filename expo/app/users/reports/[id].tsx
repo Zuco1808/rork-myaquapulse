@@ -96,7 +96,7 @@ export default function UserReportsScreen() {
         .filter(r => r.readBy === user.id && r.consumption)
         .reduce((sum, reading) => sum + (reading.consumption || 0), 0);
     } 
-    else if (user.role === 'citizen') {
+    else if (user.role === 'end_user') {
       // For citizens, get their meters and related readings/bills
       const userMeters = mockMeters.filter(m => m.userId === user.id);
       const meterIds = userMeters.map(m => m.id);
@@ -172,12 +172,12 @@ export default function UserReportsScreen() {
     return (
       <Card style={styles.userCard}>
         <View style={styles.userInfo}>
-          <Avatar source={user.avatar} name={user.name} size={60} />
+          <Avatar source={user.avatar} name={user.full_name} size={60} />
           <View style={styles.userDetails}>
-            <Text style={styles.userName}>{user.name}</Text>
+            <Text style={styles.userName}>{user.full_name}</Text>
             <Text style={styles.userRole}>
-              {user.role === 'superadmin' ? 'Super Administrator' : 
-               user.role === 'admin' ? 'Administrator' :
+              {user.role === 'super_admin' ? 'Super Administrator' : 
+               user.role === 'utility_admin' ? 'Administrator' :
                user.role === 'finance' ? 'Finansije' :
                user.role === 'worker' ? 'Radnik' : 'Korisnik'}
             </Text>
@@ -327,7 +327,7 @@ export default function UserReportsScreen() {
             </>
           )}
           
-          {(user?.role === 'citizen' || user?.role === 'admin' || user?.role === 'superadmin') && (
+          {(user?.role === 'end_user' || user?.role === 'utility_admin' || user?.role === 'super_admin') && (
             <>
               <View style={styles.statDivider} />
               
@@ -397,7 +397,7 @@ export default function UserReportsScreen() {
   
   const renderTasksStats = () => {
     // Only show for workers
-    if (user?.role !== 'worker' && user?.role !== 'admin' && user?.role !== 'superadmin') {
+    if (user?.role !== 'worker' && user?.role !== 'utility_admin' && user?.role !== 'super_admin') {
       return null;
     }
     

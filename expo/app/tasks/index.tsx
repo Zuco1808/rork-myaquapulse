@@ -179,7 +179,7 @@ export default function TasksScreen() {
       const userTasks = mockTasks.filter(task => task.assignedTo === user.id);
       setTasks(userTasks);
       setFilteredTasks(userTasks);
-    } else if (user.role === 'citizen') {
+    } else if (user.role === 'end_user') {
       // Citizens only see reading tasks for their meters
       const userTasks = mockTasks.filter(task => 
         task.type === 'reading' && task.assignedTo === user.id
@@ -201,7 +201,7 @@ export default function TasksScreen() {
     
     // Only create tasks for workers and citizens with reading permission
     if (user?.role !== 'worker' && 
-        (user?.role !== 'citizen' || !user.permissions?.canReadMeters)) {
+        (user?.role !== 'end_user' || !user.permissions?.canReadMeters)) {
       return;
     }
     
@@ -217,7 +217,7 @@ export default function TasksScreen() {
       status: 'pending',
       priority: 'medium',
       assignedTo: user.id,
-      assignedToName: user.name,
+      assignedToName: user.full_name,
       locationId: user.locationIds?.[0] || 'unknown',
       locationName: 'Vaša lokacija',
       address: user.address || 'Nepoznata adresa',
@@ -556,7 +556,7 @@ export default function TasksScreen() {
     );
   };
   
-  const canAddTasks = user?.role === 'superadmin' || user?.role === 'admin' || user?.role === 'finance';
+  const canAddTasks = user?.role === 'super_admin' || user?.role === 'utility_admin' || user?.role === 'finance';
   
   return (
     <SafeAreaView style={styles.safeArea}>

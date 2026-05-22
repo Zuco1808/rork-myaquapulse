@@ -1,26 +1,26 @@
+// app/(tabs)/index.tsx
 import React, { useEffect, useState } from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  ScrollView, 
-  TouchableOpacity, 
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
   Image,
   Platform,
   Dimensions
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { 
-  Users, 
-  Droplet, 
-  MapPin, 
-  CreditCard, 
-  BarChart, 
-  Bell, 
+import {
+  Users,
+  Droplet,
+  MapPin,
+  CreditCard,
+  BarChart,
+  Bell,
   ClipboardList,
   Settings,
   Building,
-  Menu
 } from 'lucide-react-native';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -35,21 +35,20 @@ export default function HomeScreen() {
   const router = useRouter();
   const { user } = useAuthStore();
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-  
+
   useEffect(() => {
     if (!user) {
       router.replace('/login');
     }
   }, [user, router]);
-  
+
   const handleNavigate = (route: string) => {
     router.push(route as any);
   };
-  
-  // Define menu items based on user role
+
   const getMenuItems = () => {
     if (!user) return [];
-    
+
     const commonItems = [
       {
         title: 'Računi',
@@ -76,9 +75,8 @@ export default function HomeScreen() {
         description: 'Kontakt i pomoć',
       },
     ];
-    
-    // Admin and superadmin see all menu items
-    if (user.role === 'superadmin' || user.role === 'admin') {
+
+    if (user.role === 'super_admin') {
       return [
         {
           title: 'Korisnici',
@@ -99,16 +97,62 @@ export default function HomeScreen() {
           description: 'Upravljanje lokacijama',
         },
         {
-          title: 'Kompanije',
+          title: 'Vodovodi',
           icon: <Building size={24} color={Colors.primary} />,
           route: '/companies',
-          description: 'Upravljanje kompanijama',
+          description: 'Upravljanje vodovodima',
         },
         ...commonItems,
       ];
     }
-    
-    // Finance users see billing and reports
+
+    if (user.role === 'distributor_admin') {
+      return [
+        {
+          title: 'Vodovodi',
+          icon: <Building size={24} color={Colors.primary} />,
+          route: '/companies',
+          description: 'Pregled vodovoda',
+        },
+        {
+          title: 'Korisnici',
+          icon: <Users size={24} color={Colors.primary} />,
+          route: '/users',
+          description: 'Pregled korisnika',
+        },
+        {
+          title: 'Izvještaji',
+          icon: <BarChart size={24} color={Colors.primary} />,
+          route: '/reports',
+          description: 'Izvještaji distributera',
+        },
+      ];
+    }
+
+    if (user.role === 'utility_admin') {
+      return [
+        {
+          title: 'Korisnici',
+          icon: <Users size={24} color={Colors.primary} />,
+          route: '/users',
+          description: 'Upravljanje korisnicima',
+        },
+        {
+          title: 'Vodomjeri',
+          icon: <Droplet size={24} color={Colors.primary} />,
+          route: '/meters',
+          description: 'Upravljanje vodomjerima',
+        },
+        {
+          title: 'Lokacije',
+          icon: <MapPin size={24} color={Colors.primary} />,
+          route: '/locations',
+          description: 'Upravljanje lokacijama',
+        },
+        ...commonItems,
+      ];
+    }
+
     if (user.role === 'finance') {
       return [
         {
@@ -137,8 +181,7 @@ export default function HomeScreen() {
         },
       ];
     }
-    
-    // Workers see tasks and readings
+
     if (user.role === 'worker') {
       return [
         {
@@ -156,63 +199,44 @@ export default function HomeScreen() {
         ...commonItems,
       ];
     }
-    
-    // Maintenance users see tasks and repairs
-    if (user.role === 'maintenance') {
-      return [
-        {
-          title: 'Zadaci',
-          icon: <ClipboardList size={24} color={Colors.primary} />,
-          route: '/tasks',
-          description: 'Zadaci održavanja',
-        },
-        {
-          title: 'Vodomjeri',
-          icon: <Droplet size={24} color={Colors.primary} />,
-          route: '/meters',
-          description: 'Pregled vodomjera',
-        },
-        ...commonItems,
-      ];
-    }
-    
-    // Citizens see basic menu items
+
+    // end_user
     return commonItems;
   };
-  
+
   const menuItems = getMenuItems();
-  
+
   return (
     <View style={styles.container}>
-      <Header 
-        title="MyAquaPulse" 
+      <Header
+        title="MyAquaPulse"
         showMenu
         onLeftPress={() => setIsDrawerOpen(true)}
       />
-      
+
       <Drawer
         isOpen={isDrawerOpen}
         onClose={() => setIsDrawerOpen(false)}
       />
-      
-      <ScrollView 
+
+      <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
       >
         <View style={styles.welcomeSection}>
-          <Image 
-            source={{ uri: LOGO_URL }} 
-            style={styles.logo} 
+          <Image
+            source={{ uri: LOGO_URL }}
+            style={styles.logo}
             resizeMode="contain"
           />
           <Text style={styles.welcomeText}>
-            Dobrodošli, {user?.name || 'Korisniče'}!
+            Dobrodošli, {user?.full_name || 'Korisniku'}!
           </Text>
           <Text style={styles.roleText}>
             {getRoleLabel(user?.role)}
           </Text>
         </View>
-        
+
         <View style={styles.menuGrid}>
           {menuItems.map((item, index) => (
             <TouchableOpacity
@@ -231,8 +255,8 @@ export default function HomeScreen() {
             </TouchableOpacity>
           ))}
         </View>
-        
-        {user?.role === 'citizen' && (
+
+        {user?.role === 'end_user' && (
           <Card style={styles.quickActionsCard}>
             <Text style={styles.quickActionsTitle}>Brze akcije</Text>
             <View style={styles.quickActionsButtons}>
@@ -257,25 +281,18 @@ export default function HomeScreen() {
 
 const getRoleLabel = (role?: string) => {
   switch (role) {
-    case 'superadmin':
-      return 'Super Administrator';
-    case 'admin':
-      return 'Administrator';
-    case 'finance':
-      return 'Finansije';
-    case 'worker':
-      return 'Radnik';
-    case 'maintenance':
-      return 'Održavanje';
-    case 'citizen':
-      return 'Građanin';
-    default:
-      return '';
+    case 'super_admin':       return 'Super Administrator';
+    case 'distributor_admin': return 'Administrator Distributera';
+    case 'utility_admin':     return 'Administrator Vodovoda';
+    case 'finance':           return 'Finansije';
+    case 'worker':            return 'Radnik';
+    case 'end_user':          return 'Korisnik';
+    default:                  return '';
   }
 };
 
 const { width } = Dimensions.get('window');
-const itemWidth = (width - 48) / 2; // 2 columns with 16px padding on each side and 16px gap
+const itemWidth = (width - 48) / 2;
 
 const styles = StyleSheet.create({
   container: {
@@ -287,7 +304,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: 16,
-    paddingBottom: Platform.OS === 'android' ? 100 : 80, // Extra padding for Android
+    paddingBottom: Platform.OS === 'android' ? 100 : 80,
   },
   welcomeSection: {
     alignItems: 'center',

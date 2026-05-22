@@ -178,7 +178,7 @@ export default function MetersScreen() {
     }
     
     // Filter by user role
-    if (user?.role === 'citizen') {
+    if (user?.role === 'end_user') {
       // Citizens can only see their own meters
       filtered = filtered.filter(meter => meter.userId === user.id);
     }
@@ -326,7 +326,7 @@ export default function MetersScreen() {
         </TouchableOpacity>
         
         <View style={styles.cardActions}>
-          {(user?.role === 'superadmin' || user?.role === 'admin' || user?.role === 'finance') && (
+          {(user?.role === 'super_admin' || user?.role === 'utility_admin' || user?.role === 'finance') && (
             <>
               <Button
                 title="Uredi"
@@ -382,7 +382,7 @@ export default function MetersScreen() {
     }
   );
   
-  const canManageMeters = user?.role === 'superadmin' || user?.role === 'admin' || user?.role === 'finance';
+  const canManageMeters = user?.role === 'super_admin' || user?.role === 'utility_admin' || user?.role === 'finance';
   
   return (
     <SafeAreaView style={styles.safeArea}>

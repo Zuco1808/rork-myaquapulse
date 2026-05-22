@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  ScrollView, 
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
   TouchableOpacity,
   Switch,
   Alert,
@@ -12,12 +12,12 @@ import {
   Image
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { 
-  User, 
-  Mail, 
-  Phone, 
-  Bell, 
-  Shield, 
+import {
+  User,
+  Mail,
+  Phone,
+  Bell,
+  Shield,
   LogOut,
   ChevronRight,
   Settings,
@@ -38,22 +38,17 @@ import Colors from '@/constants/colors';
 export default function ProfileScreen() {
   const router = useRouter();
   const { user, logout, updateUserProfile } = useAuthStore();
-  
+
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [emailNotificationsEnabled, setEmailNotificationsEnabled] = useState(true);
-  
-  // Edit profile state
+
   const [showEditModal, setShowEditModal] = useState(false);
-  const [name, setName] = useState(user?.name || '');
-  const [email, setEmail] = useState(user?.email || '');
+  const [fullName, setFullName] = useState(user?.full_name || '');
   const [phone, setPhone] = useState(user?.phone || '');
-  const [address, setAddress] = useState(user?.address || '');
-  const [avatar, setAvatar] = useState(user?.avatar || '');
-  
-  // Validation errors
+  const [avatarUrl, setAvatarUrl] = useState(user?.avatar_url || '');
+
   const [nameError, setNameError] = useState('');
-  const [emailError, setEmailError] = useState('');
-  
+
   const handleLogout = () => {
     if (Platform.OS === 'web') {
       logout();
@@ -63,10 +58,7 @@ export default function ProfileScreen() {
         'Odjava',
         'Da li ste sigurni da se želite odjaviti?',
         [
-          {
-            text: 'Otkaži',
-            style: 'cancel',
-          },
+          { text: 'Otkaži', style: 'cancel' },
           {
             text: 'Odjavi se',
             onPress: () => {
@@ -79,98 +71,61 @@ export default function ProfileScreen() {
       );
     }
   };
-  
+
   const navigateTo = (path: string) => {
     router.push(path as any);
   };
-  
+
   const getRoleName = () => {
     if (!user) return '';
-    
     switch (user.role) {
-      case 'superadmin': return 'Super Administrator';
-      case 'admin': return 'Administrator';
-      case 'finance': return 'Finansije';
-      case 'worker': return 'Radnik';
-      case 'citizen': return 'Korisnik';
-      default: return user.role;
+      case 'super_admin':       return 'Super Administrator';
+      case 'distributor_admin': return 'Administrator Distributera';
+      case 'utility_admin':     return 'Administrator Vodovoda';
+      case 'finance':           return 'Finansije';
+      case 'worker':            return 'Radnik';
+      case 'end_user':          return 'Korisnik';
+      default:                  return user.role;
     }
   };
-  
+
   const handleEditProfile = () => {
-    setName(user?.name || '');
-    setEmail(user?.email || '');
+    setFullName(user?.full_name || '');
     setPhone(user?.phone || '');
-    setAddress(user?.address || '');
-    setAvatar(user?.avatar || '');
+    setAvatarUrl(user?.avatar_url || '');
     setShowEditModal(true);
   };
-  
+
   const validateForm = () => {
-    let isValid = true;
-    
-    // Validate name
-    if (!name.trim()) {
+    if (!fullName.trim()) {
       setNameError('Ime je obavezno');
-      isValid = false;
-    } else {
-      setNameError('');
+      return false;
     }
-    
-    // Validate email
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!email.trim()) {
-      setEmailError('Email je obavezan');
-      isValid = false;
-    } else if (!emailRegex.test(email)) {
-      setEmailError('Unesite validan email');
-      isValid = false;
-    } else {
-      setEmailError('');
-    }
-    
-    return isValid;
+    setNameError('');
+    return true;
   };
-  
+
   const handleSaveProfile = () => {
-    if (!validateForm()) {
-      return;
-    }
-    
-    // Update user profile
+    if (!validateForm()) return;
+
     updateUserProfile({
-      name,
-      email,
+      full_name: fullName,
       phone,
-      address,
-      avatar
+      avatar_url: avatarUrl,
     });
-    
+
     setShowEditModal(false);
-    
-    Alert.alert(
-      "Uspjeh",
-      "Profil je uspješno ažuriran."
-    );
+    Alert.alert('Uspjeh', 'Profil je uspješno ažuriran.');
   };
-  
+
   const handleTakePhoto = () => {
-    // In a real app, you would use expo-image-picker to take a photo
-    Alert.alert(
-      "Funkcionalnost u razvoju",
-      "Ova funkcionalnost će biti dostupna uskoro."
-    );
+    Alert.alert('Funkcionalnost u razvoju', 'Ova funkcionalnost će biti dostupna uskoro.');
   };
-  
+
   const handleChoosePhoto = () => {
-    // In a real app, you would use expo-image-picker to choose a photo
-    Alert.alert(
-      "Funkcionalnost u razvoju",
-      "Ova funkcionalnost će biti dostupna uskoro."
-    );
+    Alert.alert('Funkcionalnost u razvoju', 'Ova funkcionalnost će biti dostupna uskoro.');
   };
-  
-  // Sample avatar URLs for demo
+
   const sampleAvatars = [
     'https://i.pravatar.cc/150?img=1',
     'https://i.pravatar.cc/150?img=2',
@@ -179,32 +134,32 @@ export default function ProfileScreen() {
     'https://i.pravatar.cc/150?img=5',
     'https://i.pravatar.cc/150?img=6',
   ];
-  
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
       <View style={styles.header}>
         <TouchableOpacity onPress={handleEditProfile} activeOpacity={0.8}>
-          <Avatar 
-            source={user?.avatar} 
-            name={user?.name} 
-            size={80} 
+          <Avatar
+            source={user?.avatar_url}
+            name={user?.full_name}
+            size={80}
           />
           <View style={styles.editAvatarButton}>
             <Edit size={16} color="#fff" />
           </View>
         </TouchableOpacity>
         <View style={styles.userInfo}>
-          <Text style={styles.userName}>{user?.name}</Text>
+          <Text style={styles.userName}>{user?.full_name}</Text>
           <Text style={styles.userRole}>{getRoleName()}</Text>
-          {user?.companyId && (
+          {user?.utility_id && (
             <View style={styles.companyContainer}>
               <Building size={14} color={Colors.textLight} />
-              <Text style={styles.companyName}>Vodovod Sarajevo</Text>
+              <Text style={styles.companyName}>Vodovod</Text>
             </View>
           )}
         </View>
       </View>
-      
+
       <Card style={styles.infoCard}>
         <View style={styles.infoItem}>
           <View style={styles.infoIcon}>
@@ -215,9 +170,9 @@ export default function ProfileScreen() {
             <Text style={styles.infoValue}>{user?.email}</Text>
           </View>
         </View>
-        
+
         <View style={styles.divider} />
-        
+
         <View style={styles.infoItem}>
           <View style={styles.infoIcon}>
             <Phone size={20} color={Colors.primary} />
@@ -227,9 +182,9 @@ export default function ProfileScreen() {
             <Text style={styles.infoValue}>{user?.phone || 'Nije postavljen'}</Text>
           </View>
         </View>
-        
+
         <View style={styles.divider} />
-        
+
         <View style={styles.infoItem}>
           <View style={styles.infoIcon}>
             <Shield size={20} color={Colors.primary} />
@@ -240,11 +195,11 @@ export default function ProfileScreen() {
           </View>
         </View>
       </Card>
-      
+
       <View style={styles.sectionHeader}>
         <Text style={styles.sectionTitle}>Postavke</Text>
       </View>
-      
+
       <Card style={styles.settingsCard}>
         <View style={styles.settingItem}>
           <View style={styles.settingLeft}>
@@ -258,9 +213,9 @@ export default function ProfileScreen() {
             thumbColor="#fff"
           />
         </View>
-        
+
         <View style={styles.divider} />
-        
+
         <View style={styles.settingItem}>
           <View style={styles.settingLeft}>
             <Mail size={20} color={Colors.text} />
@@ -274,27 +229,13 @@ export default function ProfileScreen() {
           />
         </View>
       </Card>
-      
+
       <View style={styles.sectionHeader}>
         <Text style={styles.sectionTitle}>Više opcija</Text>
       </View>
-      
+
       <Card style={styles.optionsCard}>
-        <TouchableOpacity 
-          style={styles.optionItem}
-          onPress={() => navigateTo('/settings')}
-          activeOpacity={0.7}
-        >
-          <View style={styles.optionLeft}>
-            <Settings size={20} color={Colors.text} />
-            <Text style={styles.optionLabel}>Postavke aplikacije</Text>
-          </View>
-          <ChevronRight size={20} color={Colors.textLight} />
-        </TouchableOpacity>
-        
-        <View style={styles.divider} />
-        
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.optionItem}
           onPress={() => navigateTo('/support')}
           activeOpacity={0.7}
@@ -306,8 +247,8 @@ export default function ProfileScreen() {
           <ChevronRight size={20} color={Colors.textLight} />
         </TouchableOpacity>
       </Card>
-      
-      <TouchableOpacity 
+
+      <TouchableOpacity
         style={styles.logoutButton}
         onPress={handleLogout}
         activeOpacity={0.7}
@@ -315,8 +256,7 @@ export default function ProfileScreen() {
         <LogOut size={20} color={Colors.error} />
         <Text style={styles.logoutText}>Odjavi se</Text>
       </TouchableOpacity>
-      
-      {/* Edit Profile Modal */}
+
       <Modal
         visible={showEditModal}
         transparent={true}
@@ -327,22 +267,22 @@ export default function ProfileScreen() {
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Uredi profil</Text>
-              <TouchableOpacity 
+              <TouchableOpacity
                 onPress={() => setShowEditModal(false)}
                 style={styles.closeButton}
               >
                 <X size={24} color={Colors.text} />
               </TouchableOpacity>
             </View>
-            
+
             <ScrollView style={styles.modalScrollView}>
               <View style={styles.avatarSection}>
-                <Avatar 
-                  source={avatar} 
-                  name={name} 
-                  size={80} 
+                <Avatar
+                  source={avatarUrl}
+                  name={fullName}
+                  size={80}
                 />
-                
+
                 <View style={styles.avatarButtons}>
                   <Button
                     title="Kamera"
@@ -352,7 +292,6 @@ export default function ProfileScreen() {
                     onPress={handleTakePhoto}
                     style={styles.avatarButton}
                   />
-                  
                   <Button
                     title="Galerija"
                     variant="outline"
@@ -362,7 +301,7 @@ export default function ProfileScreen() {
                     style={styles.avatarButton}
                   />
                 </View>
-                
+
                 <Text style={styles.sampleAvatarsTitle}>Odaberi avatar:</Text>
                 <View style={styles.sampleAvatars}>
                   {sampleAvatars.map((url, index) => (
@@ -370,39 +309,25 @@ export default function ProfileScreen() {
                       key={index}
                       style={[
                         styles.sampleAvatarButton,
-                        avatar === url && styles.selectedAvatarButton
+                        avatarUrl === url && styles.selectedAvatarButton
                       ]}
-                      onPress={() => setAvatar(url)}
+                      onPress={() => setAvatarUrl(url)}
                     >
-                      <Image 
-                        source={{ uri: url }} 
-                        style={styles.sampleAvatar} 
-                      />
+                      <Image source={{ uri: url }} style={styles.sampleAvatar} />
                     </TouchableOpacity>
                   ))}
                 </View>
               </View>
-              
+
               <Input
                 label="Ime i prezime"
                 placeholder="Unesite ime i prezime"
-                value={name}
-                onChangeText={setName}
+                value={fullName}
+                onChangeText={setFullName}
                 leftIcon={<User size={20} color={Colors.textLight} />}
                 error={nameError}
               />
-              
-              <Input
-                label="Email"
-                placeholder="Unesite email"
-                value={email}
-                onChangeText={setEmail}
-                keyboardType="email-address"
-                autoCapitalize="none"
-                leftIcon={<Mail size={20} color={Colors.textLight} />}
-                error={emailError}
-              />
-              
+
               <Input
                 label="Telefon"
                 placeholder="Unesite telefon"
@@ -411,15 +336,7 @@ export default function ProfileScreen() {
                 keyboardType="phone-pad"
                 leftIcon={<Phone size={20} color={Colors.textLight} />}
               />
-              
-              <Input
-                label="Adresa"
-                placeholder="Unesite adresu"
-                value={address}
-                onChangeText={setAddress}
-                leftIcon={<Building size={20} color={Colors.textLight} />}
-              />
-              
+
               <View style={styles.modalButtons}>
                 <Button
                   title="Otkaži"
@@ -427,7 +344,6 @@ export default function ProfileScreen() {
                   onPress={() => setShowEditModal(false)}
                   style={styles.modalButton}
                 />
-                
                 <Button
                   title="Sačuvaj"
                   onPress={handleSaveProfile}

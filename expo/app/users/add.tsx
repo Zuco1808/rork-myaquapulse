@@ -43,7 +43,7 @@ export default function AddUserScreen() {
   const [address, setAddress] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [role, setRole] = useState('citizen');
+  const [role, setRole] = useState('end_user');
   const [isActive, setIsActive] = useState(true);
   const [companyId, setCompanyId] = useState('');
   const [locationId, setLocationId] = useState('');
@@ -52,7 +52,7 @@ export default function AddUserScreen() {
   const [meterNumber, setMeterNumber] = useState('');
   
   // User permissions
-  const [permissions, setPermissions] = useState(getDefaultPermissions('citizen'));
+  const [permissions, setPermissions] = useState(getDefaultPermissions('end_user'));
   
   // Form errors
   const [nameError, setNameError] = useState('');
@@ -65,7 +65,7 @@ export default function AddUserScreen() {
   
   // Check if user has permission to access this screen
   useEffect(() => {
-    if (!user || (user.role !== 'superadmin' && user.role !== 'admin')) {
+    if (!user || (user.role !== 'super_admin' && user.role !== 'utility_admin')) {
       router.replace('/login');
     }
   }, [user, router]);
@@ -251,17 +251,17 @@ export default function AddUserScreen() {
             
             <Text style={styles.label}>Uloga korisnika:</Text>
             <View style={styles.roleOptions}>
-              {user?.role === 'superadmin' && (
+              {user?.role === 'super_admin' && (
                 <TouchableOpacity
                   style={[
                     styles.roleOption,
-                    role === 'admin' && styles.roleOptionActive
+                    role === 'utility_admin' && styles.roleOptionActive
                   ]}
-                  onPress={() => handleRoleChange('admin')}
+                  onPress={() => handleRoleChange('utility_admin')}
                 >
                   <Text style={[
                     styles.roleOptionText,
-                    role === 'admin' && styles.roleOptionTextActive
+                    role === 'utility_admin' && styles.roleOptionTextActive
                   ]}>Administrator</Text>
                 </TouchableOpacity>
               )}
@@ -295,13 +295,13 @@ export default function AddUserScreen() {
               <TouchableOpacity
                 style={[
                   styles.roleOption,
-                  role === 'citizen' && styles.roleOptionActive
+                  role === 'end_user' && styles.roleOptionActive
                 ]}
-                onPress={() => handleRoleChange('citizen')}
+                onPress={() => handleRoleChange('end_user')}
               >
                 <Text style={[
                   styles.roleOptionText,
-                  role === 'citizen' && styles.roleOptionTextActive
+                  role === 'end_user' && styles.roleOptionTextActive
                 ]}>Građanin</Text>
               </TouchableOpacity>
             </View>
@@ -338,7 +338,7 @@ export default function AddUserScreen() {
             {/* Permissions section */}
             <Text style={styles.sectionTitle}>Dozvole</Text>
             
-            {role === 'citizen' && (
+            {role === 'end_user' && (
               <View style={styles.permissionItem}>
                 <Text style={styles.permissionLabel}>Dozvoli očitanje vodomjera</Text>
                 <TouchableOpacity
@@ -363,13 +363,13 @@ export default function AddUserScreen() {
                   <TouchableOpacity
                     style={[
                       styles.permissionToggle,
-                      permissions.canReportIssues && styles.permissionToggleActive
+                      permissions.canReadMeters && styles.permissionToggleActive
                     ]}
-                    onPress={() => handlePermissionChange('canReportIssues', !permissions.canReportIssues)}
+                    onPress={() => handlePermissionChange('canReadMeters', !permissions.canReadMeters)}
                   >
                     <View style={[
                       styles.permissionToggleHandle,
-                      permissions.canReportIssues && styles.permissionToggleHandleActive
+                      permissions.canReadMeters && styles.permissionToggleHandleActive
                     ]} />
                   </TouchableOpacity>
                 </View>
@@ -393,7 +393,7 @@ export default function AddUserScreen() {
             )}
             
             {/* Company and Location selection for citizens */}
-            {role === 'citizen' && (
+            {role === 'end_user' && (
               <>
                 <Text style={styles.sectionTitle}>Podaci o lokaciji</Text>
                 

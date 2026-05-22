@@ -39,7 +39,7 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
     switch (method) {
       case 'manual': return 'Ručno';
       case 'ocr': return 'OCR';
-      case 'citizen': return 'Korisnik';
+      case 'end_user': return 'Korisnik';
       default: return method || 'Nepoznato';
     }
   };

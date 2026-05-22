@@ -55,7 +55,7 @@ export default function EditLocationScreen() {
   
   // Check if user has permission to access this screen
   useEffect(() => {
-    if (!user || (user.role !== 'superadmin' && user.role !== 'admin')) {
+    if (!user || (user.role !== 'super_admin' && user.role !== 'utility_admin')) {
       router.replace('/login');
     }
   }, [user, router]);

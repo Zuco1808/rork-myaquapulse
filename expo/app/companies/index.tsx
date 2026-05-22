@@ -55,7 +55,7 @@ export default function CompaniesScreen() {
   
   // Check if user has permission to access this screen
   useEffect(() => {
-    if (!user || user.role !== 'superadmin') {
+    if (!user || user.role !== 'super_admin') {
       router.replace('/(tabs)');
     }
   }, [user, router]);
@@ -78,7 +78,7 @@ export default function CompaniesScreen() {
     if (query) {
       filtered = filtered.filter(company => 
         company.name.toLowerCase().includes(query.toLowerCase()) ||
-        company.city.toLowerCase().includes(query.toLowerCase())
+        (company.city ?? '').toLowerCase().includes(query.toLowerCase())
       );
     }
     

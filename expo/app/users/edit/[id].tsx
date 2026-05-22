@@ -46,7 +46,7 @@ export default function EditUserScreen() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [phone, setPhone] = useState('');
   const [address, setAddress] = useState('');
-  const [role, setRole] = useState<UserRole>('citizen');
+  const [role, setRole] = useState<UserRole>('end_user');
   const [companyId, setCompanyId] = useState<string | undefined>(undefined);
   
   // Form errors
@@ -71,7 +71,7 @@ export default function EditUserScreen() {
       
       if (foundUser) {
         setUser(foundUser);
-        setName(foundUser.name);
+        setName(foundUser.full_name);
         setEmail(foundUser.email);
         setPhone(foundUser.phone || '');
         setAddress(foundUser.address || '');
@@ -85,7 +85,7 @@ export default function EditUserScreen() {
   
   // Get available roles based on current user's role
   const getAvailableRoles = (): UserRole[] => {
-    if (!currentUser || !user) return ['citizen'];
+    if (!currentUser || !user) return ['end_user'];
     
     // If editing self, don't allow role change
     if (currentUser.id === user.id) {
@@ -93,12 +93,12 @@ export default function EditUserScreen() {
     }
     
     switch (currentUser.role) {
-      case 'superadmin':
-        return ['superadmin', 'admin', 'finance', 'worker', 'citizen'];
-      case 'admin':
-        return ['finance', 'worker', 'citizen'];
+      case 'super_admin':
+        return ['super_admin', 'utility_admin', 'finance', 'worker', 'end_user'];
+      case 'utility_admin':
+        return ['finance', 'worker', 'end_user'];
       default:
-        return ['citizen'];
+        return ['end_user'];
     }
   };
   
@@ -187,15 +187,15 @@ export default function EditUserScreen() {
   
   const getRoleLabel = (userRole: UserRole): string => {
     switch (userRole) {
-      case 'superadmin':
+      case 'super_admin':
         return 'Super Admin';
-      case 'admin':
-        return 'Admin';
+      case 'utility_admin':
+        return 'utility_admin';
       case 'finance':
         return 'Finansije';
       case 'worker':
         return 'Radnik';
-      case 'citizen':
+      case 'end_user':
         return 'Građanin';
       default:
         return userRole;
@@ -364,7 +364,7 @@ export default function EditUserScreen() {
           ))}
         </View>
         
-        {(role === 'admin' || role === 'finance' || role === 'worker') && (
+        {(role === 'utility_admin' || role === 'finance' || role === 'worker') && (
           <>
             <Text style={styles.sectionTitle}>Kompanija</Text>
             <View style={styles.companyButtons}>

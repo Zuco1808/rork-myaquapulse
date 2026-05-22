@@ -93,7 +93,7 @@ export default function NotificationsScreen() {
           )}
           
           {/* Only show send button for superadmin */}
-          {user && user.role === 'superadmin' && (
+          {user && user.role === 'super_admin' && (
             <TouchableOpacity 
               style={styles.sendButton}
               onPress={handleSendNotification}
@@ -139,7 +139,7 @@ export default function NotificationsScreen() {
       />
       
       {/* Floating action button for superadmin */}
-      {user && user.role === 'superadmin' && (
+      {user && user.role === 'super_admin' && (
         <TouchableOpacity
           style={styles.fab}
           onPress={handleSendNotification}

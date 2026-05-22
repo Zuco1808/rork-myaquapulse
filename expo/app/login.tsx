@@ -63,12 +63,12 @@ export default function LoginScreen() {
   
   // Demo accounts for quick login
   const demoAccounts = [
-    { role: 'superadmin', email: 'superadmin@aquapulse.com', password: 'password' },
-    { role: 'admin', email: 'admin@vodovod.com', password: 'password' },
+    { role: 'super_admin', email: 'superadmin@aquapulse.com', password: 'password' },
+    { role: 'utility_admin', email: 'admin@vodovod.com', password: 'password' },
     { role: 'finance', email: 'finance@vodovod.com', password: 'password' },
     { role: 'worker', email: 'radnik@vodovod.com', password: 'password' },
-    { role: 'citizen', email: 'gradjanin@email.com', password: 'password' },
-    { role: 'maintenance', email: 'odrzavanje@vodovod.com', password: 'password' }
+    { role: 'end_user', email: 'gradjanin@email.com', password: 'password' },
+    { role: 'worker', email: 'odrzavanje@vodovod.com', password: 'password' }
   ];
   
   const loginWithDemoAccount = async (demoEmail: string, demoPassword: string) => {
@@ -158,11 +158,11 @@ export default function LoginScreen() {
                   onPress={() => loginWithDemoAccount(account.email, account.password)}
                 >
                   <Text style={styles.demoAccountRole}>
-                    {account.role === 'superadmin' ? 'Super Admin' :
-                     account.role === 'admin' ? 'Admin' :
+                    {account.role === 'super_admin' ? 'Super Admin' :
+                     account.role === 'utility_admin' ? 'utility_admin' :
                      account.role === 'finance' ? 'Finansije' :
                      account.role === 'worker' ? 'Radnik' :
-                     account.role === 'maintenance' ? 'Održavanje' :
+                     account.role === 'worker' ? 'Održavanje' :
                      'Građanin'}
                   </Text>
                 </TouchableOpacity>

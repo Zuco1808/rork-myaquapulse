@@ -40,11 +40,11 @@ const notificationTypes = [
 
 // User roles
 const userRoles = [
-  { id: 'superadmin', label: 'Super Admin' },
-  { id: 'admin', label: 'Admin' },
+  { id: 'super_admin', label: 'Super Admin' },
+  { id: 'utility_admin', label: 'utility_admin' },
   { id: 'finance', label: 'Finansije' },
   { id: 'worker', label: 'Radnik' },
-  { id: 'citizen', label: 'Građanin' },
+  { id: 'end_user', label: 'Građanin' },
 ];
 
 export default function SendNotificationScreen() {
@@ -69,7 +69,7 @@ export default function SendNotificationScreen() {
   
   // Check if user has permission to access this screen
   useEffect(() => {
-    if (!user || (user.role !== 'superadmin' && user.role !== 'admin' && user.role !== 'worker')) {
+    if (!user || (user.role !== 'super_admin' && user.role !== 'utility_admin' && user.role !== 'worker')) {
       router.replace('/(tabs)');
     }
   }, [user, router]);
@@ -169,7 +169,7 @@ export default function SendNotificationScreen() {
   };
   
   // Filter companies based on user role
-  const availableCompanies = user?.role === 'admin' 
+  const availableCompanies = user?.role === 'utility_admin' 
     ? mockCompanies.filter(company => company.id === user.companyId)
     : mockCompanies;
   
@@ -297,7 +297,7 @@ export default function SendNotificationScreen() {
                 ))}
               </View>
               
-              {user?.role === 'superadmin' && (
+              {user?.role === 'super_admin' && (
                 <View style={styles.additionalFilters}>
                   <Button
                     title="Odaberi kompanije"

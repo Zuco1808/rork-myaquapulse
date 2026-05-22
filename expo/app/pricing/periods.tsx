@@ -199,7 +199,7 @@ export default function PeriodsScreen() {
     setModalVisible(false);
   };
   
-  const canManagePricing = user?.role === 'superadmin' || user?.role === 'admin' || user?.role === 'finance';
+  const canManagePricing = user?.role === 'super_admin' || user?.role === 'utility_admin' || user?.role === 'finance';
   
   if (!canManagePricing) {
     return (

@@ -245,7 +245,7 @@ export default function LocationsScreen() {
     );
   };
   
-  const canManageLocations = user?.role === 'superadmin' || user?.role === 'admin';
+  const canManageLocations = user?.role === 'super_admin' || user?.role === 'utility_admin';
   
   return (
     <SafeAreaView style={styles.safeArea}>

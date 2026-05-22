@@ -50,7 +50,7 @@ export default function AddMeterScreen() {
   
   // Check if user has permission to access this screen
   useEffect(() => {
-    if (!user || (user.role !== 'superadmin' && user.role !== 'admin' && user.role !== 'worker')) {
+    if (!user || (user.role !== 'super_admin' && user.role !== 'utility_admin' && user.role !== 'worker')) {
       router.replace('/login');
     }
   }, [user, router]);
@@ -120,7 +120,7 @@ export default function AddMeterScreen() {
   };
   
   // Filter users to show only citizens
-  const citizenUsers = mockUsers.filter(u => u.role === 'citizen');
+  const citizenUsers = mockUsers.filter(u => u.role === 'end_user');
   
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -226,13 +226,13 @@ export default function AddMeterScreen() {
               <TouchableOpacity
                 style={[
                   styles.option,
-                  status === 'maintenance' && styles.optionActive
+                  status === 'worker' && styles.optionActive
                 ]}
-                onPress={() => handleStatusChange('maintenance')}
+                onPress={() => handleStatusChange('worker')}
               >
                 <Text style={[
                   styles.optionText,
-                  status === 'maintenance' && styles.optionTextActive
+                  status === 'worker' && styles.optionTextActive
                 ]}>Održavanje</Text>
               </TouchableOpacity>
             </View>

@@ -1,141 +1,161 @@
-export type UserRole = 'superadmin' | 'admin' | 'finance' | 'worker' | 'citizen' | 'maintenance';
+// types/user.ts
+export type UserRole =
+  | 'super_admin'
+  | 'distributor_admin'
+  | 'utility_admin'
+  | 'finance'
+  | 'worker'
+  | 'end_user';
 
 export interface UserPermissions {
   canReadMeters: boolean;
-  canReportIssues: boolean;
+  canManageReadings: boolean;
   canManageTasks: boolean;
-  canEditReadings: boolean;
   canSendNotifications: boolean;
-  canViewAllData: boolean;
+  canViewReports: boolean;
   canManageUsers: boolean;
-  canManageCompanies: boolean;
   canManageBilling: boolean;
-  canBackupData: boolean;
+  canManageUtility: boolean;
+  canManageDistributor: boolean;
+  canAccessAllTenants: boolean;
 }
 
-export interface User {
-  id: string;
-  name: string;
-  email: string;
-  password?: string;
-  role: UserRole;
-  permissions: UserPermissions;
-  isActive: boolean;
-  phone?: string;
-  address?: string;
-  avatar?: string;
-  createdAt: number;
-  updatedAt?: number;
-  lastLogin?: number;
-  companyId?: string;
-  locationIds?: string[];
-  meterIds?: string[];
-}
+export const getPermissions = (role: UserRole): UserPermissions => {
+  const none: UserPermissions = {
+    canReadMeters:        false,
+    canManageReadings:    false,
+    canManageTasks:       false,
+    canSendNotifications: false,
+    canViewReports:       false,
+    canManageUsers:       false,
+    canManageBilling:     false,
+    canManageUtility:     false,
+    canManageDistributor: false,
+    canAccessAllTenants:  false,
+  };
 
-export const getDefaultPermissions = (role: UserRole): UserPermissions => {
   switch (role) {
-    case 'superadmin':
+    case 'super_admin':
       return {
-        canReadMeters: true,
-        canReportIssues: true,
-        canManageTasks: true,
-        canEditReadings: true,
+        canReadMeters:        true,
+        canManageReadings:    true,
+        canManageTasks:       true,
         canSendNotifications: true,
-        canViewAllData: true,
-        canManageUsers: true,
-        canManageCompanies: true,
-        canManageBilling: true,
-        canBackupData: true
+        canViewReports:       true,
+        canManageUsers:       true,
+        canManageBilling:     true,
+        canManageUtility:     true,
+        canManageDistributor: true,
+        canAccessAllTenants:  true,
       };
-    case 'admin':
-      return {
-        canReadMeters: true,
-        canReportIssues: true,
-        canManageTasks: true,
-        canEditReadings: true,
+    case 'distributor_admin':
+      return { ...none,
+        canViewReports:       true,
+        canManageUsers:       true,
+        canManageDistributor: true,
+      };
+    case 'utility_admin':
+      return { ...none,
+        canReadMeters:        true,
+        canManageReadings:    true,
+        canManageTasks:       true,
         canSendNotifications: true,
-        canViewAllData: true,
-        canManageUsers: true,
-        canManageCompanies: false,
-        canManageBilling: true,
-        canBackupData: true
+        canViewReports:       true,
+        canManageUsers:       true,
+        canManageBilling:     true,
+        canManageUtility:     true,
       };
     case 'finance':
-      return {
-        canReadMeters: true,
-        canReportIssues: true,
-        canManageTasks: true,
-        canEditReadings: true,
-        canSendNotifications: true,
-        canViewAllData: true,
-        canManageUsers: false,
-        canManageCompanies: false,
+      return { ...none,
+        canReadMeters:    true,
+        canViewReports:   true,
         canManageBilling: true,
-        canBackupData: false
       };
     case 'worker':
-      return {
-        canReadMeters: true,
-        canReportIssues: true,
+      return { ...none,
+        canReadMeters:  true,
         canManageTasks: true,
-        canEditReadings: false,
-        canSendNotifications: false,
-        canViewAllData: false,
-        canManageUsers: false,
-        canManageCompanies: false,
-        canManageBilling: false,
-        canBackupData: false
       };
-    case 'maintenance':
-      return {
-        canReadMeters: true,
-        canReportIssues: true,
-        canManageTasks: true,
-        canEditReadings: false,
-        canSendNotifications: false,
-        canViewAllData: false,
-        canManageUsers: false,
-        canManageCompanies: false,
-        canManageBilling: false,
-        canBackupData: false
-      };
-    case 'citizen':
-      return {
-        canReadMeters: false,
-        canReportIssues: true,
-        canManageTasks: false,
-        canEditReadings: false,
-        canSendNotifications: false,
-        canViewAllData: false,
-        canManageUsers: false,
-        canManageCompanies: false,
-        canManageBilling: false,
-        canBackupData: false
-      };
+    case 'end_user':
     default:
-      return {
-        canReadMeters: false,
-        canReportIssues: false,
-        canManageTasks: false,
-        canEditReadings: false,
-        canSendNotifications: false,
-        canViewAllData: false,
-        canManageUsers: false,
-        canManageCompanies: false,
-        canManageBilling: false,
-        canBackupData: false
-      };
+      return { ...none };
   }
 };
+
+// Alias za backward compatibility
+export const getDefaultPermissions = getPermissions;
+
+export interface Profile {
+  id: string;
+  full_name: string;
+  email: string;
+  phone?: string;
+  avatar_url?: string;
+  role: UserRole;
+  distributor_id?: string;
+  utility_id?: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  permissions: UserPermissions;
+  // Compatibility aliases — mapirani u auth-store
+  name?: string;
+  avatar?: string;
+  address?: string;
+  companyId?: string;
+  locationIds?: string[];
+}
+
+// Alias
+export type User = Profile;
+
+export interface Distributor {
+  id: string;
+  name: string;
+  contact_email?: string;
+  contact_phone?: string;
+  address?: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WaterUtility {
+  id: string;
+  distributor_id?: string;
+  name: string;
+  city?: string;
+  address?: string;
+  pib?: string;
+  logo_url?: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+// Company alias — stari kod koristi Company, mapira na WaterUtility
+export interface CompanyWithStatus {
+  id: string;
+  name: string;
+  city?: string;
+  address?: string;
+  usersCount?: number;
+  locationsCount?: number;
+  metersCount?: number;
+  isActive?: boolean;
+  created_at: string;
+  updated_at?: string;
+}
+export type Company = CompanyWithStatus;
 
 export type UserGroupType =
   | 'residential'
   | 'commercial'
   | 'industrial'
   | 'public'
+  | 'agriculture'
   | 'household'
   | 'business'
-  | 'agriculture'
   | 'livestock'
   | 'other';
 
@@ -149,31 +169,82 @@ export interface UserGroup {
   createdAt?: number;
 }
 
-export interface CompanyWithStatus {
+export interface Connection {
   id: string;
-  name: string;
+  utility_id: string;
+  user_id: string;
   address: string;
-  city: string;
-  postalCode: string;
-  country: string;
-  phone: string;
-  email: string;
-  website?: string;
-  logo?: string;
-  supportEmail?: string;
-  usersCount?: number;
-  locationsCount?: number;
-  metersCount?: number;
-  isActive?: boolean;
-  createdAt: number;
-  updatedAt?: number;
+  meter_serial: string;
+  meter_type: 'standard' | 'smart' | 'prepaid';
+  user_group: UserGroupType;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
 }
 
-// Alias za Company koji se koristi u companies/index.tsx
-export type Company = CompanyWithStatus;
+export interface MeterReading {
+  id: string;
+  connection_id: string;
+  utility_id: string;
+  worker_id?: string;
+  reading_value: number;
+  reading_date: string;
+  reading_type: 'manual' | 'smart' | 'estimated' | 'ocr';
+  photo_url?: string;
+  ocr_raw_text?: string;
+  note?: string;
+  is_verified: boolean;
+  created_at: string;
+}
 
-export const canManageUser = (manager: User, target: User): boolean => {
-  if (manager.role === 'superadmin') return true;
-  if (manager.role === 'admin' && target.role !== 'superadmin') return true;
+export interface Invoice {
+  id: string;
+  connection_id: string;
+  utility_id: string;
+  reading_from_id?: string;
+  reading_to_id?: string;
+  period_from: string;
+  period_to: string;
+  consumption_m3?: number;
+  amount_bam: number;
+  status: 'draft' | 'pending' | 'sent' | 'paid' | 'overdue' | 'cancelled';
+  due_date?: string;
+  paid_at?: string;
+  created_by?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Task {
+  id: string;
+  utility_id: string;
+  assigned_to?: string;
+  created_by?: string;
+  connection_id?: string;
+  title: string;
+  description?: string;
+  task_type: 'reading' | 'worker' | 'inspection' | 'installation' | 'other';
+  priority: 'low' | 'normal' | 'high' | 'urgent';
+  status: 'open' | 'in_progress' | 'done' | 'cancelled';
+  due_date?: string;
+  completed_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Notification {
+  id: string;
+  utility_id?: string;
+  user_id?: string;
+  title: string;
+  body: string;
+  type: 'info' | 'warning' | 'alert' | 'billing';
+  is_read: boolean;
+  created_at: string;
+}
+
+export const canManageUser = (manager: Profile, target: Profile): boolean => {
+  if (manager.role === 'super_admin') return true;
+  if (manager.role === 'utility_admin' && target.role !== 'super_admin') return true;
   return false;
 };

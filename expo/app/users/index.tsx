@@ -71,7 +71,7 @@ export default function UsersScreen() {
   
   // Check if user has permission to access this screen
   useEffect(() => {
-    if (!user || (user.role !== 'superadmin' && user.role !== 'admin')) {
+    if (!user || (user.role !== 'super_admin' && user.role !== 'utility_admin')) {
       router.replace('/login');
     }
   }, [user, router]);
@@ -88,7 +88,7 @@ export default function UsersScreen() {
     // Apply search query
     if (searchQuery) {
       filtered = filtered.filter(user => 
-        user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        user.full_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         user.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
         (user.phone && user.phone.includes(searchQuery))
       );
@@ -102,7 +102,7 @@ export default function UsersScreen() {
     // Apply status filter
     if (filterStatus !== 'all') {
       filtered = filtered.filter(user => 
-        filterStatus === 'active' ? user.isActive : !user.isActive
+        filterStatus === 'active' ? user.is_active : !user.is_active
       );
     }
     
@@ -164,17 +164,17 @@ export default function UsersScreen() {
   
   const getRoleBadgeColor = (role: string) => {
     switch (role) {
-      case 'superadmin':
+      case 'super_admin':
         return '#9C27B0'; // Purple
-      case 'admin':
+      case 'utility_admin':
         return '#2196F3'; // Blue
       case 'finance':
         return '#4CAF50'; // Green
       case 'worker':
         return '#FF9800'; // Orange
-      case 'maintenance':
+      case 'worker':
         return '#795548'; // Brown
-      case 'citizen':
+      case 'end_user':
       default:
         return '#607D8B'; // Blue Grey
     }
@@ -182,17 +182,17 @@ export default function UsersScreen() {
   
   const getRoleLabel = (role: string) => {
     switch (role) {
-      case 'superadmin':
+      case 'super_admin':
         return 'Super Admin';
-      case 'admin':
+      case 'utility_admin':
         return 'Administrator';
       case 'finance':
         return 'Finansije';
       case 'worker':
         return 'Radnik';
-      case 'maintenance':
+      case 'worker':
         return 'Održavanje';
-      case 'citizen':
+      case 'end_user':
         return 'Građanin';
       default:
         return role;
@@ -211,11 +211,11 @@ export default function UsersScreen() {
             <View style={styles.userInfo}>
               <Avatar 
                 source={item.avatar} 
-                name={item.name} 
+                name={item.full_name} 
                 size={50} 
               />
               <View style={styles.userDetails}>
-                <Text style={styles.userName}>{item.name}</Text>
+                <Text style={styles.userName}>{item.full_name}</Text>
                 <Badge 
                   label={getRoleLabel(item.role)} 
                   color={getRoleBadgeColor(item.role)} 
@@ -225,10 +225,10 @@ export default function UsersScreen() {
             <View style={styles.statusContainer}>
               <View style={[
                 styles.statusIndicator, 
-                { backgroundColor: item.isActive ? Colors.success : Colors.error }
+                { backgroundColor: item.is_active ? Colors.success : Colors.error }
               ]} />
               <Text style={styles.statusText}>
-                {item.isActive ? 'Aktivan' : 'Neaktivan'}
+                {item.is_active ? 'Aktivan' : 'Neaktivan'}
               </Text>
             </View>
           </View>
@@ -351,13 +351,13 @@ export default function UsersScreen() {
               <TouchableOpacity
                 style={[
                   styles.filterOption,
-                  filterRole === 'admin' && styles.filterOptionActive
+                  filterRole === 'utility_admin' && styles.filterOptionActive
                 ]}
-                onPress={() => handleFilterChange('admin')}
+                onPress={() => handleFilterChange('utility_admin')}
               >
                 <Text style={[
                   styles.filterOptionText,
-                  filterRole === 'admin' && styles.filterOptionTextActive
+                  filterRole === 'utility_admin' && styles.filterOptionTextActive
                 ]}>Administratori</Text>
               </TouchableOpacity>
               
@@ -390,26 +390,26 @@ export default function UsersScreen() {
               <TouchableOpacity
                 style={[
                   styles.filterOption,
-                  filterRole === 'maintenance' && styles.filterOptionActive
+                  filterRole === 'worker' && styles.filterOptionActive
                 ]}
-                onPress={() => handleFilterChange('maintenance')}
+                onPress={() => handleFilterChange('worker')}
               >
                 <Text style={[
                   styles.filterOptionText,
-                  filterRole === 'maintenance' && styles.filterOptionTextActive
+                  filterRole === 'worker' && styles.filterOptionTextActive
                 ]}>Održavanje</Text>
               </TouchableOpacity>
               
               <TouchableOpacity
                 style={[
                   styles.filterOption,
-                  filterRole === 'citizen' && styles.filterOptionActive
+                  filterRole === 'end_user' && styles.filterOptionActive
                 ]}
-                onPress={() => handleFilterChange('citizen')}
+                onPress={() => handleFilterChange('end_user')}
               >
                 <Text style={[
                   styles.filterOptionText,
-                  filterRole === 'citizen' && styles.filterOptionTextActive
+                  filterRole === 'end_user' && styles.filterOptionTextActive
                 ]}>Građani</Text>
               </TouchableOpacity>
             </View>

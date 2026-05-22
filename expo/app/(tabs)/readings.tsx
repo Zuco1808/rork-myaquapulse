@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  ScrollView, 
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
   TouchableOpacity,
   RefreshControl,
   Modal,
@@ -11,9 +11,9 @@ import {
   Platform
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { 
-  Plus, 
-  Camera, 
+import {
+  Plus,
+  Camera,
   Edit3,
   Filter,
   Search,
@@ -30,22 +30,21 @@ import { getMeters } from '@/lib/api/meters';
 import Colors from '@/constants/colors';
 import { MeterReading } from '@/types/location';
 
-// Extended reading type with meter info
 interface ExtendedReading extends MeterReading {
   meterSerialNumber?: string;
-  meterId: string; // Added to fix TypeScript error
+  meterId: string;
 }
 
 export default function ReadingsScreen() {
   const router = useRouter();
   const { user } = useAuthStore();
-  
+
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [showCamera, setShowCamera] = useState(false);
   const [showOCRResult, setShowOCRResult] = useState(false);
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
-  const [capturedImageBase64, setCapturedImageBase64] = useState<string>("");
+  const [capturedImageBase64, setCapturedImageBase64] = useState<string>('');
   const [showAddReadingModal, setShowAddReadingModal] = useState(false);
   const [manualReading, setManualReading] = useState('');
   const [selectedMeterId, setSelectedMeterId] = useState('');
@@ -55,7 +54,11 @@ export default function ReadingsScreen() {
   const [showFilters, setShowFilters] = useState(false);
   const [filterStatus, setFilterStatus] = useState('all');
   const [readingError, setReadingError] = useState('');
-  
+
+  const isStaff = user?.role === 'utility_admin' || user?.role === 'finance' || user?.role === 'super_admin';
+  const isWorker = user?.role === 'worker';
+  const isEndUser = user?.role === 'end_user';
+
   const fetchData = async () => {
     if (!user) {
       router.replace('/login' as any);
@@ -66,272 +69,200 @@ export default function ReadingsScreen() {
         getMeters(),
         getReadings(),
       ]);
-      const userMeters = user.role === 'citizen'
+      const userMeters = isEndUser
         ? metersData.filter((m: any) => m.userId === user.id)
         : metersData;
-      const userReadings = user.role === 'citizen'
-        ? readingsData.filter((r: any) => userMeters.some((m: any) => m.id === r.meter_id))
+      const userReadings = isEndUser
+        ? readingsData.filter((r: any) => userMeters.some((m: any) => m.id === r.meterId))
         : readingsData;
       setAvailableMeters(userMeters);
       setReadings(userReadings);
       setFilteredReadings(userReadings);
       if (userMeters.length > 0) setSelectedMeterId(userMeters[0].id);
     } catch (err) {
-      console.error('Greska pri ucitavanju:', err);
+      console.error('Greška pri učitavanju:', err);
     }
   };
 
   useEffect(() => {
     fetchData();
   }, [user]);
-  
+
   const onRefresh = async () => {
     setRefreshing(true);
     await fetchData();
+    setRefreshing(false);
   };
-  
+
   const handleAddReading = () => {
-    // Check if user has permission to read meters
-    if (user?.role === 'citizen' && !user.permissions?.canReadMeters) {
+    if (isEndUser && !user?.permissions?.canReadMeters) {
       Alert.alert(
-        "Nemate dozvolu",
-        "Nemate dozvolu za unos očitanja. Kontaktirajte administratora."
+        'Nemate dozvolu',
+        'Nemate dozvolu za unos očitanja. Kontaktirajte administratora.'
       );
       return;
     }
-    
     setShowAddReadingModal(true);
   };
-  
+
   const validateReading = (value: number): boolean => {
-    // Find the selected meter
     const meter = availableMeters.find(m => m.id === selectedMeterId);
     if (!meter) {
       setReadingError("Odabrani vodomjer nije pronađen");
       return false;
     }
-    
-    // Find the last reading for this meter
     const lastReading = readings
       .filter(r => r.meterId === selectedMeterId)
       .sort((a, b) => b.readingDate - a.readingDate)[0];
-    
-    // If there's a previous reading, ensure the new value is greater or equal
+
     if (lastReading && value < lastReading.value) {
       setReadingError(`Nova vrijednost mora biti veća ili jednaka posljednjoj (${lastReading.value} m³)`);
       return false;
     }
-    
-    setReadingError("");
+    setReadingError('');
     return true;
   };
-  
+
   const handleManualSubmit = () => {
     const value = parseFloat(manualReading);
-    
     if (isNaN(value)) {
-      setReadingError("Unesite validnu numeričku vrijednost");
+      setReadingError('Unesite validnu numeričku vrijednost');
       return;
     }
-    
-    if (!validateReading(value)) {
-      return;
-    }
-    
-    // In a real app, you would submit the reading to your backend
+    if (!validateReading(value)) return;
+
     const newReading: ExtendedReading = {
       id: `reading-${Date.now()}`,
       meterId: selectedMeterId,
-      value: value,
+      value,
       readingDate: Date.now(),
       readBy: user?.id || '',
-      readMethod: user?.role === 'citizen' ? 'citizen' : 'manual',
-      status: user?.role === 'citizen' ? 'pending' : 'verified',
-      meterSerialNumber: availableMeters.find(m => m.id === selectedMeterId)?.serialNumber
+      readMethod: isEndUser ? 'end_user' : 'manual',
+      status: isEndUser ? 'pending' : 'verified',
+      meterSerialNumber: availableMeters.find(m => m.id === selectedMeterId)?.serialNumber,
     };
-    
-    // Add the new reading to the list
+
     const updatedReadings = [newReading, ...readings];
     setReadings(updatedReadings);
     setFilteredReadings(updatedReadings);
-    
-    // Close modal and reset form
     setShowAddReadingModal(false);
     setManualReading('');
     setReadingError('');
-    
-    Alert.alert(
-      "Uspjeh",
-      "Očitanje je uspješno dodano.",
-      [{ text: "OK" }]
-    );
+    Alert.alert('Uspjeh', 'Očitanje je uspješno dodano.');
   };
-  
+
   const handleOpenCamera = () => {
     setShowAddReadingModal(false);
     setShowCamera(true);
   };
-  
+
   const handleCameraCapture = (imageUri: string, imageBase64: string) => {
     setCapturedImage(imageUri);
     setCapturedImageBase64(imageBase64);
     setShowCamera(false);
     setShowOCRResult(true);
   };
+
   const handleOCRConfirm = (value: number) => {
     if (!validateReading(value)) {
       Alert.alert(
-        "Greška",
+        'Greška',
         readingError,
         [
-          { 
-            text: "Pokušaj ponovo", 
-            onPress: () => {
-              setShowOCRResult(false);
-              setShowCamera(true);
-            }
+          {
+            text: 'Pokušaj ponovo',
+            onPress: () => { setShowOCRResult(false); setShowCamera(true); }
           },
-          { 
-            text: "Otkaži", 
-            style: "cancel",
-            onPress: () => {
-              setShowOCRResult(false);
-              setCapturedImage(null);
-              setReadingError('');
-            }
+          {
+            text: 'Otkaži',
+            style: 'cancel',
+            onPress: () => { setShowOCRResult(false); setCapturedImage(null); setReadingError(''); }
           }
         ]
       );
       return;
     }
-    
-    // In a real app, you would submit the OCR reading to your backend
+
     const newReading: ExtendedReading = {
       id: `reading-${Date.now()}`,
       meterId: selectedMeterId,
-      value: value,
+      value,
       readingDate: Date.now(),
       readBy: user?.id || '',
       readMethod: 'ocr',
       imageUrl: capturedImage || undefined,
-      status: user?.role === 'citizen' ? 'pending' : 'verified',
-      meterSerialNumber: availableMeters.find(m => m.id === selectedMeterId)?.serialNumber
+      status: isEndUser ? 'pending' : 'verified',
+      meterSerialNumber: availableMeters.find(m => m.id === selectedMeterId)?.serialNumber,
     };
-    
-    // Add the new reading to the list
+
     const updatedReadings = [newReading, ...readings];
     setReadings(updatedReadings);
     setFilteredReadings(updatedReadings);
-    
-    // Close OCR result screen
     setShowOCRResult(false);
     setCapturedImage(null);
-    
-    Alert.alert(
-      "Uspjeh",
-      "Očitanje je uspješno dodano.",
-      [{ text: "OK" }]
-    );
+    Alert.alert('Uspjeh', 'Očitanje je uspješno dodano.');
   };
-  
-  const handleOCRRetry = () => {
-    setShowOCRResult(false);
-    setShowCamera(true);
-  };
-  
-  const handleOCRCancel = () => {
-    setShowOCRResult(false);
-    setCapturedImage(null);
-  };
-  
+
+  const handleOCRRetry = () => { setShowOCRResult(false); setShowCamera(true); };
+  const handleOCRCancel = () => { setShowOCRResult(false); setCapturedImage(null); };
+
   const handleEditReading = (readingId: string) => {
-    // Only admin and finance can edit readings
-    if (user?.role !== 'admin' && user?.role !== 'finance' && user?.role !== 'superadmin') {
-      Alert.alert("Nemate dozvolu", "Samo administratori i finansije mogu uređivati očitanja.");
+    if (!isStaff) {
+      Alert.alert('Nemate dozvolu', 'Samo administratori i finansije mogu uređivati očitanja.');
       return;
     }
-    
-    // In a real app, you would navigate to an edit screen
-    Alert.alert(
-      "Uređivanje očitanja",
-      "Ova funkcionalnost će biti implementirana uskoro."
-    );
+    Alert.alert('Uređivanje očitanja', 'Ova funkcionalnost će biti implementirana uskoro.');
   };
-  
+
   const handleVerifyReading = (readingId: string) => {
-    // Only admin and finance can verify readings
-    if (user?.role !== 'admin' && user?.role !== 'finance' && user?.role !== 'superadmin') {
-      return;
-    }
-    
-    // Update reading status
-    const updatedReadings = readings.map(reading => 
-      reading.id === readingId 
-        ? { ...reading, status: 'verified' as const } 
-        : reading
+    if (!isStaff) return;
+    const updatedReadings = readings.map(r =>
+      r.id === readingId ? { ...r, status: 'verified' as const } : r
     );
-    
     setReadings(updatedReadings);
     setFilteredReadings(updatedReadings);
-    
-    Alert.alert("Uspjeh", "Očitanje je potvrđeno.");
+    Alert.alert('Uspjeh', 'Očitanje je potvrđeno.');
   };
-  
+
   const handleRejectReading = (readingId: string) => {
-    // Only admin and finance can reject readings
-    if (user?.role !== 'admin' && user?.role !== 'finance' && user?.role !== 'superadmin') {
-      return;
-    }
-    
-    // Update reading status
-    const updatedReadings = readings.map(reading => 
-      reading.id === readingId 
-        ? { ...reading, status: 'rejected' as const } 
-        : reading
+    if (!isStaff) return;
+    const updatedReadings = readings.map(r =>
+      r.id === readingId ? { ...r, status: 'rejected' as const } : r
     );
-    
     setReadings(updatedReadings);
     setFilteredReadings(updatedReadings);
-    
-    Alert.alert("Uspjeh", "Očitanje je odbijeno.");
+    Alert.alert('Uspjeh', 'Očitanje je odbijeno.');
   };
-  
+
   const handleSearch = (text: string) => {
     setSearchQuery(text);
     applyFilters(text, filterStatus);
   };
-  
+
   const handleFilterChange = (status: string) => {
     setFilterStatus(status);
     applyFilters(searchQuery, status);
   };
-  
+
   const applyFilters = (query: string, status: string) => {
     let filtered = [...readings];
-    
-    // Apply search query
     if (query) {
-      filtered = filtered.filter(reading => 
-        reading.meterSerialNumber?.toLowerCase().includes(query.toLowerCase()) ||
-        reading.value.toString().includes(query)
+      filtered = filtered.filter(r =>
+        r.meterSerialNumber?.toLowerCase().includes(query.toLowerCase()) ||
+        r.value.toString().includes(query)
       );
     }
-    
-    // Apply status filter
     if (status !== 'all') {
-      filtered = filtered.filter(reading => reading.status === status);
+      filtered = filtered.filter(r => r.status === status);
     }
-    
     setFilteredReadings(filtered);
   };
-  
-  const canAddReadings = 
-    user?.role === 'admin' || 
-    user?.role === 'finance' || 
-    user?.role === 'worker' || 
-    user?.role === 'superadmin' || 
-    (user?.role === 'citizen' && user.permissions?.canReadMeters);
-  
+
+  const canAddReadings =
+    isStaff ||
+    isWorker ||
+    (isEndUser && user?.permissions?.canReadMeters);
+
   return (
     <View style={styles.container}>
       <View style={styles.searchContainer}>
@@ -342,8 +273,7 @@ export default function ReadingsScreen() {
           containerStyle={styles.searchInput}
           leftIcon={<Search size={20} color={Colors.textLight} />}
         />
-        
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.filterButton}
           onPress={() => setShowFilters(!showFilters)}
           activeOpacity={0.7}
@@ -351,87 +281,45 @@ export default function ReadingsScreen() {
           <Filter size={20} color={Colors.text} />
         </TouchableOpacity>
       </View>
-      
+
       {showFilters && (
         <View style={styles.filtersContainer}>
           <Text style={styles.filtersTitle}>Status:</Text>
           <View style={styles.filterOptions}>
-            <TouchableOpacity
-              style={[
-                styles.filterOption,
-                filterStatus === 'all' && styles.filterOptionActive
-              ]}
-              onPress={() => handleFilterChange('all')}
-            >
-              <Text style={[
-                styles.filterOptionText,
-                filterStatus === 'all' && styles.filterOptionTextActive
-              ]}>Svi</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity
-              style={[
-                styles.filterOption,
-                filterStatus === 'pending' && styles.filterOptionActive
-              ]}
-              onPress={() => handleFilterChange('pending')}
-            >
-              <Text style={[
-                styles.filterOptionText,
-                filterStatus === 'pending' && styles.filterOptionTextActive
-              ]}>Na čekanju</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity
-              style={[
-                styles.filterOption,
-                filterStatus === 'verified' && styles.filterOptionActive
-              ]}
-              onPress={() => handleFilterChange('verified')}
-            >
-              <Text style={[
-                styles.filterOptionText,
-                filterStatus === 'verified' && styles.filterOptionTextActive
-              ]}>Potvrđeni</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity
-              style={[
-                styles.filterOption,
-                filterStatus === 'rejected' && styles.filterOptionActive
-              ]}
-              onPress={() => handleFilterChange('rejected')}
-            >
-              <Text style={[
-                styles.filterOptionText,
-                filterStatus === 'rejected' && styles.filterOptionTextActive
-              ]}>Odbijeni</Text>
-            </TouchableOpacity>
+            {['all', 'pending', 'verified', 'rejected'].map(status => (
+              <TouchableOpacity
+                key={status}
+                style={[styles.filterOption, filterStatus === status && styles.filterOptionActive]}
+                onPress={() => handleFilterChange(status)}
+              >
+                <Text style={[styles.filterOptionText, filterStatus === status && styles.filterOptionTextActive]}>
+                  {status === 'all' ? 'Svi' : status === 'pending' ? 'Na čekanju' : status === 'verified' ? 'Potvrđeni' : 'Odbijeni'}
+                </Text>
+              </TouchableOpacity>
+            ))}
           </View>
         </View>
       )}
-      
+
       <ScrollView
         contentContainerStyle={styles.scrollContent}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-        }
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
         {filteredReadings.length > 0 ? (
           filteredReadings.map(reading => (
-            <ReadingCard 
-              key={reading.id} 
-              reading={reading} 
+            <ReadingCard
+              key={reading.id}
+              reading={reading}
               showMeterInfo={true}
               meterSerialNumber={reading.meterSerialNumber}
               onEdit={() => handleEditReading(reading.id)}
               onVerify={
-                (user?.role === 'admin' || user?.role === 'finance' || user?.role === 'superadmin') && reading.status === 'pending'
+                isStaff && reading.status === 'pending'
                   ? () => handleVerifyReading(reading.id)
                   : undefined
               }
               onReject={
-                (user?.role === 'admin' || user?.role === 'finance' || user?.role === 'superadmin') && reading.status === 'pending'
+                isStaff && reading.status === 'pending'
                   ? () => handleRejectReading(reading.id)
                   : undefined
               }
@@ -439,24 +327,17 @@ export default function ReadingsScreen() {
           ))
         ) : (
           <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>
-              Nema pronađenih očitanja
-            </Text>
+            <Text style={styles.emptyText}>Nema pronađenih očitanja</Text>
           </View>
         )}
       </ScrollView>
-      
+
       {canAddReadings && (
-        <TouchableOpacity 
-          style={styles.fab}
-          onPress={handleAddReading}
-          activeOpacity={0.8}
-        >
+        <TouchableOpacity style={styles.fab} onPress={handleAddReading} activeOpacity={0.8}>
           <Plus size={24} color="#fff" />
         </TouchableOpacity>
       )}
-      
-      {/* Add Reading Modal */}
+
       <Modal
         visible={showAddReadingModal}
         animationType="slide"
@@ -466,20 +347,15 @@ export default function ReadingsScreen() {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <TouchableOpacity 
-                onPress={() => setShowAddReadingModal(false)}
-                style={styles.backButton}
-              >
+              <TouchableOpacity onPress={() => setShowAddReadingModal(false)} style={styles.backButton}>
                 <ChevronLeft size={24} color={Colors.text} />
               </TouchableOpacity>
               <Text style={styles.modalTitle}>Novo očitanje</Text>
               <View style={styles.placeholder} />
             </View>
-            
-            <Text style={styles.modalSubtitle}>
-              Odaberite vodomjer i unesite očitanje
-            </Text>
-            
+
+            <Text style={styles.modalSubtitle}>Odaberite vodomjer i unesite očitanje</Text>
+
             {availableMeters.length > 0 ? (
               <>
                 <Text style={styles.inputLabel}>Vodomjer:</Text>
@@ -487,20 +363,16 @@ export default function ReadingsScreen() {
                   {availableMeters.map(meter => (
                     <TouchableOpacity
                       key={meter.id}
-                      style={[
-                        styles.meterOption,
-                        selectedMeterId === meter.id && styles.meterOptionActive
-                      ]}
+                      style={[styles.meterOption, selectedMeterId === meter.id && styles.meterOptionActive]}
                       onPress={() => setSelectedMeterId(meter.id)}
                     >
-                      <Text style={[
-                        styles.meterOptionText,
-                        selectedMeterId === meter.id && styles.meterOptionTextActive
-                      ]}>{meter.serialNumber}</Text>
+                      <Text style={[styles.meterOptionText, selectedMeterId === meter.id && styles.meterOptionTextActive]}>
+                        {meter.serialNumber}
+                      </Text>
                     </TouchableOpacity>
                   ))}
                 </View>
-                
+
                 <View style={styles.inputContainer}>
                   <Input
                     label="Ručni unos očitanja (m³)"
@@ -512,18 +384,14 @@ export default function ReadingsScreen() {
                     error={readingError}
                   />
                 </View>
-                
+
                 <View style={styles.modalButtons}>
                   <Button
                     title="Otkaži"
-                    onPress={() => {
-                      setShowAddReadingModal(false);
-                      setReadingError('');
-                    }}
+                    onPress={() => { setShowAddReadingModal(false); setReadingError(''); }}
                     variant="outline"
                     style={styles.modalButton}
                   />
-                  
                   <Button
                     title="Potvrdi"
                     onPress={handleManualSubmit}
@@ -531,13 +399,13 @@ export default function ReadingsScreen() {
                     disabled={!manualReading}
                   />
                 </View>
-                
+
                 <View style={styles.orContainer}>
                   <View style={styles.orLine} />
                   <Text style={styles.orText}>ILI</Text>
                   <View style={styles.orLine} />
                 </View>
-                
+
                 <Button
                   title="Skeniraj vodomjer"
                   onPress={handleOpenCamera}
@@ -550,25 +418,20 @@ export default function ReadingsScreen() {
                 <Text style={styles.noMetersText}>
                   Nemate dodijeljenih vodomjera. Kontaktirajte administratora.
                 </Text>
-                <Button
-                  title="Zatvori"
-                  onPress={() => setShowAddReadingModal(false)}
-                  style={styles.closeButton}
-                />
+                <Button title="Zatvori" onPress={() => setShowAddReadingModal(false)} style={styles.closeButton} />
               </View>
             )}
           </View>
         </View>
       </Modal>
+
       <Modal visible={showCamera} animationType="slide" statusBarTranslucent={true} onRequestClose={() => setShowCamera(false)}>
-        <OCRCameraView
-          onCapture={handleCameraCapture}
-          onClose={() => setShowCamera(false)}
-        />
+        <OCRCameraView onCapture={handleCameraCapture} onClose={() => setShowCamera(false)} />
       </Modal>
+
       <Modal visible={showOCRResult && !!capturedImage} animationType="slide" statusBarTranslucent={true} onRequestClose={handleOCRCancel}>
         <OCRResult
-          imageUri={capturedImage || ""}
+          imageUri={capturedImage || ''}
           imageBase64={capturedImageBase64}
           onConfirm={handleOCRConfirm}
           onRetry={handleOCRRetry}
@@ -580,10 +443,7 @@ export default function ReadingsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
+  container: { flex: 1, backgroundColor: '#fff' },
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -592,60 +452,18 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: Colors.border,
   },
-  searchInput: {
-    flex: 1,
-    marginBottom: 0,
-  },
-  filterButton: {
-    padding: 12,
-    marginLeft: 8,
-  },
-  filtersContainer: {
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-  },
-  filtersTitle: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: Colors.text,
-    marginBottom: 8,
-  },
-  filterOptions: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  filterOption: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    backgroundColor: Colors.highlight,
-  },
-  filterOptionActive: {
-    backgroundColor: Colors.primary,
-  },
-  filterOptionText: {
-    fontSize: 12,
-    color: Colors.text,
-  },
-  filterOptionTextActive: {
-    color: '#fff',
-  },
-  scrollContent: {
-    padding: 16,
-    paddingBottom: 80,
-  },
-  emptyContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 32,
-  },
-  emptyText: {
-    fontSize: 16,
-    color: Colors.textLight,
-    textAlign: 'center',
-  },
+  searchInput: { flex: 1, marginBottom: 0 },
+  filterButton: { padding: 12, marginLeft: 8 },
+  filtersContainer: { padding: 16, borderBottomWidth: 1, borderBottomColor: Colors.border },
+  filtersTitle: { fontSize: 14, fontWeight: 'bold', color: Colors.text, marginBottom: 8 },
+  filterOptions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  filterOption: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, backgroundColor: Colors.highlight },
+  filterOptionActive: { backgroundColor: Colors.primary },
+  filterOptionText: { fontSize: 12, color: Colors.text },
+  filterOptionTextActive: { color: '#fff' },
+  scrollContent: { padding: 16, paddingBottom: 80 },
+  emptyContainer: { alignItems: 'center', justifyContent: 'center', padding: 32 },
+  emptyText: { fontSize: 16, color: Colors.textLight, textAlign: 'center' },
   fab: {
     position: 'absolute',
     bottom: Platform.OS === 'android' ? 40 : 24,
@@ -662,112 +480,26 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25,
     shadowRadius: 4,
   },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'flex-end',
-  },
-  modalContent: {
-    backgroundColor: '#fff',
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-    padding: 24,
-    paddingBottom: 36,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 16,
-  },
-  backButton: {
-    padding: 4,
-  },
-  placeholder: {
-    width: 24,
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: Colors.text,
-  },
-  modalSubtitle: {
-    fontSize: 16,
-    color: Colors.textLight,
-    marginBottom: 16,
-  },
-  inputLabel: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: Colors.text,
-    marginBottom: 8,
-  },
-  meterOptions: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginBottom: 16,
-    gap: 8,
-  },
-  meterOption: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 16,
-    backgroundColor: Colors.highlight,
-    marginRight: 8,
-    marginBottom: 8,
-  },
-  meterOptionActive: {
-    backgroundColor: Colors.primary,
-  },
-  meterOptionText: {
-    fontSize: 14,
-    color: Colors.text,
-  },
-  meterOptionTextActive: {
-    color: '#fff',
-  },
-  inputContainer: {
-    marginBottom: 16,
-  },
-  modalButtons: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  modalButton: {
-    flex: 1,
-    marginHorizontal: 8,
-  },
-  orContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginVertical: 24,
-  },
-  orLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: Colors.border,
-  },
-  orText: {
-    marginHorizontal: 16,
-    color: Colors.textLight,
-    fontSize: 14,
-  },
-  noMetersContainer: {
-    alignItems: 'center',
-    padding: 16,
-  },
-  noMetersText: {
-    fontSize: 16,
-    color: Colors.textLight,
-    textAlign: 'center',
-    marginBottom: 16,
-  },
-  closeButton: {
-    width: '100%',
-  },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  modalContent: { backgroundColor: '#fff', borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: 24, paddingBottom: 36 },
+  modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 },
+  backButton: { padding: 4 },
+  placeholder: { width: 24 },
+  modalTitle: { fontSize: 20, fontWeight: 'bold', color: Colors.text },
+  modalSubtitle: { fontSize: 16, color: Colors.textLight, marginBottom: 16 },
+  inputLabel: { fontSize: 14, fontWeight: '500', color: Colors.text, marginBottom: 8 },
+  meterOptions: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: 16, gap: 8 },
+  meterOption: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 16, backgroundColor: Colors.highlight },
+  meterOptionActive: { backgroundColor: Colors.primary },
+  meterOptionText: { fontSize: 14, color: Colors.text },
+  meterOptionTextActive: { color: '#fff' },
+  inputContainer: { marginBottom: 16 },
+  modalButtons: { flexDirection: 'row', justifyContent: 'space-between' },
+  modalButton: { flex: 1, marginHorizontal: 8 },
+  orContainer: { flexDirection: 'row', alignItems: 'center', marginVertical: 24 },
+  orLine: { flex: 1, height: 1, backgroundColor: Colors.border },
+  orText: { marginHorizontal: 16, color: Colors.textLight, fontSize: 14 },
+  noMetersContainer: { alignItems: 'center', padding: 16 },
+  noMetersText: { fontSize: 16, color: Colors.textLight, textAlign: 'center', marginBottom: 16 },
+  closeButton: { width: '100%' },
 });
-
-
-
-
-

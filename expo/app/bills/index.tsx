@@ -352,7 +352,7 @@ export default function BillsScreen() {
             onPress={() => handlePrintBill(item.id)}
           />
           
-          {(user?.role === 'admin' || user?.role === 'finance') && (
+          {(user?.role === 'utility_admin' || user?.role === 'finance') && (
             <Button
               title="Email"
               variant="outline"
@@ -441,7 +441,7 @@ export default function BillsScreen() {
     );
   };
   
-  const canManageBills = user?.role === 'superadmin' || user?.role === 'admin' || user?.role === 'finance';
+  const canManageBills = user?.role === 'super_admin' || user?.role === 'utility_admin' || user?.role === 'finance';
   
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -598,7 +598,7 @@ export default function BillsScreen() {
           }
         />
         
-        {(user?.role === 'superadmin' || user?.role === 'admin' || user?.role === 'finance') && (
+        {(user?.role === 'super_admin' || user?.role === 'utility_admin' || user?.role === 'finance') && (
           <TouchableOpacity
             style={styles.fab}
             onPress={handleAddBill}
@@ -640,7 +640,7 @@ export default function BillsScreen() {
                   >
                     <Printer size={24} color={Colors.primary} />
                   </TouchableOpacity>
-                  {(user?.role === 'admin' || user?.role === 'finance') && (
+                  {(user?.role === 'utility_admin' || user?.role === 'finance') && (
                     <TouchableOpacity 
                       style={styles.pdfModalAction}
                       onPress={() => handleSendEmail(pdfBill)}

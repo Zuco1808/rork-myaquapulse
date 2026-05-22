@@ -59,9 +59,9 @@ export const OCRResult: React.FC<OCRResultProps> = ({
           <>
             <View style={styles.successRow}>
               <CheckCircle size={24} color={Colors.success} />
-              <Text style={styles.successText}>Broj uspješno procitan</Text>
+              <Text style={styles.successText}>Broj uspjeï¿½no procitan</Text>
             </View>
-            <Text style={styles.valueText}>{result.value} m³</Text>
+            <Text style={styles.valueText}>{result.value} mï¿½</Text>
             <Text style={styles.confidenceText}>
               Pouzdanost: {result.confidence === 'high' ? 'Visoka' : result.confidence === 'medium' ? 'Srednja' : 'Niska'}
             </Text>

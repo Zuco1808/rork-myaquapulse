@@ -146,11 +146,11 @@ export default function AlertsScreen() {
     let filteredData = [...mockAlerts];
     
     // Filter by user role
-    if (user && user.role === 'citizen') {
+    if (user && user.role === 'end_user') {
       // Citizens can only see alerts for their meters
       // In a real app, this would filter by user's meter IDs
       filteredData = filteredData.filter(alert => alert.meterId === 'm1');
-    } else if (user && user.role === 'admin') {
+    } else if (user && user.role === 'utility_admin') {
       // Admins can only see alerts for their company
       filteredData = filteredData.filter(alert => alert.companyId === user.companyId);
     }
@@ -309,7 +309,7 @@ export default function AlertsScreen() {
           </View>
         </TouchableOpacity>
         
-        {!isResolved && (user?.role === 'superadmin' || user?.role === 'admin' || user?.role === 'worker') && (
+        {!isResolved && (user?.role === 'super_admin' || user?.role === 'utility_admin' || user?.role === 'worker') && (
           <View style={styles.cardActions}>
             <TouchableOpacity
               style={styles.resolveButton}

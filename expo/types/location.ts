@@ -16,7 +16,7 @@ export interface MeterReading {
   value: number;
   readingDate: number;
   readBy: string;
-  readMethod?: 'manual' | 'ocr' | 'citizen';
+  readMethod?: 'manual' | 'ocr' | 'end_user';
   imageUrl?: string;
   status: 'pending' | 'verified' | 'rejected';
   consumption?: number;
