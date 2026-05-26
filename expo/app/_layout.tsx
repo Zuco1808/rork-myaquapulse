@@ -26,6 +26,8 @@ export default function RootLayout() {
     ...FontAwesome.font,
   });
 
+  const { user } = useAuthStore();
+
   useEffect(() => {
     if (error) {
       console.error(error);
@@ -37,7 +39,8 @@ export default function RootLayout() {
     if (loaded) {
       SplashScreen.hideAsync();
     }
-  const { user } = useAuthStore();
+  }, [loaded]);
+
   useEffect(() => {
     if (user?.id) {
       registerForPushNotifications().then(token => {
@@ -45,7 +48,6 @@ export default function RootLayout() {
       });
     }
   }, [user?.id]);
-  }, [loaded]);
 
   if (!loaded) {
     return null;
