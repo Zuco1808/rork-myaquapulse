@@ -9,7 +9,7 @@ import { useAuthStore } from '@/store/auth-store';
 import { useNotificationStore } from '@/store/notification-store';
 import { registerPushToken, clearPushToken } from '@/lib/push-notifications';
 import { deepLinkForNotification } from '@/lib/notification-routing';
-import { initSentry, Sentry } from '@/lib/sentry';
+import { initSentry } from '@/lib/sentry';
 
 // Inicijalizacija što ranije — prije renderinga bilo čega
 initSentry();
@@ -20,7 +20,7 @@ export const unstable_settings = {
   initialRouteName: "(tabs)",
 };
 
-function RootLayout() {
+export default function RootLayout() {
   const [loaded, error] = useFonts({
     ...FontAwesome.font,
   });
@@ -44,9 +44,6 @@ function RootLayout() {
 
   return <RootLayoutNav />;
 }
-
-// Sentry.wrap instrumentira navigaciju i hvata unhandled JS greške
-export default Sentry.wrap(RootLayout);
 
 function RootLayoutNav() {
   const router  = useRouter();
