@@ -9,6 +9,8 @@ interface AuthState {
   user: Profile | null;
   isLoading: boolean;
   error: string | null;
+  /** Call once at app startup — verifies the Supabase session and refreshes profile. */
+  initialize: () => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   clearError: () => void;
@@ -17,12 +19,65 @@ interface AuthState {
   >>) => Promise<void>;
 }
 
+function mapProfile(profile: Record<string, any>): Profile {
+  return {
+    ...profile,
+    permissions: getPermissions(profile.role as UserRole),
+    // Compatibility aliases za stari kod
+    name: profile.full_name,
+    avatar: profile.avatar_url,
+    companyId: profile.utility_id,
+    locationIds: [],
+  } as unknown as Profile;
+}
+
 export const useAuthStore = create<AuthState>()(
   persist(
     (set, get) => ({
       user: null,
       isLoading: false,
       error: null,
+
+      initialize: async () => {
+        set({ isLoading: true });
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+
+          if (!session) {
+            // No active session — clear any stale persisted user
+            set({ user: null, isLoading: false });
+            return;
+          }
+
+          // Session exists — refresh profile from DB to ensure it's current
+          const { data: profile, error: profileError } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', session.user.id)
+            .single();
+
+          if (profileError || !profile) {
+            // Profile fetch failed — keep cached user, don't wipe it
+            set({ isLoading: false });
+            return;
+          }
+
+          if (!profile.is_active) {
+            // Account deactivated — force logout
+            await supabase.auth.signOut();
+            clearSentryUser();
+            set({ user: null, isLoading: false });
+            return;
+          }
+
+          const mappedProfile = mapProfile(profile);
+          set({ user: mappedProfile, isLoading: false });
+          setSentryUser(mappedProfile.id, mappedProfile.email, mappedProfile.role);
+        } catch {
+          // Network error on startup — keep cached user so app stays usable offline
+          set({ isLoading: false });
+        }
+      },
 
       login: async (email, password) => {
         set({ isLoading: true, error: null });
@@ -54,16 +109,7 @@ export const useAuthStore = create<AuthState>()(
             return;
           }
 
-          const mappedProfile: Profile = {
-            ...profile,
-            permissions: getPermissions(profile.role as UserRole),
-            // Compatibility aliases za stari kod
-            name: profile.full_name,
-            avatar: profile.avatar_url,
-            companyId: profile.utility_id,
-            locationIds: [],
-          };
-
+          const mappedProfile = mapProfile(profile);
           set({ user: mappedProfile, isLoading: false });
           setSentryUser(mappedProfile.id, mappedProfile.email, mappedProfile.role);
         } catch {

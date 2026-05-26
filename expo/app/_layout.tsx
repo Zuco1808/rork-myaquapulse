@@ -24,6 +24,7 @@ export default function RootLayout() {
   const [loaded, error] = useFonts({
     ...FontAwesome.font,
   });
+  const initialize = useAuthStore((s) => s.initialize);
 
   useEffect(() => {
     if (error) {
@@ -34,7 +35,9 @@ export default function RootLayout() {
 
   useEffect(() => {
     if (loaded) {
-      SplashScreen.hideAsync();
+      // Verify the Supabase session before hiding the splash screen so
+      // expired JWTs are cleared before the first screen renders.
+      initialize().finally(() => SplashScreen.hideAsync());
     }
   }, [loaded]);
 
