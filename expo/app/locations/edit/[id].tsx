@@ -54,9 +54,9 @@ export default function EditLocationScreen() {
         setName(loc.name        ?? '');
         setAddress(loc.address  ?? '');
         setCity(loc.city        ?? '');
-        setPostalCode(loc.postal_code ?? '');
-        setLatitude(loc.latitude  != null ? String(loc.latitude)  : '');
-        setLongitude(loc.longitude != null ? String(loc.longitude) : '');
+        setPostalCode(loc.postalCode ?? '');
+        setLatitude(loc.coordinates?.latitude   != null ? String(loc.coordinates.latitude)  : '');
+        setLongitude(loc.coordinates?.longitude != null ? String(loc.coordinates.longitude) : '');
       } catch {
         Alert.alert('Greška', 'Lokacija nije pronađena.');
         router.back();
