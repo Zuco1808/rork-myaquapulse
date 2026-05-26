@@ -1,147 +1,136 @@
 import { create } from 'zustand';
-import { persist, createJSONStorage } from 'zustand/middleware';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { mockNotifications } from '@/mocks/notifications';
-
-export type NotificationType = 'info' | 'warning' | 'error' | 'success';
-
-export interface Notification {
-  id: string;
-  userId: string;
-  title: string;
-  message: string;
-  type: NotificationType;
-  isRead: boolean;
-  createdAt: number;
-  relatedEntityId?: string;
-  relatedEntityType?: 'meter' | 'reading' | 'bill' | 'task';
-}
+import * as Notifications from 'expo-notifications';
+import { supabase } from '@/lib/supabase';
+import {
+  getMyNotifications,
+  getUnreadCount,
+  markAsRead as apiMarkAsRead,
+  markAllAsRead as apiMarkAllAsRead,
+  AppNotification,
+} from '@/lib/api/notifications';
 
 interface NotificationState {
-  notifications: Notification[];
+  notifications: AppNotification[];
   unreadCount: number;
   isLoading: boolean;
-  error: string | null;
-  
-  // Actions
-  fetchNotifications: (userId?: string) => Promise<void>;
-  markAsRead: (notificationId: string) => void;
-  markAllAsRead: (userId?: string) => void;
-  deleteNotification: (notificationId: string) => void;
-  sendNotification: (notification: any) => Promise<void>;
+
+  fetchNotifications: () => Promise<void>;
+  fetchUnreadCount: () => Promise<void>;
+  markAsRead: (id: string) => Promise<void>;
+  markAllAsRead: () => Promise<void>;
+  /** Subscribe to real-time inserts for the given userId. Returns unsubscribe fn. */
+  subscribeRealtime: (userId: string) => () => void;
 }
 
-export const useNotificationStore = create<NotificationState>()(
-  persist(
-    (set, get) => ({
-      notifications: [],
-      unreadCount: 0,
-      isLoading: false,
-      error: null,
-      
-      fetchNotifications: async (userId?: string) => {
-        set({ isLoading: true, error: null });
-        
-        try {
-          // In a real app, this would be an API call
-          // For now, we'll use mock data
-          const userNotifications = mockNotifications.filter(
-            notif => notif.userId === userId
-          );
-          
-          set({
-            notifications: userNotifications,
-            unreadCount: userNotifications.filter(n => !n.isRead).length,
-            isLoading: false
-          });
-        } catch (error) {
-          set({
-            error: 'Failed to fetch notifications',
-            isLoading: false
-          });
-        }
-      },
-      
-      markAsRead: (notificationId: string) => {
-        const { notifications } = get();
-        
-        const updatedNotifications = notifications.map(notif =>
-          notif.id === notificationId ? { ...notif, isRead: true } : notif
-        );
-        
-        set({
-          notifications: updatedNotifications,
-          unreadCount: updatedNotifications.filter(n => !n.isRead).length
-        });
-      },
-      
-      markAllAsRead: (userId?: string) => {
-        const { notifications } = get();
-        
-        const updatedNotifications = notifications.map(notif =>
-          notif.userId === userId ? { ...notif, isRead: true } : notif
-        );
-        
-        set({
-          notifications: updatedNotifications,
-          unreadCount: 0
-        });
-      },
-      
-      deleteNotification: (notificationId: string) => {
-        const { notifications } = get();
-        
-        const updatedNotifications = notifications.filter(
-          notif => notif.id !== notificationId
-        );
-        
-        set({
-          notifications: updatedNotifications,
-          unreadCount: updatedNotifications.filter(n => !n.isRead).length
-        });
-      },
-      
-      sendNotification: async (notification: any) => {
-        set({ isLoading: true, error: null });
-        
-        try {
-          // In a real app, this would be an API call to send the notification
-          // For now, we'll simulate a delay
-          await new Promise(resolve => setTimeout(resolve, 1000));
-          
-          // Create a new notification object
-          const newNotification: Notification = {
-            id: `notif${Date.now()}`,
-            userId: notification.targetAll ? 'all' : notification.targetRoles.join(','),
-            title: notification.title,
-            message: notification.message,
-            type: notification.type as NotificationType,
-            isRead: false,
-            createdAt: Date.now()
-          };
-          
-          // In a real app, this would be handled by the backend
-          // For now, we'll just add it to our local state
-          const { notifications } = get();
-          
-          set({
-            notifications: [...notifications, newNotification],
-            isLoading: false
-          });
-          
-          return Promise.resolve();
-        } catch (error) {
-          set({
-            error: 'Failed to send notification',
-            isLoading: false
-          });
-          return Promise.reject(error);
-        }
-      }
-    }),
-    {
-      name: 'notification-storage',
-      storage: createJSONStorage(() => AsyncStorage)
+/** Sync Expo app badge with current unread count (best effort). */
+const syncBadge = (count: number) => {
+  Notifications.setBadgeCountAsync(count).catch(() => {});
+};
+
+export const useNotificationStore = create<NotificationState>((set, get) => ({
+  notifications: [],
+  unreadCount: 0,
+  isLoading: false,
+
+  fetchNotifications: async () => {
+    set({ isLoading: true });
+    try {
+      const data = await getMyNotifications();
+      const unreadCount = data.filter((n) => !n.is_read).length;
+      set({ notifications: data, unreadCount, isLoading: false });
+      syncBadge(unreadCount);
+    } catch {
+      set({ isLoading: false });
     }
-  )
-);
+  },
+
+  fetchUnreadCount: async () => {
+    try {
+      const count = await getUnreadCount();
+      set({ unreadCount: count });
+      syncBadge(count);
+    } catch {}
+  },
+
+  markAsRead: async (id: string) => {
+    try {
+      await apiMarkAsRead(id);
+      set((state) => {
+        const unreadCount = Math.max(0, state.unreadCount - 1);
+        syncBadge(unreadCount);
+        return {
+          notifications: state.notifications.map((n) =>
+            n.id === id ? { ...n, is_read: true } : n,
+          ),
+          unreadCount,
+        };
+      });
+    } catch {}
+  },
+
+  markAllAsRead: async () => {
+    try {
+      await apiMarkAllAsRead();
+      set((state) => {
+        syncBadge(0);
+        return {
+          notifications: state.notifications.map((n) => ({ ...n, is_read: true })),
+          unreadCount: 0,
+        };
+      });
+    } catch {}
+  },
+
+  /**
+   * Opens a Supabase Realtime channel that listens for INSERT events on
+   * `notifications` filtered to the current user. New rows are prepended to
+   * the list and the badge is updated immediately — no polling required.
+   *
+   * Call this once after login (from _layout.tsx) and call the returned
+   * cleanup function on logout.
+   */
+  subscribeRealtime: (userId: string) => {
+    const channel = supabase
+      .channel(`notifications:${userId}`)
+      .on(
+        'postgres_changes',
+        {
+          event:  'INSERT',
+          schema: 'public',
+          table:  'notifications',
+          filter: `user_id=eq.${userId}`,
+        },
+        (payload) => {
+          const raw = payload.new as any;
+          const notif: AppNotification = {
+            id:                  raw.id,
+            user_id:             raw.user_id,
+            utility_id:          raw.utility_id ?? null,
+            title:               raw.title,
+            message:             raw.message,
+            type:                raw.type,
+            is_read:             raw.is_read,
+            related_entity_id:   raw.related_entity_id   ?? null,
+            related_entity_type: raw.related_entity_type ?? null,
+            created_at:          raw.created_at,
+            created_by:          raw.created_by ?? null,
+          };
+
+          set((state) => {
+            const unreadCount = state.unreadCount + 1;
+            syncBadge(unreadCount);
+            return {
+              notifications: [notif, ...state.notifications],
+              unreadCount,
+            };
+          });
+        },
+      )
+      .subscribe();
+
+    // Return cleanup function
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  },
+}));

@@ -68,6 +68,42 @@ export const updateUser = async (id: string, updates: Partial<{
   return mapProfile(data);
 };
 
+export const createUser = async (params: {
+  email: string;
+  password: string;
+  full_name: string;
+  phone?: string;
+  role: UserRole;
+  utility_id?: string;
+  is_active?: boolean;
+}) => {
+  const { data, error } = await supabase.functions.invoke('create-user', {
+    body: params,
+  });
+
+  if (error) throw error;
+  if (data?.error) throw new Error(data.error);
+  return data.user as Profile;
+};
+
+export const updateUserFull = async (params: {
+  target_id: string;
+  full_name?: string;
+  phone?: string;
+  role?: UserRole;
+  utility_id?: string;
+  is_active?: boolean;
+  password?: string;
+}) => {
+  const { data, error } = await supabase.functions.invoke('update-user', {
+    body: params,
+  });
+
+  if (error) throw error;
+  if (data?.error) throw new Error(data.error);
+  return data.user as Profile | null;
+};
+
 export const inviteUser = async (
   email: string,
   role: UserRole,

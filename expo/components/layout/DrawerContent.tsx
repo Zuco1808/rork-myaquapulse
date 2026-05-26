@@ -5,12 +5,13 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
-  Image
+  Image,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import {
   Users,
   Building,
+  Building2,
   MapPin,
   Droplet,
   FileText,
@@ -23,6 +24,7 @@ import {
   HelpCircle,
   AlertTriangle,
   ClipboardList,
+  DollarSign,
 } from 'lucide-react-native';
 import { useAuthStore } from '@/store/auth-store';
 import { Avatar } from '@/components/ui/Avatar';
@@ -51,87 +53,93 @@ export const DrawerContent: React.FC<DrawerContentProps> = ({ onClose }) => {
 
   const renderSuperAdminMenu = () => (
     <>
-      <MenuItem icon={<Home size={20} color={Colors.primary} />} label="Početna" onPress={() => handleNavigation('/(tabs)')} />
-      <MenuItem icon={<Users size={20} color={Colors.primary} />} label="Korisnici" onPress={() => handleNavigation('/users')} />
-      <MenuItem icon={<Building size={20} color={Colors.primary} />} label="Vodovodi" onPress={() => handleNavigation('/companies')} />
-      <MenuItem icon={<MapPin size={20} color={Colors.primary} />} label="Lokacije" onPress={() => handleNavigation('/locations')} />
-      <MenuItem icon={<Droplet size={20} color={Colors.primary} />} label="Vodomjeri" onPress={() => handleNavigation('/meters')} />
-      <MenuItem icon={<FileText size={20} color={Colors.primary} />} label="Očitanja" onPress={() => handleNavigation('/(tabs)/readings')} />
-      <MenuItem icon={<CreditCard size={20} color={Colors.primary} />} label="Računi" onPress={() => handleNavigation('/bills')} />
-      <MenuItem icon={<ClipboardList size={20} color={Colors.primary} />} label="Zadaci" onPress={() => handleNavigation('/tasks')} />
-      <MenuItem icon={<BarChart3 size={20} color={Colors.primary} />} label="Izvještaji" onPress={() => handleNavigation('/(tabs)/reports')} />
-      <MenuItem icon={<Bell size={20} color={Colors.primary} />} label="Obavještenja" onPress={() => handleNavigation('/notifications')} />
+      <MenuItem icon={<Home size={20} color={Colors.primary} />}        label="Početna"      onPress={() => handleNavigation('/(tabs)')} />
+      <MenuItem icon={<Building2 size={20} color={Colors.primary} />}   label="Distributeri" onPress={() => handleNavigation('/distributors')} />
+      <MenuItem icon={<Building size={20} color={Colors.primary} />}    label="Vodovodi"     onPress={() => handleNavigation('/companies')} />
+      <MenuItem icon={<Users size={20} color={Colors.primary} />}       label="Korisnici"    onPress={() => handleNavigation('/users')} />
+      <MenuItem icon={<MapPin size={20} color={Colors.primary} />}      label="Lokacije"     onPress={() => handleNavigation('/locations')} />
+      <MenuItem icon={<Droplet size={20} color={Colors.primary} />}     label="Vodomjeri"    onPress={() => handleNavigation('/meters')} />
+      <MenuItem icon={<FileText size={20} color={Colors.primary} />}    label="Očitanja"     onPress={() => handleNavigation('/(tabs)/readings')} />
+      <MenuItem icon={<CreditCard size={20} color={Colors.primary} />}  label="Računi"       onPress={() => handleNavigation('/bills')} />
+      <MenuItem icon={<ClipboardList size={20} color={Colors.primary} />} label="Zadaci"    onPress={() => handleNavigation('/tasks')} />
+      <MenuItem icon={<DollarSign size={20} color={Colors.primary} />}  label="Cijene"       onPress={() => handleNavigation('/pricing')} />
+      <MenuItem icon={<BarChart3 size={20} color={Colors.primary} />}   label="Izvještaji"   onPress={() => handleNavigation('/(tabs)/reports')} />
+      <MenuItem icon={<Bell size={20} color={Colors.primary} />}        label="Obavještenja" onPress={() => handleNavigation('/notifications')} />
       <MenuItem icon={<AlertTriangle size={20} color={Colors.primary} />} label="Upozorenja" onPress={() => handleNavigation('/alerts')} />
-      <MenuItem icon={<Settings size={20} color={Colors.primary} />} label="Postavke" onPress={() => handleNavigation('/(tabs)/profile')} />
+      <MenuItem icon={<Settings size={20} color={Colors.primary} />}    label="Postavke"     onPress={() => handleNavigation('/(tabs)/profile')} />
     </>
   );
 
   const renderDistributorMenu = () => (
     <>
-      <MenuItem icon={<Home size={20} color={Colors.primary} />} label="Početna" onPress={() => handleNavigation('/(tabs)')} />
-      <MenuItem icon={<Building size={20} color={Colors.primary} />} label="Vodovodi" onPress={() => handleNavigation('/companies')} />
-      <MenuItem icon={<Users size={20} color={Colors.primary} />} label="Korisnici" onPress={() => handleNavigation('/users')} />
-      <MenuItem icon={<BarChart3 size={20} color={Colors.primary} />} label="Izvještaji" onPress={() => handleNavigation('/(tabs)/reports')} />
-      <MenuItem icon={<Settings size={20} color={Colors.primary} />} label="Postavke" onPress={() => handleNavigation('/(tabs)/profile')} />
+      <MenuItem icon={<Home size={20} color={Colors.primary} />}       label="Početna"      onPress={() => handleNavigation('/(tabs)')} />
+      <MenuItem icon={<Building2 size={20} color={Colors.primary} />}  label="Distributeri" onPress={() => handleNavigation('/distributors')} />
+      <MenuItem icon={<Building size={20} color={Colors.primary} />}   label="Vodovodi"     onPress={() => handleNavigation('/companies')} />
+      <MenuItem icon={<Users size={20} color={Colors.primary} />}      label="Korisnici"    onPress={() => handleNavigation('/users')} />
+      <MenuItem icon={<BarChart3 size={20} color={Colors.primary} />}  label="Izvještaji"   onPress={() => handleNavigation('/(tabs)/reports')} />
+      <MenuItem icon={<Bell size={20} color={Colors.primary} />}       label="Obavještenja" onPress={() => handleNavigation('/notifications')} />
+      <MenuItem icon={<Settings size={20} color={Colors.primary} />}   label="Postavke"     onPress={() => handleNavigation('/(tabs)/profile')} />
     </>
   );
 
   const renderUtilityAdminMenu = () => (
     <>
-      <MenuItem icon={<Home size={20} color={Colors.primary} />} label="Početna" onPress={() => handleNavigation('/(tabs)')} />
-      <MenuItem icon={<Users size={20} color={Colors.primary} />} label="Korisnici" onPress={() => handleNavigation('/users')} />
-      <MenuItem icon={<MapPin size={20} color={Colors.primary} />} label="Lokacije" onPress={() => handleNavigation('/locations')} />
-      <MenuItem icon={<Droplet size={20} color={Colors.primary} />} label="Vodomjeri" onPress={() => handleNavigation('/meters')} />
-      <MenuItem icon={<FileText size={20} color={Colors.primary} />} label="Očitanja" onPress={() => handleNavigation('/(tabs)/readings')} />
-      <MenuItem icon={<CreditCard size={20} color={Colors.primary} />} label="Računi" onPress={() => handleNavigation('/bills')} />
-      <MenuItem icon={<ClipboardList size={20} color={Colors.primary} />} label="Zadaci" onPress={() => handleNavigation('/tasks')} />
-      <MenuItem icon={<BarChart3 size={20} color={Colors.primary} />} label="Izvještaji" onPress={() => handleNavigation('/(tabs)/reports')} />
-      <MenuItem icon={<Bell size={20} color={Colors.primary} />} label="Obavještenja" onPress={() => handleNavigation('/notifications')} />
+      <MenuItem icon={<Home size={20} color={Colors.primary} />}        label="Početna"      onPress={() => handleNavigation('/(tabs)')} />
+      <MenuItem icon={<Users size={20} color={Colors.primary} />}       label="Korisnici"    onPress={() => handleNavigation('/users')} />
+      <MenuItem icon={<MapPin size={20} color={Colors.primary} />}      label="Lokacije"     onPress={() => handleNavigation('/locations')} />
+      <MenuItem icon={<Droplet size={20} color={Colors.primary} />}     label="Vodomjeri"    onPress={() => handleNavigation('/meters')} />
+      <MenuItem icon={<FileText size={20} color={Colors.primary} />}    label="Očitanja"     onPress={() => handleNavigation('/(tabs)/readings')} />
+      <MenuItem icon={<CreditCard size={20} color={Colors.primary} />}  label="Računi"       onPress={() => handleNavigation('/bills')} />
+      <MenuItem icon={<ClipboardList size={20} color={Colors.primary} />} label="Zadaci"    onPress={() => handleNavigation('/tasks')} />
+      <MenuItem icon={<DollarSign size={20} color={Colors.primary} />}  label="Cijene"       onPress={() => handleNavigation('/pricing')} />
+      <MenuItem icon={<BarChart3 size={20} color={Colors.primary} />}   label="Izvještaji"   onPress={() => handleNavigation('/(tabs)/reports')} />
+      <MenuItem icon={<Bell size={20} color={Colors.primary} />}        label="Obavještenja" onPress={() => handleNavigation('/notifications')} />
       <MenuItem icon={<AlertTriangle size={20} color={Colors.primary} />} label="Upozorenja" onPress={() => handleNavigation('/alerts')} />
-      <MenuItem icon={<Settings size={20} color={Colors.primary} />} label="Postavke" onPress={() => handleNavigation('/(tabs)/profile')} />
+      <MenuItem icon={<Settings size={20} color={Colors.primary} />}    label="Postavke"     onPress={() => handleNavigation('/(tabs)/profile')} />
     </>
   );
 
   const renderFinanceMenu = () => (
     <>
-      <MenuItem icon={<Home size={20} color={Colors.primary} />} label="Početna" onPress={() => handleNavigation('/(tabs)')} />
-      <MenuItem icon={<Users size={20} color={Colors.primary} />} label="Korisnici" onPress={() => handleNavigation('/users')} />
-      <MenuItem icon={<Droplet size={20} color={Colors.primary} />} label="Vodomjeri" onPress={() => handleNavigation('/meters')} />
-      <MenuItem icon={<FileText size={20} color={Colors.primary} />} label="Očitanja" onPress={() => handleNavigation('/(tabs)/readings')} />
-      <MenuItem icon={<CreditCard size={20} color={Colors.primary} />} label="Računi" onPress={() => handleNavigation('/bills')} />
-      <MenuItem icon={<BarChart3 size={20} color={Colors.primary} />} label="Izvještaji" onPress={() => handleNavigation('/(tabs)/reports')} />
-      <MenuItem icon={<Bell size={20} color={Colors.primary} />} label="Obavještenja" onPress={() => handleNavigation('/notifications')} />
-      <MenuItem icon={<Settings size={20} color={Colors.primary} />} label="Postavke" onPress={() => handleNavigation('/(tabs)/profile')} />
+      <MenuItem icon={<Home size={20} color={Colors.primary} />}       label="Početna"      onPress={() => handleNavigation('/(tabs)')} />
+      <MenuItem icon={<Users size={20} color={Colors.primary} />}      label="Korisnici"    onPress={() => handleNavigation('/users')} />
+      <MenuItem icon={<Droplet size={20} color={Colors.primary} />}    label="Vodomjeri"    onPress={() => handleNavigation('/meters')} />
+      <MenuItem icon={<FileText size={20} color={Colors.primary} />}   label="Očitanja"     onPress={() => handleNavigation('/(tabs)/readings')} />
+      <MenuItem icon={<CreditCard size={20} color={Colors.primary} />} label="Računi"       onPress={() => handleNavigation('/bills')} />
+      <MenuItem icon={<DollarSign size={20} color={Colors.primary} />} label="Cijene"       onPress={() => handleNavigation('/pricing')} />
+      <MenuItem icon={<BarChart3 size={20} color={Colors.primary} />}  label="Izvještaji"   onPress={() => handleNavigation('/(tabs)/reports')} />
+      <MenuItem icon={<Bell size={20} color={Colors.primary} />}       label="Obavještenja" onPress={() => handleNavigation('/notifications')} />
+      <MenuItem icon={<Settings size={20} color={Colors.primary} />}   label="Postavke"     onPress={() => handleNavigation('/(tabs)/profile')} />
     </>
   );
 
   const renderWorkerMenu = () => (
     <>
-      <MenuItem icon={<Home size={20} color={Colors.primary} />} label="Početna" onPress={() => handleNavigation('/(tabs)')} />
-      <MenuItem icon={<FileText size={20} color={Colors.primary} />} label="Očitanja" onPress={() => handleNavigation('/(tabs)/readings')} />
-      <MenuItem icon={<ClipboardList size={20} color={Colors.primary} />} label="Zadaci" onPress={() => handleNavigation('/tasks')} />
-      <MenuItem icon={<MapPin size={20} color={Colors.primary} />} label="Lokacije" onPress={() => handleNavigation('/locations')} />
-      <MenuItem icon={<Droplet size={20} color={Colors.primary} />} label="Vodomjeri" onPress={() => handleNavigation('/meters')} />
-      <MenuItem icon={<Bell size={20} color={Colors.primary} />} label="Obavještenja" onPress={() => handleNavigation('/notifications')} />
+      <MenuItem icon={<Home size={20} color={Colors.primary} />}         label="Početna"      onPress={() => handleNavigation('/(tabs)')} />
+      <MenuItem icon={<FileText size={20} color={Colors.primary} />}     label="Očitanja"     onPress={() => handleNavigation('/(tabs)/readings')} />
+      <MenuItem icon={<ClipboardList size={20} color={Colors.primary} />} label="Zadaci"      onPress={() => handleNavigation('/tasks')} />
+      <MenuItem icon={<MapPin size={20} color={Colors.primary} />}       label="Lokacije"     onPress={() => handleNavigation('/locations')} />
+      <MenuItem icon={<Droplet size={20} color={Colors.primary} />}      label="Vodomjeri"    onPress={() => handleNavigation('/meters')} />
+      <MenuItem icon={<Bell size={20} color={Colors.primary} />}         label="Obavještenja" onPress={() => handleNavigation('/notifications')} />
       <MenuItem icon={<AlertTriangle size={20} color={Colors.primary} />} label="Prijavi kvar" onPress={() => handleNavigation('/support/report-issue')} />
-      <MenuItem icon={<HelpCircle size={20} color={Colors.primary} />} label="Podrška" onPress={() => handleNavigation('/support')} />
-      <MenuItem icon={<Settings size={20} color={Colors.primary} />} label="Postavke" onPress={() => handleNavigation('/(tabs)/profile')} />
+      <MenuItem icon={<HelpCircle size={20} color={Colors.primary} />}   label="Podrška"      onPress={() => handleNavigation('/support')} />
+      <MenuItem icon={<Settings size={20} color={Colors.primary} />}     label="Postavke"     onPress={() => handleNavigation('/(tabs)/profile')} />
     </>
   );
 
   const renderEndUserMenu = () => (
     <>
-      <MenuItem icon={<Home size={20} color={Colors.primary} />} label="Početna" onPress={() => handleNavigation('/(tabs)')} />
-      <MenuItem icon={<Droplet size={20} color={Colors.primary} />} label="Vodomjeri" onPress={() => handleNavigation('/meters')} />
+      <MenuItem icon={<Home size={20} color={Colors.primary} />}         label="Početna"      onPress={() => handleNavigation('/(tabs)')} />
+      <MenuItem icon={<Droplet size={20} color={Colors.primary} />}      label="Vodomjeri"    onPress={() => handleNavigation('/meters')} />
       {user?.permissions?.canReadMeters && (
         <MenuItem icon={<FileText size={20} color={Colors.primary} />} label="Očitanja" onPress={() => handleNavigation('/(tabs)/readings')} />
       )}
-      <MenuItem icon={<CreditCard size={20} color={Colors.primary} />} label="Računi" onPress={() => handleNavigation('/bills')} />
-      <MenuItem icon={<BarChart3 size={20} color={Colors.primary} />} label="Potrošnja" onPress={() => handleNavigation('/consumption')} />
-      <MenuItem icon={<Bell size={20} color={Colors.primary} />} label="Obavještenja" onPress={() => handleNavigation('/notifications')} />
+      <MenuItem icon={<CreditCard size={20} color={Colors.primary} />}   label="Računi"       onPress={() => handleNavigation('/bills')} />
+      <MenuItem icon={<BarChart3 size={20} color={Colors.primary} />}    label="Potrošnja"    onPress={() => handleNavigation('/consumption')} />
+      <MenuItem icon={<Bell size={20} color={Colors.primary} />}         label="Obavještenja" onPress={() => handleNavigation('/notifications')} />
       <MenuItem icon={<AlertTriangle size={20} color={Colors.primary} />} label="Prijavi kvar" onPress={() => handleNavigation('/support/report-issue')} />
-      <MenuItem icon={<HelpCircle size={20} color={Colors.primary} />} label="Podrška" onPress={() => handleNavigation('/support')} />
-      <MenuItem icon={<Settings size={20} color={Colors.primary} />} label="Postavke" onPress={() => handleNavigation('/(tabs)/profile')} />
+      <MenuItem icon={<HelpCircle size={20} color={Colors.primary} />}   label="Podrška"      onPress={() => handleNavigation('/support')} />
+      <MenuItem icon={<Settings size={20} color={Colors.primary} />}     label="Postavke"     onPress={() => handleNavigation('/(tabs)/profile')} />
     </>
   );
 
@@ -209,7 +217,7 @@ const MenuItem: React.FC<MenuItemProps> = ({ icon, label, onPress }) => (
 );
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff' },
+  container:   { flex: 1, backgroundColor: '#fff' },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -217,7 +225,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: Colors.border,
   },
-  logo: { width: 40, height: 40, marginRight: 12 },
+  logo:    { width: 40, height: 40, marginRight: 12 },
   appName: { fontSize: 18, fontWeight: 'bold', color: Colors.primary },
   userInfo: {
     flexDirection: 'row',
@@ -227,8 +235,8 @@ const styles = StyleSheet.create({
     borderBottomColor: Colors.border,
   },
   userDetails: { marginLeft: 12 },
-  userName: { fontSize: 16, fontWeight: 'bold', color: Colors.text, marginBottom: 4 },
-  userRole: { fontSize: 14, color: Colors.textLight },
+  userName:    { fontSize: 16, fontWeight: 'bold', color: Colors.text, marginBottom: 4 },
+  userRole:    { fontSize: 14, color: Colors.textLight },
   menuContainer: { flex: 1 },
   menuItem: {
     flexDirection: 'row',
@@ -238,7 +246,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: Colors.border,
   },
-  menuItemIcon: { width: 24, marginRight: 16, alignItems: 'center' },
+  menuItemIcon:  { width: 24, marginRight: 16, alignItems: 'center' },
   menuItemLabel: { fontSize: 16, color: Colors.text },
   logoutButton: {
     flexDirection: 'row',
@@ -247,6 +255,6 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: Colors.border,
   },
-  logoutIcon: { marginRight: 16, width: 20, alignItems: 'center' },
-  logoutText: { fontSize: 16, color: Colors.error, fontWeight: '500' },
+  logoutIcon:  { marginRight: 16, width: 20, alignItems: 'center' },
+  logoutText:  { fontSize: 16, color: Colors.error, fontWeight: '500' },
 });
