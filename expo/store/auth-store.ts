@@ -12,7 +12,7 @@ interface AuthState {
   logout: () => Promise<void>;
   clearError: () => void;
   updateUserProfile: (updates: Partial<Pick<Profile,
-    'full_name' | 'phone' | 'avatar_url'
+    'full_name' | 'phone' | 'avatar_url' | 'push_token' | 'email_notifications_enabled'
   >>) => Promise<void>;
 }
 
@@ -85,9 +85,8 @@ export const useAuthStore = create<AuthState>()(
           .update(updates)
           .eq('id', user.id);
 
-        if (!error) {
-          set({ user: { ...user, ...updates } });
-        }
+        if (error) throw error;
+        set({ user: { ...user, ...updates } });
       },
     }),
     {

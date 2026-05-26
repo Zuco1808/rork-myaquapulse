@@ -98,6 +98,9 @@ export interface Profile {
   created_at: string;
   updated_at: string;
   permissions: UserPermissions;
+  // Notification preferences
+  push_token?: string | null;
+  email_notifications_enabled?: boolean;
   // Compatibility aliases — mapirani u auth-store
   name?: string;
   avatar?: string;
