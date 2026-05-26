@@ -2,6 +2,7 @@
 -- AQUAPULSE RLS POLICIES
 -- Hijerarhija: super_admin > distributor_admin > utility_admin
 --              > finance > worker > end_user
+-- Idempotent: DROP POLICY IF EXISTS before each CREATE POLICY.
 -- ============================================================
 
 -- Helper functions (SECURITY DEFINER izbjegava beskonačnu rekurziju na profiles)
@@ -25,17 +26,21 @@ $$;
 -- ============================================================
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 
--- Svako vidi vlastiti profil
+DROP POLICY IF EXISTS "profiles_own_select"               ON profiles;
+DROP POLICY IF EXISTS "profiles_super_admin_all"          ON profiles;
+DROP POLICY IF EXISTS "profiles_distributor_admin_select" ON profiles;
+DROP POLICY IF EXISTS "profiles_utility_admin_select"     ON profiles;
+DROP POLICY IF EXISTS "profiles_utility_admin_update"     ON profiles;
+DROP POLICY IF EXISTS "profiles_own_update"               ON profiles;
+
 CREATE POLICY "profiles_own_select" ON profiles
   FOR SELECT TO authenticated
   USING (id = auth.uid());
 
--- super_admin vidi i mijenja sve profile
 CREATE POLICY "profiles_super_admin_all" ON profiles
   FOR ALL TO authenticated
   USING (my_role() = 'super_admin');
 
--- distributor_admin vidi profile svog distributora
 CREATE POLICY "profiles_distributor_admin_select" ON profiles
   FOR SELECT TO authenticated
   USING (
@@ -43,7 +48,6 @@ CREATE POLICY "profiles_distributor_admin_select" ON profiles
     AND distributor_id = my_distributor_id()
   );
 
--- utility_admin vidi i mijenja profile svog vodovoda
 CREATE POLICY "profiles_utility_admin_select" ON profiles
   FOR SELECT TO authenticated
   USING (
@@ -56,10 +60,9 @@ CREATE POLICY "profiles_utility_admin_update" ON profiles
   USING (
     my_role() = 'utility_admin'
     AND utility_id = my_utility_id()
-    AND id != auth.uid() -- ne može sam sebe admin-override-ovati
+    AND id != auth.uid()
   );
 
--- Svaki user može ažurirati vlastiti profil (ime, telefon)
 CREATE POLICY "profiles_own_update" ON profiles
   FOR UPDATE TO authenticated
   USING (id = auth.uid())
@@ -69,6 +72,10 @@ CREATE POLICY "profiles_own_update" ON profiles
 -- distributors
 -- ============================================================
 ALTER TABLE distributors ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "distributors_super_admin_all"          ON distributors;
+DROP POLICY IF EXISTS "distributors_distributor_admin_select" ON distributors;
+DROP POLICY IF EXISTS "distributors_utility_admin_select"     ON distributors;
 
 CREATE POLICY "distributors_super_admin_all" ON distributors
   FOR ALL TO authenticated
@@ -81,7 +88,6 @@ CREATE POLICY "distributors_distributor_admin_select" ON distributors
     AND id = my_distributor_id()
   );
 
--- utility_admin vidi distributora svog vodovoda
 CREATE POLICY "distributors_utility_admin_select" ON distributors
   FOR SELECT TO authenticated
   USING (
@@ -94,6 +100,12 @@ CREATE POLICY "distributors_utility_admin_select" ON distributors
 -- ============================================================
 ALTER TABLE water_utilities ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "utilities_super_admin_all"        ON water_utilities;
+DROP POLICY IF EXISTS "utilities_distributor_admin_all"  ON water_utilities;
+DROP POLICY IF EXISTS "utilities_utility_admin_select"   ON water_utilities;
+DROP POLICY IF EXISTS "utilities_utility_admin_update"   ON water_utilities;
+DROP POLICY IF EXISTS "utilities_end_user_select"        ON water_utilities;
+
 CREATE POLICY "utilities_super_admin_all" ON water_utilities
   FOR ALL TO authenticated
   USING (my_role() = 'super_admin');
@@ -105,7 +117,6 @@ CREATE POLICY "utilities_distributor_admin_all" ON water_utilities
     AND distributor_id = my_distributor_id()
   );
 
--- utility_admin vidi i uređuje vlastiti vodovod
 CREATE POLICY "utilities_utility_admin_select" ON water_utilities
   FOR SELECT TO authenticated
   USING (
@@ -120,7 +131,6 @@ CREATE POLICY "utilities_utility_admin_update" ON water_utilities
     AND id = my_utility_id()
   );
 
--- end_user vidi sve aktivne vodovode (za registraciju)
 CREATE POLICY "utilities_end_user_select" ON water_utilities
   FOR SELECT TO authenticated
   USING (is_active = true AND my_role() = 'end_user');
@@ -130,11 +140,14 @@ CREATE POLICY "utilities_end_user_select" ON water_utilities
 -- ============================================================
 ALTER TABLE connections ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "connections_super_admin_all"    ON connections;
+DROP POLICY IF EXISTS "connections_utility_staff_all"  ON connections;
+DROP POLICY IF EXISTS "connections_end_user_select"    ON connections;
+
 CREATE POLICY "connections_super_admin_all" ON connections
   FOR ALL TO authenticated
   USING (my_role() = 'super_admin');
 
--- utility_admin, finance, worker vide i upravljaju priključcima svog vodovoda
 CREATE POLICY "connections_utility_staff_all" ON connections
   FOR ALL TO authenticated
   USING (
@@ -142,7 +155,6 @@ CREATE POLICY "connections_utility_staff_all" ON connections
     AND utility_id = my_utility_id()
   );
 
--- end_user vidi vlastite priključke
 CREATE POLICY "connections_end_user_select" ON connections
   FOR SELECT TO authenticated
   USING (
@@ -155,11 +167,17 @@ CREATE POLICY "connections_end_user_select" ON connections
 -- ============================================================
 ALTER TABLE meter_readings ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "readings_super_admin_all"          ON meter_readings;
+DROP POLICY IF EXISTS "readings_utility_staff_select"     ON meter_readings;
+DROP POLICY IF EXISTS "readings_utility_admin_insert"     ON meter_readings;
+DROP POLICY IF EXISTS "readings_utility_admin_update"     ON meter_readings;
+DROP POLICY IF EXISTS "readings_end_user_select"          ON meter_readings;
+DROP POLICY IF EXISTS "readings_end_user_insert"          ON meter_readings;
+
 CREATE POLICY "readings_super_admin_all" ON meter_readings
   FOR ALL TO authenticated
   USING (my_role() = 'super_admin');
 
--- utility staff vidi i upisuje očitavanja svog vodovoda
 CREATE POLICY "readings_utility_staff_select" ON meter_readings
   FOR SELECT TO authenticated
   USING (
@@ -181,7 +199,6 @@ CREATE POLICY "readings_utility_admin_update" ON meter_readings
     AND utility_id = my_utility_id()
   );
 
--- end_user vidi očitavanja vlastitih priključaka
 CREATE POLICY "readings_end_user_select" ON meter_readings
   FOR SELECT TO authenticated
   USING (
@@ -191,7 +208,6 @@ CREATE POLICY "readings_end_user_select" ON meter_readings
     )
   );
 
--- end_user može upisati vlastito očitavanje (self-reading)
 CREATE POLICY "readings_end_user_insert" ON meter_readings
   FOR INSERT TO authenticated
   WITH CHECK (
@@ -206,11 +222,15 @@ CREATE POLICY "readings_end_user_insert" ON meter_readings
 -- ============================================================
 ALTER TABLE invoices ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "invoices_super_admin_all"       ON invoices;
+DROP POLICY IF EXISTS "invoices_utility_finance_all"   ON invoices;
+DROP POLICY IF EXISTS "invoices_worker_select"         ON invoices;
+DROP POLICY IF EXISTS "invoices_end_user_select"       ON invoices;
+
 CREATE POLICY "invoices_super_admin_all" ON invoices
   FOR ALL TO authenticated
   USING (my_role() = 'super_admin');
 
--- utility_admin i finance upravljaju računima svog vodovoda
 CREATE POLICY "invoices_utility_finance_all" ON invoices
   FOR ALL TO authenticated
   USING (
@@ -218,7 +238,6 @@ CREATE POLICY "invoices_utility_finance_all" ON invoices
     AND utility_id = my_utility_id()
   );
 
--- worker samo čita račune
 CREATE POLICY "invoices_worker_select" ON invoices
   FOR SELECT TO authenticated
   USING (
@@ -226,7 +245,6 @@ CREATE POLICY "invoices_worker_select" ON invoices
     AND utility_id = my_utility_id()
   );
 
--- end_user vidi vlastite račune
 CREATE POLICY "invoices_end_user_select" ON invoices
   FOR SELECT TO authenticated
   USING (
@@ -241,11 +259,16 @@ CREATE POLICY "invoices_end_user_select" ON invoices
 -- ============================================================
 ALTER TABLE tasks ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "tasks_super_admin_all"    ON tasks;
+DROP POLICY IF EXISTS "tasks_utility_admin_all"  ON tasks;
+DROP POLICY IF EXISTS "tasks_finance_select"     ON tasks;
+DROP POLICY IF EXISTS "tasks_worker_select"      ON tasks;
+DROP POLICY IF EXISTS "tasks_worker_update"      ON tasks;
+
 CREATE POLICY "tasks_super_admin_all" ON tasks
   FOR ALL TO authenticated
   USING (my_role() = 'super_admin');
 
--- utility_admin kreira, čita i dodjeljuje taskove
 CREATE POLICY "tasks_utility_admin_all" ON tasks
   FOR ALL TO authenticated
   USING (
@@ -253,7 +276,6 @@ CREATE POLICY "tasks_utility_admin_all" ON tasks
     AND utility_id = my_utility_id()
   );
 
--- finance čita taskove svog vodovoda
 CREATE POLICY "tasks_finance_select" ON tasks
   FOR SELECT TO authenticated
   USING (
@@ -261,7 +283,6 @@ CREATE POLICY "tasks_finance_select" ON tasks
     AND utility_id = my_utility_id()
   );
 
--- worker vidi taskove svog vodovoda (dodijeljene ili otvorene)
 CREATE POLICY "tasks_worker_select" ON tasks
   FOR SELECT TO authenticated
   USING (
@@ -270,7 +291,6 @@ CREATE POLICY "tasks_worker_select" ON tasks
     AND (assigned_to = auth.uid() OR assigned_to IS NULL)
   );
 
--- worker može ažurirati status vlastitog taska
 CREATE POLICY "tasks_worker_update" ON tasks
   FOR UPDATE TO authenticated
   USING (
@@ -287,11 +307,15 @@ CREATE POLICY "tasks_worker_update" ON tasks
 -- ============================================================
 ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "notifications_super_admin_all"    ON notifications;
+DROP POLICY IF EXISTS "notifications_utility_admin_all"  ON notifications;
+DROP POLICY IF EXISTS "notifications_own_select"         ON notifications;
+DROP POLICY IF EXISTS "notifications_own_update"         ON notifications;
+
 CREATE POLICY "notifications_super_admin_all" ON notifications
   FOR ALL TO authenticated
   USING (my_role() = 'super_admin');
 
--- utility_admin šalje i vidi notifikacije svog vodovoda
 CREATE POLICY "notifications_utility_admin_all" ON notifications
   FOR ALL TO authenticated
   USING (
@@ -299,12 +323,10 @@ CREATE POLICY "notifications_utility_admin_all" ON notifications
     AND utility_id = my_utility_id()
   );
 
--- Svaki user vidi vlastite notifikacije
 CREATE POLICY "notifications_own_select" ON notifications
   FOR SELECT TO authenticated
   USING (user_id = auth.uid());
 
--- User može označiti vlastite notifikacije kao pročitane
 CREATE POLICY "notifications_own_update" ON notifications
   FOR UPDATE TO authenticated
   USING (user_id = auth.uid())
