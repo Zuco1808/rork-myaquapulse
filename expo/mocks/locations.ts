@@ -1,4 +1,4 @@
-import { Location, WaterMeter, MeterReading, Bill } from '@/types/location';
+import { Location, WaterMeter, ReadingDisplay, Bill } from '@/types/user';
 
 export const mockLocations: Location[] = [
   {
@@ -108,7 +108,7 @@ export const mockMeters: WaterMeter[] = [
   },
 ];
 
-export const mockReadings: MeterReading[] = [
+export const mockReadings: ReadingDisplay[] = [
   {
     id: 'r1',
     meterId: 'm1',

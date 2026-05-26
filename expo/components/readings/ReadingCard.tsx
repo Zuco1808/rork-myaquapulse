@@ -5,7 +5,7 @@ import { FileText, AlertTriangle } from 'lucide-react-native';
 import { Card } from '../ui/Card';
 import { StatusIndicator } from '../ui/StatusIndicator';
 import Colors from '@/constants/colors';
-import { Reading } from '@/types/location';
+import { Reading } from '@/types/user';
 
 interface ReadingCardProps {
   reading: Reading;

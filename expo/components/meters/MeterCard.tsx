@@ -5,7 +5,7 @@ import { Droplet } from 'lucide-react-native';
 import { Card } from '../ui/Card';
 import { StatusIndicator } from '../ui/StatusIndicator';
 import Colors from '@/constants/colors';
-import { WaterMeter } from '@/types/location';
+import { WaterMeter } from '@/types/user';
 
 interface MeterCardProps {
   meter: WaterMeter;

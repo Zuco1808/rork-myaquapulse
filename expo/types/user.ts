@@ -230,6 +230,10 @@ export interface Task {
   completed_at?: string;
   created_at: string;
   updated_at: string;
+  // joined
+  assigned_to_name?: string | null;
+  connection_address?: string | null;
+  connection_serial?: string | null;
 }
 
 export interface Notification {
@@ -248,3 +252,100 @@ export const canManageUser = (manager: Profile, target: Profile): boolean => {
   if (manager.role === 'utility_admin' && target.role !== 'super_admin') return true;
   return false;
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// UI / display types (camelCase, returned by API mappers — not raw DB rows)
+// Previously in types/location.ts — consolidated here as single source of truth
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Mapped meter reading returned by mapReading() in lib/api/readings.ts */
+export interface ReadingDisplay {
+  id: string;
+  meterId: string;
+  connection_id?: string;
+  utility_id?: string;
+  worker_id?: string;
+  value: number;
+  readingDate: number;
+  readBy: string;
+  readMethod?: 'manual' | 'ocr' | 'end_user' | 'smart' | 'estimated';
+  imageUrl?: string;
+  status: 'pending' | 'verified' | 'rejected';
+  notes?: string;
+  meterSerialNumber?: string;
+  consumption?: number;
+  previousValue?: number;
+  createdAt?: number;
+}
+
+/** Extended display reading (alias for ReadingCard component) */
+export interface Reading extends ReadingDisplay {}
+
+export interface WaterMeter {
+  id: string;
+  serialNumber: string;
+  type: 'standard' | 'smart' | 'industrial' | 'analog' | 'digital';
+  installDate: number;
+  status: 'active' | 'inactive';
+  locationId: string;
+  userId: string;
+  lastReading?: ReadingDisplay;
+  previousReadings?: ReadingDisplay[];
+}
+
+export interface Location {
+  id: string;
+  name: string;
+  address: string;
+  city: string;
+  postalCode: string;
+  country: string;
+  companyId: string;
+  type?: 'city' | 'municipality' | 'settlement' | 'street' | 'building';
+  parentId?: string;
+  buildingCount?: number;
+  meterCount?: number;
+  userCount?: number;
+  coordinates?: { latitude: number; longitude: number };
+  createdAt: number;
+  updatedAt?: number;
+}
+
+/** UI Bill (camelCase display model). For the DB invoice row use Invoice. */
+export interface Bill {
+  id: string;
+  userId: string;
+  meterId: string;
+  locationId: string;
+  amount: number;
+  currency: string;
+  periodFrom: number;
+  periodTo: number;
+  dueDate: number;
+  issueDate?: number;
+  paidDate?: number;
+  status: 'draft' | 'issued' | 'pending' | 'paid' | 'overdue' | 'cancelled';
+  consumption: number;
+  createdAt: number;
+  updatedAt?: number;
+}
+
+export interface WaterAlert {
+  id: string;
+  meterId: string;
+  userId?: string;
+  companyId?: string;
+  companyName?: string;
+  title?: string;
+  meterName?: string;
+  locationName?: string;
+  type: 'high_consumption' | 'low_consumption' | 'leak' | 'no_reading' | 'meter_fault';
+  severity: 'low' | 'medium' | 'high' | 'warning' | 'critical' | 'info';
+  message: string;
+  value?: number;
+  threshold?: number;
+  unit?: string;
+  isResolved: boolean;
+  createdAt: number;
+  resolvedAt?: number;
+}
