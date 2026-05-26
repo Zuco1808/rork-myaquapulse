@@ -9,7 +9,9 @@ export type UserRole =
 
 export interface UserPermissions {
   canReadMeters: boolean;
-  canManageReadings: boolean;
+  canManageMeters: boolean;      // create / edit / delete meters
+  canManageReadings: boolean;    // submit readings (staff/worker)
+  canVerifyReadings: boolean;    // approve / reject submitted readings
   canManageTasks: boolean;
   canSendNotifications: boolean;
   canViewReports: boolean;
@@ -23,7 +25,9 @@ export interface UserPermissions {
 export const getPermissions = (role: UserRole): UserPermissions => {
   const none: UserPermissions = {
     canReadMeters:        false,
+    canManageMeters:      false,
     canManageReadings:    false,
+    canVerifyReadings:    false,
     canManageTasks:       false,
     canSendNotifications: false,
     canViewReports:       false,
@@ -38,7 +42,9 @@ export const getPermissions = (role: UserRole): UserPermissions => {
     case 'super_admin':
       return {
         canReadMeters:        true,
+        canManageMeters:      true,
         canManageReadings:    true,
+        canVerifyReadings:    true,
         canManageTasks:       true,
         canSendNotifications: true,
         canViewReports:       true,
@@ -50,6 +56,7 @@ export const getPermissions = (role: UserRole): UserPermissions => {
       };
     case 'distributor_admin':
       return { ...none,
+        canManageMeters:      true,
         canViewReports:       true,
         canManageUsers:       true,
         canManageDistributor: true,
@@ -57,7 +64,9 @@ export const getPermissions = (role: UserRole): UserPermissions => {
     case 'utility_admin':
       return { ...none,
         canReadMeters:        true,
+        canManageMeters:      true,
         canManageReadings:    true,
+        canVerifyReadings:    true,
         canManageTasks:       true,
         canSendNotifications: true,
         canViewReports:       true,
@@ -67,14 +76,16 @@ export const getPermissions = (role: UserRole): UserPermissions => {
       };
     case 'finance':
       return { ...none,
-        canReadMeters:    true,
-        canViewReports:   true,
-        canManageBilling: true,
+        canReadMeters:     true,
+        canVerifyReadings: true,   // finance approves readings for billing
+        canViewReports:    true,
+        canManageBilling:  true,
       };
     case 'worker':
       return { ...none,
-        canReadMeters:  true,
-        canManageTasks: true,
+        canReadMeters:     true,
+        canManageReadings: true,   // workers submit readings
+        canManageTasks:    true,
       };
     case 'end_user':
     default:

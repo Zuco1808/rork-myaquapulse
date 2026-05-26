@@ -10,15 +10,16 @@ import {
   Platform,
   KeyboardAvoidingView,
   ActivityIndicator,
+  Switch,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Droplet, Hash, MapPin, Save } from 'lucide-react-native';
 import { Header } from '@/components/layout/Header';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { useAuthStore } from '@/store/auth-store';
-import { createMeter } from '@/lib/api/meters';
+import { getMeterById, updateMeter } from '@/lib/api/meters';
 import { supabase } from '@/lib/supabase';
 import { usePermissions } from '@/lib/use-permissions';
 import Colors from '@/constants/colors';
@@ -31,123 +32,101 @@ const METER_TYPE_LABELS: Record<MeterType, string> = {
   industrial: 'Industrijski',
 };
 
-export default function AddMeterScreen() {
+export default function EditMeterScreen() {
   const router = useRouter();
+  const { id } = useLocalSearchParams<{ id: string }>();
   const { user } = useAuthStore();
 
   const isSuperAdmin = user?.role === 'super_admin';
   const { canManageMeters: canManage } = usePermissions();
 
-  /* ── form state ──────────────────────────────── */
-  const [serial, setSerial]             = useState('');
-  const [address, setAddress]           = useState('');
-  const [meterType, setMeterType]       = useState<MeterType>('standard');
-  const [utilityId, setUtilityId]       = useState(user?.utility_id ?? '');
+  /* ── form state ─────────────────────────────── */
+  const [serial, setSerial]           = useState('');
+  const [address, setAddress]         = useState('');
+  const [meterType, setMeterType]     = useState<MeterType>('standard');
+  const [isActive, setIsActive]       = useState(true);
   const [selectedUserId, setSelectedUserId] = useState('');
 
-  /* ── picker data ─────────────────────────────── */
-  const [utilities, setUtilities]   = useState<{ id: string; name: string }[]>([]);
-  const [endUsers, setEndUsers]     = useState<{ id: string; full_name: string; email: string }[]>([]);
+  /* ── picker data ────────────────────────────── */
+  const [endUsers, setEndUsers] = useState<{ id: string; full_name: string; email: string }[]>([]);
   const [loadingData, setLoadingData] = useState(true);
 
-  /* ── errors / saving ─────────────────────────── */
+  /* ── errors / saving ────────────────────────── */
   const [serialError, setSerialError]   = useState('');
   const [addressError, setAddressError] = useState('');
-  const [utilityError, setUtilityError] = useState('');
-  const [userError, setUserError]       = useState('');
   const [saving, setSaving]             = useState(false);
 
-  /* ── load picker data ────────────────────────── */
+  /* ── load existing meter + users ────────────── */
   useEffect(() => {
-    if (!canManage) { router.replace('/(tabs)'); return; }
+    if (!canManage || !id) { router.replace('/(tabs)'); return; }
     loadData();
-  }, []);
+  }, [id]);
 
   const loadData = async () => {
     try {
-      // 1. Za super_admin – učitaj listu vodovoda
-      if (isSuperAdmin) {
-        const { data } = await supabase
-          .from('water_utilities')
-          .select('id, name')
-          .eq('is_active', true)
-          .order('name');
-        setUtilities(data || []);
-      }
+      // Load meter
+      const meter = await getMeterById(id as string);
+      setSerial(meter.serialNumber || '');
+      setAddress(meter.address || '');
+      setMeterType((meter.meter_type as MeterType) || 'standard');
+      setIsActive(meter.is_active ?? true);
+      setSelectedUserId(meter.user_id || '');
 
-      // 2. Učitaj end_user korisnike (filtrirani po utility ako nije super_admin)
-      let usersQ = supabase
+      // Load end users scoped to utility
+      const utilityId = meter.utility_id || user?.utility_id;
+      let query = supabase
         .from('profiles')
         .select('id, full_name, email')
         .eq('role', 'end_user')
         .order('full_name');
-
-      if (!isSuperAdmin && user?.utility_id) {
-        usersQ = usersQ.eq('utility_id', user.utility_id);
+      if (utilityId) {
+        query = query.eq('utility_id', utilityId);
       }
-
-      const { data: usersData } = await usersQ;
+      const { data: usersData } = await query;
       setEndUsers(usersData || []);
     } catch (e) {
-      console.error('Greška pri učitavanju podataka za formu:', e);
+      console.error('Greška pri učitavanju priključka:', e);
+      Alert.alert('Greška', 'Učitavanje podataka nije uspjelo.');
     } finally {
       setLoadingData(false);
     }
   };
 
-  /* ── when super_admin picks a utility, reload users ── */
-  const handleUtilityChange = async (id: string) => {
-    setUtilityId(id);
-    setSelectedUserId('');
-    if (!id) return;
-    try {
-      const { data } = await supabase
-        .from('profiles')
-        .select('id, full_name, email')
-        .eq('role', 'end_user')
-        .eq('utility_id', id)
-        .order('full_name');
-      setEndUsers(data || []);
-    } catch {}
-  };
-
-  /* ── validation ──────────────────────────────── */
+  /* ── validation ─────────────────────────────── */
   const validate = () => {
     let ok = true;
-    if (!serial.trim())       { setSerialError('Serijski broj je obavezan');  ok = false; } else setSerialError('');
-    if (!address.trim())      { setAddressError('Adresa je obavezna');        ok = false; } else setAddressError('');
-    if (!utilityId)           { setUtilityError('Vodovod je obavezan');       ok = false; } else setUtilityError('');
-    if (!selectedUserId)      { setUserError('Korisnik je obavezan');         ok = false; } else setUserError('');
+    if (!serial.trim())  { setSerialError('Serijski broj je obavezan'); ok = false; } else setSerialError('');
+    if (!address.trim()) { setAddressError('Adresa je obavezna');       ok = false; } else setAddressError('');
     return ok;
   };
 
-  /* ── submit ──────────────────────────────────── */
+  /* ── submit ─────────────────────────────────── */
   const handleSave = async () => {
     if (!validate()) return;
     setSaving(true);
     try {
-      await createMeter({
-        utility_id:   utilityId,
-        user_id:      selectedUserId,
-        address:      address.trim(),
+      await updateMeter(id as string, {
         meter_serial: serial.trim(),
+        address:      address.trim(),
         meter_type:   meterType,
+        is_active:    isActive,
+        ...(selectedUserId ? { user_id: selectedUserId } : {}),
       });
-      Alert.alert('Uspjeh', 'Priključak je uspješno kreiran.', [
+      Alert.alert('Uspjeh', 'Priključak je uspješno ažuriran.', [
         { text: 'OK', onPress: () => router.back() },
       ]);
     } catch (e: any) {
-      Alert.alert('Greška', e?.message || 'Kreiranje nije uspjelo.');
+      Alert.alert('Greška', e?.message || 'Ažuriranje nije uspjelo.');
     } finally {
       setSaving(false);
     }
   };
 
-  /* ── loading state ───────────────────────────── */
+  /* ── loading ────────────────────────────────── */
   if (loadingData) {
     return (
       <SafeAreaView style={styles.safeArea}>
-        <Header title="Novi priključak" showBack onLeftPress={() => router.back()} />
+        <Header title="Uredi vodomjer" showBack onLeftPress={() => router.back()} />
         <View style={styles.center}>
           <ActivityIndicator size="large" color={Colors.primary} />
         </View>
@@ -155,7 +134,7 @@ export default function AddMeterScreen() {
     );
   }
 
-  /* ── render ──────────────────────────────────── */
+  /* ── render ─────────────────────────────────── */
   return (
     <SafeAreaView style={styles.safeArea}>
       <KeyboardAvoidingView
@@ -163,7 +142,7 @@ export default function AddMeterScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
       >
-        <Header title="Novi priključak" showBack onLeftPress={() => router.back()} />
+        <Header title="Uredi vodomjer" showBack onLeftPress={() => router.back()} />
 
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           {/* Icon */}
@@ -211,49 +190,39 @@ export default function AddMeterScreen() {
             </View>
           </Card>
 
-          {/* Vodovod (samo super_admin bira, ostali imaju predefiniran) */}
-          {isSuperAdmin && (
-            <Card style={styles.section}>
-              <Text style={styles.sectionTitle}>Vodovod *</Text>
-              {utilityError ? <Text style={styles.errorText}>{utilityError}</Text> : null}
-              {utilities.length === 0 ? (
-                <Text style={styles.emptyNote}>Nema aktivnih vodovoda.</Text>
-              ) : (
-                <View style={styles.chips}>
-                  {utilities.map((u) => (
-                    <TouchableOpacity
-                      key={u.id}
-                      style={[styles.chip, utilityId === u.id && styles.chipActive]}
-                      onPress={() => handleUtilityChange(u.id)}
-                    >
-                      <Text style={[styles.chipText, utilityId === u.id && styles.chipTextActive]}>
-                        {u.name}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              )}
-            </Card>
-          )}
-
-          {/* Korisnik */}
+          {/* Status */}
           <Card style={styles.section}>
-            <Text style={styles.sectionTitle}>Korisnik (vlasnik priključka) *</Text>
-            {userError ? <Text style={styles.errorText}>{userError}</Text> : null}
+            <Text style={styles.sectionTitle}>Status priključka</Text>
+            <View style={styles.switchRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.switchLabel}>
+                  {isActive ? 'Aktivan' : 'Neaktivan'}
+                </Text>
+                <Text style={styles.switchDesc}>
+                  {isActive
+                    ? 'Priključak je aktivan i dostupan za očitavanja.'
+                    : 'Priključak je deaktiviran — nije dostupan za nova očitavanja.'}
+                </Text>
+              </View>
+              <Switch
+                value={isActive}
+                onValueChange={setIsActive}
+                trackColor={{ false: Colors.border, true: Colors.primary + '88' }}
+                thumbColor={isActive ? Colors.primary : Colors.textLight}
+              />
+            </View>
+          </Card>
 
-            {endUsers.length === 0 ? (
-              <Text style={styles.emptyNote}>
-                {isSuperAdmin && !utilityId
-                  ? 'Odaberite vodovod da biste vidjeli korisnike.'
-                  : 'Nema registrovanih korisnika za ovaj vodovod.'}
-              </Text>
-            ) : (
+          {/* Korisnik (promjena vlasnika) */}
+          {endUsers.length > 0 && (
+            <Card style={styles.section}>
+              <Text style={styles.sectionTitle}>Vlasnik priključka</Text>
               <View style={styles.userList}>
                 {endUsers.map((u) => (
                   <TouchableOpacity
                     key={u.id}
                     style={[styles.userRow, selectedUserId === u.id && styles.userRowActive]}
-                    onPress={() => { setSelectedUserId(u.id); if (userError) setUserError(''); }}
+                    onPress={() => setSelectedUserId(u.id)}
                   >
                     <View style={styles.userInfo}>
                       <Text style={[styles.userName, selectedUserId === u.id && styles.userNameActive]}>
@@ -270,11 +239,11 @@ export default function AddMeterScreen() {
                   </TouchableOpacity>
                 ))}
               </View>
-            )}
-          </Card>
+            </Card>
+          )}
 
           <Button
-            title="Kreiraj priključak"
+            title="Sačuvaj izmjene"
             leftIcon={<Save size={18} color="#fff" />}
             onPress={handleSave}
             isLoading={saving}
@@ -301,26 +270,28 @@ const styles = StyleSheet.create({
   section:      { padding: 16, marginBottom: 14 },
   sectionTitle: { fontSize: 16, fontWeight: '700', color: Colors.text, marginBottom: 14 },
   label:        { fontSize: 14, fontWeight: '600', color: Colors.text, marginBottom: 8, marginTop: 4 },
-  errorText:    { fontSize: 13, color: Colors.error, marginBottom: 8 },
-  emptyNote:    { fontSize: 13, color: Colors.textLight, fontStyle: 'italic', textAlign: 'center', paddingVertical: 10 },
 
-  chips:        { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  chip:         { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, backgroundColor: Colors.highlight },
-  chipActive:   { backgroundColor: Colors.primary },
-  chipText:     { fontSize: 13, color: Colors.text },
+  chips:          { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  chip:           { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, backgroundColor: Colors.highlight },
+  chipActive:     { backgroundColor: Colors.primary },
+  chipText:       { fontSize: 13, color: Colors.text },
   chipTextActive: { color: '#fff' },
+
+  switchRow:  { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  switchLabel:{ fontSize: 15, fontWeight: '600', color: Colors.text },
+  switchDesc: { fontSize: 12, color: Colors.textLight, marginTop: 2 },
 
   userList: { gap: 8 },
   userRow: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     padding: 12, borderRadius: 10, backgroundColor: Colors.highlight,
   },
-  userRowActive: { backgroundColor: Colors.primary },
-  userInfo:      { flex: 1 },
-  userName:      { fontSize: 14, fontWeight: '600', color: Colors.text },
-  userNameActive:{ color: '#fff' },
-  userEmail:     { fontSize: 12, color: Colors.textLight, marginTop: 2 },
-  checkDot:      { width: 10, height: 10, borderRadius: 5, backgroundColor: '#fff', marginLeft: 8 },
+  userRowActive:  { backgroundColor: Colors.primary },
+  userInfo:       { flex: 1 },
+  userName:       { fontSize: 14, fontWeight: '600', color: Colors.text },
+  userNameActive: { color: '#fff' },
+  userEmail:      { fontSize: 12, color: Colors.textLight, marginTop: 2 },
+  checkDot:       { width: 10, height: 10, borderRadius: 5, backgroundColor: '#fff', marginLeft: 8 },
 
   saveBtn: { marginTop: 4 },
 });

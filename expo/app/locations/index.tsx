@@ -30,6 +30,7 @@ import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Badge } from '@/components/ui/Badge';
 import { useAuthStore } from '@/store/auth-store';
+import { usePermissions } from '@/lib/use-permissions';
 import Colors from '@/constants/colors';
 import { Location } from '@/types/user';
 import { getLocations, deleteLocation } from '@/lib/api/locations';
@@ -115,7 +116,7 @@ export default function LocationsScreen() {
     if (canManageLocations) router.push(`/locations/edit/${locationId}` as any);
   };
 
-  const canManageLocations = user?.role === 'super_admin' || user?.role === 'utility_admin';
+  const { canManageUtility: canManageLocations } = usePermissions();
 
   /* ── card ───────────────────────────────────────── */
   const renderLocationCard = ({ item }: { item: Location }) => (

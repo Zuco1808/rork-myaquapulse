@@ -25,6 +25,7 @@ import { ReadingCard } from '@/components/readings/ReadingCard';
 import { OCRCameraView } from '@/components/ocr/CameraView';
 import { OCRResult } from '@/components/ocr/OCRResult';
 import { useAuthStore } from '@/store/auth-store';
+import { usePermissions } from '@/lib/use-permissions';
 import { getReadings, createReading, verifyReading } from '@/lib/api/readings';
 import { getMeters } from '@/lib/api/meters';
 import Colors from '@/constants/colors';
@@ -76,7 +77,7 @@ export default function ReadingsScreen() {
   const [filterStatus, setFilterStatus] = useState('all');
   const [readingError, setReadingError] = useState('');
 
-  const isStaff   = user?.role === 'utility_admin' || user?.role === 'finance' || user?.role === 'super_admin';
+  const { canVerifyReadings: isStaff, canManageReadings } = usePermissions();
   const isWorker  = user?.role === 'worker';
   const isEndUser = user?.role === 'end_user';
 

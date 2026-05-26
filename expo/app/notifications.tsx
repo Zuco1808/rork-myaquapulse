@@ -18,11 +18,13 @@ import { useNotificationStore } from '@/store/notification-store';
 import { AppNotification } from '@/lib/api/notifications';
 import { useAuthStore } from '@/store/auth-store';
 import { deepLinkForNotification } from '@/lib/notification-routing';
+import { usePermissions } from '@/lib/use-permissions';
 import Colors from '@/constants/colors';
 
 export default function NotificationsScreen() {
   const router  = useRouter();
   const { user } = useAuthStore();
+  const { canSendNotifications } = usePermissions();
   const {
     notifications,
     unreadCount,
@@ -48,7 +50,7 @@ export default function NotificationsScreen() {
     router.push(route as any);
   };
 
-  const canSend = user?.role === 'super_admin' || user?.role === 'utility_admin';
+  const canSend = canSendNotifications;
 
   return (
     <SafeAreaView style={styles.safeArea}>
