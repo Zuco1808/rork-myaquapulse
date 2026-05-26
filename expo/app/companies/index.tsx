@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -9,7 +9,7 @@ import {
   RefreshControl,
   Alert
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import {
   Building,
   Search,
@@ -29,23 +29,38 @@ import { supabase } from '@/lib/supabase';
 import Colors from '@/constants/colors';
 import { WaterUtility } from '@/types/user';
 
+/* ── pure filter helper ──────────────────────────── */
+const filterUtilities = (source: WaterUtility[], q: string, status: string): WaterUtility[] => {
+  let f = source;
+  if (q) {
+    const ql = q.toLowerCase();
+    f = f.filter(u => u.name.toLowerCase().includes(ql) || (u.city ?? '').toLowerCase().includes(ql));
+  }
+  if (status === 'active')   f = f.filter(u => u.is_active);
+  if (status === 'inactive') f = f.filter(u => !u.is_active);
+  return f;
+};
+
 export default function CompaniesScreen() {
   const router = useRouter();
   const { user } = useAuthStore();
-  const [utilities, setUtilities] = useState<WaterUtility[]>([]);
-  const [filtered, setFiltered] = useState<WaterUtility[]>([]);
+  const [utilities, setUtilities]   = useState<WaterUtility[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [filterStatus, setFilterStatus] = useState('all');
   const [showFilters, setShowFilters] = useState(false);
 
-  useEffect(() => {
-    if (!user || !['super_admin', 'distributor_admin'].includes(user.role)) {
-      router.replace('/(tabs)');
-      return;
-    }
-    fetchUtilities();
-  }, [user]);
+  const filtered = filterUtilities(utilities, searchQuery, filterStatus);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!user || !['super_admin', 'distributor_admin'].includes(user.role)) {
+        router.replace('/(tabs)');
+        return;
+      }
+      fetchUtilities();
+    }, [user])
+  );
 
   const fetchUtilities = async () => {
     try {
@@ -56,7 +71,6 @@ export default function CompaniesScreen() {
 
       if (error) throw error;
       setUtilities(data || []);
-      setFiltered(data || []);
     } catch (err) {
       console.error('Greška pri učitavanju vodovoda:', err);
     }
@@ -68,28 +82,8 @@ export default function CompaniesScreen() {
     setRefreshing(false);
   };
 
-  const applyFilters = (query: string, status: string, data: WaterUtility[]) => {
-    let result = [...data];
-    if (query) {
-      result = result.filter(u =>
-        u.name.toLowerCase().includes(query.toLowerCase()) ||
-        (u.city ?? '').toLowerCase().includes(query.toLowerCase())
-      );
-    }
-    if (status === 'active') result = result.filter(u => u.is_active);
-    if (status === 'inactive') result = result.filter(u => !u.is_active);
-    setFiltered(result);
-  };
-
-  const handleSearch = (text: string) => {
-    setSearchQuery(text);
-    applyFilters(text, filterStatus, utilities);
-  };
-
-  const handleFilterChange = (status: string) => {
-    setFilterStatus(status);
-    applyFilters(searchQuery, status, utilities);
-  };
+  const handleSearch       = (text: string) => setSearchQuery(text);
+  const handleFilterChange = (status: string) => setFilterStatus(status);
 
   const handleDelete = (id: string, name: string) => {
     Alert.alert(
@@ -106,9 +100,7 @@ export default function CompaniesScreen() {
               .delete()
               .eq('id', id);
             if (!error) {
-              const updated = utilities.filter(u => u.id !== id);
-              setUtilities(updated);
-              applyFilters(searchQuery, filterStatus, updated);
+              setUtilities(prev => prev.filter(u => u.id !== id));
             }
           }
         }
@@ -123,11 +115,7 @@ export default function CompaniesScreen() {
       .eq('id', id);
 
     if (!error) {
-      const updated = utilities.map(u =>
-        u.id === id ? { ...u, is_active: !current } : u
-      );
-      setUtilities(updated);
-      applyFilters(searchQuery, filterStatus, updated);
+      setUtilities(prev => prev.map(u => u.id === id ? { ...u, is_active: !current } : u));
     }
   };
 
@@ -266,7 +254,7 @@ export default function CompaniesScreen() {
         }
       />
 
-      {user?.role === 'super_admin' && (
+      {['super_admin', 'distributor_admin'].includes(user?.role || '') && (
         <TouchableOpacity
           style={styles.fab}
           onPress={() => router.push('/companies/add' as any)}

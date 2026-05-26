@@ -149,7 +149,7 @@ export default function CompanyDetailScreen() {
             onPress={() => router.push(`/users?utilityId=${id}` as any)}
             style={styles.actionButton}
           />
-          {user?.role === 'super_admin' && (
+          {['super_admin', 'distributor_admin'].includes(user?.role || '') && (
             <>
               <Button
                 title="Uredi vodovod"

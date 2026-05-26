@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { useAuthStore } from '@/store/auth-store';
 import { supabase } from '@/lib/supabase';
+import { createUser } from '@/lib/api/users';
 import Colors from '@/constants/colors';
 import { UserRole, WaterUtility } from '@/types/user';
 
@@ -93,39 +94,22 @@ export default function AddUserScreen() {
 
     const utilityId = user?.role === 'utility_admin' ? user.utility_id : selectedUtilityId;
 
-    if (!utilityId && role !== 'super_admin') {
+    if (!utilityId) {
       Alert.alert('Greška', 'Molimo odaberite vodovod.');
       return;
     }
 
     setIsLoading(true);
     try {
-      // Kreiraj auth korisnika
-      const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+      await createUser({
         email: email.trim(),
         password,
-        email_confirm: true,
-        user_metadata: {
-          full_name: fullName.trim(),
-          role,
-        }
+        full_name: fullName.trim(),
+        phone: phone.trim() || undefined,
+        role,
+        utility_id: utilityId || undefined,
+        is_active: isActive,
       });
-
-      if (authError) throw authError;
-
-      // Update profila s ispravnim podacima
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .update({
-          full_name: fullName.trim(),
-          phone: phone.trim() || null,
-          role,
-          utility_id: utilityId || null,
-          is_active: isActive,
-        })
-        .eq('id', authData.user.id);
-
-      if (profileError) throw profileError;
 
       Alert.alert('Uspjeh', 'Korisnik je uspješno kreiran.', [
         { text: 'OK', onPress: () => router.back() }

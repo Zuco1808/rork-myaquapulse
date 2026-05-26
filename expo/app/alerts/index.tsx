@@ -1,651 +1,307 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  FlatList, 
-  TouchableOpacity, 
-  TextInput,
+import React, { useState, useCallback } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  FlatList,
+  TouchableOpacity,
+  SafeAreaView,
   RefreshControl,
-  Alert
+  Alert,
+  Platform,
+  TextInput,
 } from 'react-native';
-import { useRouter } from 'expo-router';
-import { 
-  AlertTriangle, 
-  Search, 
-  Filter, 
-  ChevronRight, 
-  Droplet,
-  Clock,
-  ArrowUpRight,
-  ArrowDownRight,
-  Menu
+import { useRouter, useFocusEffect } from 'expo-router';
+import {
+  AlertTriangle,
+  Search,
+  PlayCircle,
+  CheckCircle,
+  XCircle,
+  MapPin,
+  Calendar,
+  User,
+  Flame,
+  ChevronRight,
 } from 'lucide-react-native';
 import { Header } from '@/components/layout/Header';
 import { Card } from '@/components/ui/Card';
+import { Button } from '@/components/ui/Button';
+import { Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { useAuthStore } from '@/store/auth-store';
-import { WaterAlert } from '@/types/location';
+import { getTasks, getMyTasks, updateTaskStatus } from '@/lib/api/tasks';
+import { Task } from '@/types/user';
 import Colors from '@/constants/colors';
 
-// Mock alerts data
-const mockAlerts: WaterAlert[] = [
-  {
-    id: 'a1',
-    title: 'Visoka potrošnja',
-    message: 'Detektovana neuobičajeno visoka potrošnja na vodomjeru SJV-12345.',
-    type: 'high_consumption',
-    severity: 'warning',
-    meterId: 'm1',
-    meterName: 'SJV-12345',
-    locationName: 'Zmaja od Bosne 8, Sarajevo',
-    companyId: 'c1',
-    companyName: 'Vodovod Sarajevo',
-    value: 45.2,
-    threshold: 30,
-    unit: 'm³',
-    createdAt: Date.now(),
-    isResolved: false
-  },
-  {
-    id: 'a2',
-    title: 'Curenje vode',
-    message: 'Detektovano moguće curenje na vodomjeru SJV-23456.',
-    type: 'leak',
-    severity: 'critical',
-    meterId: 'm2',
-    meterName: 'SJV-23456',
-    locationName: 'Ferhadija 12, Sarajevo',
-    companyId: 'c1',
-    companyName: 'Vodovod Sarajevo',
-    value: undefined,
-    threshold: undefined,
-    unit: undefined,
-    createdAt: Date.now(),
-    isResolved: true
-  },
-  {
-    id: 'a3',
-    title: 'Niska potrošnja',
-    message: 'Detektovana neuobičajeno niska potrošnja na vodomjeru SJV-34567.',
-    type: 'low_consumption',
-    severity: 'info',
-    meterId: 'm3',
-    meterName: 'SJV-34567',
-    locationName: 'Titova 18, Sarajevo',
-    companyId: 'c1',
-    companyName: 'Vodovod Sarajevo',
-    value: 0.5,
-    threshold: 2,
-    unit: 'm³',
-    createdAt: Date.now(),
-    isResolved: false
-  },
-  {
-    id: 'a4',
-    title: 'Prekid očitanja',
-    message: 'Vodomjer SJV-45678 nije poslao očitanje u posljednjih 48 sati.',
-    type: 'no_reading',
-    severity: 'warning',
-    meterId: 'm4',
-    meterName: 'SJV-45678',
-    locationName: 'Alipašina 22, Sarajevo',
-    companyId: 'c1',
-    companyName: 'Vodovod Sarajevo',
-    value: 48,
-    threshold: 24,
-    unit: 'h',
-    createdAt: Date.now(),
-    isResolved: false
-  },
-  {
-    id: 'a5',
-    title: 'Kvar na vodomjeru',
-    message: 'Detektovan mogući kvar na vodomjeru SJV-56789.',
-    type: 'meter_fault',
-    severity: 'critical',
-    meterId: 'm5',
-    meterName: 'SJV-56789',
-    locationName: 'Koševo 5, Sarajevo',
-    companyId: 'c1',
-    companyName: 'Vodovod Sarajevo',
-    value: undefined,
-    threshold: undefined,
-    unit: undefined,
-    createdAt: Date.now(),
-    isResolved: true
-  }
-];
+/* ── helpers ─────────────────────────────────────────── */
+type TaskStatus = Task['status'];
 
+const PRIORITY_LABELS: Record<string, string> = {
+  urgent: 'Hitno', high: 'Visok',
+};
+const PRIORITY_COLORS: Record<string, string> = {
+  urgent: '#F44336', high: '#FF9800',
+};
+const STATUS_LABELS: Record<TaskStatus, string> = {
+  open: 'Otvoreno', in_progress: 'U toku', done: 'Završeno', cancelled: 'Otkazano',
+};
+const STATUS_COLORS: Record<TaskStatus, string> = {
+  open: '#FFC107', in_progress: '#2196F3', done: '#4CAF50', cancelled: '#9E9E9E',
+};
+
+/* ── component ───────────────────────────────────────── */
 export default function AlertsScreen() {
-  const router = useRouter();
+  const router  = useRouter();
   const { user } = useAuthStore();
-  
-  // Alerts data
-  const [alerts, setAlerts] = useState<WaterAlert[]>(mockAlerts);
-  const [filteredAlerts, setFilteredAlerts] = useState<WaterAlert[]>(mockAlerts);
-  const [searchQuery, setSearchQuery] = useState('');
+
+  const isWorker = user?.role === 'worker';
+
+  const [tasks, setTasks]       = useState<Task[]>([]);
+  const [search, setSearch]     = useState('');
   const [refreshing, setRefreshing] = useState(false);
-  const [showFilters, setShowFilters] = useState(false);
-  const [filterSeverity, setFilterSeverity] = useState('all');
-  const [filterResolved, setFilterResolved] = useState('all');
-  
-  // Check if user has permission to access this screen
-  useEffect(() => {
-    if (!user) {
-      router.replace('/login');
-    }
-  }, [user, router]);
-  
-  // Load alerts based on user role
-  useEffect(() => {
-    loadAlerts();
-  }, [user]);
-  
-  const loadAlerts = () => {
-    let filteredData = [...mockAlerts];
-    
-    // Filter by user role
-    if (user && user.role === 'end_user') {
-      // Citizens can only see alerts for their meters
-      // In a real app, this would filter by user's meter IDs
-      filteredData = filteredData.filter(alert => alert.meterId === 'm1');
-    } else if (user && user.role === 'utility_admin') {
-      // Admins can only see alerts for their company
-      filteredData = filteredData.filter(alert => alert.companyId === user.companyId);
-    }
-    
-    setAlerts(filteredData);
-    setFilteredAlerts(filteredData);
-  };
-  
-  const onRefresh = () => {
-    setRefreshing(true);
-    loadAlerts();
-    setRefreshing(false);
-  };
-  
-  const applyFilters = () => {
-    let filtered = [...alerts];
-    
-    // Apply search query
-    if (searchQuery) {
-      filtered = filtered.filter(alert => 
-        (alert.title || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-        alert.message.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (alert.meterName || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (alert.locationName || '').toLowerCase().includes(searchQuery.toLowerCase())
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+
+  /* ── fetch only high/urgent tasks ────────────────── */
+  const fetchAlerts = async () => {
+    try {
+      const all = isWorker
+        ? await getMyTasks(user!.id)
+        : await getTasks();
+
+      // Only keep high + urgent, active (open/in_progress)
+      const alerts = all.filter(
+        (t) =>
+          (t.priority === 'high' || t.priority === 'urgent') &&
+          (t.status === 'open' || t.status === 'in_progress'),
       );
+      setTasks(alerts);
+    } catch (e: any) {
+      console.error('Greška pri učitavanju alarma:', e.message);
+    } finally {
+      setRefreshing(false);
     }
-    
-    // Apply severity filter
-    if (filterSeverity !== 'all') {
-      filtered = filtered.filter(alert => alert.severity === filterSeverity);
+  };
+
+  useFocusEffect(useCallback(() => { fetchAlerts(); }, [user?.id]));
+  const onRefresh = () => { setRefreshing(true); fetchAlerts(); };
+
+  /* ── quick actions ───────────────────────────────── */
+  const handleStart = async (t: Task) => {
+    setActionLoading(t.id);
+    try {
+      const assignTo = isWorker && !t.assigned_to ? user?.id : undefined;
+      await updateTaskStatus(t.id, 'in_progress', undefined, assignTo);
+      fetchAlerts();
+    } catch (e: any) {
+      Alert.alert('Greška', e.message);
+    } finally {
+      setActionLoading(null);
     }
-    
-    // Apply resolved filter
-    if (filterResolved !== 'all') {
-      const isResolved = filterResolved === 'resolved';
-      filtered = filtered.filter(alert => alert.isResolved === isResolved);
-    }
-    
-    setFilteredAlerts(filtered);
   };
-  
-  useEffect(() => {
-    applyFilters();
-  }, [searchQuery, filterSeverity, filterResolved]);
-  
-  const handleSearch = (text: string) => {
-    setSearchQuery(text);
-  };
-  
-  const handleFilterSeverityChange = (severity: string) => {
-    setFilterSeverity(severity);
-  };
-  
-  const handleFilterResolvedChange = (resolved: string) => {
-    setFilterResolved(resolved);
-  };
-  
-  const handleViewAlert = (id: string) => {
-    router.push(`/alerts/${id}` as any);
-  };
-  
-  const handleResolveAlert = (id: string) => {
+
+  const handleDone = (t: Task) => {
     Alert.alert(
-      "Rješavanje alarma",
-      "Da li ste sigurni da želite označiti ovaj alarm kao riješen?",
+      'Zatvori alarm',
+      `Označiti alarm "${t.title}" kao završen?`,
       [
+        { text: 'Otkaži', style: 'cancel' },
         {
-          text: "Odustani",
-          style: "cancel"
+          text: 'Završi',
+          onPress: async () => {
+            setActionLoading(t.id);
+            try {
+              await updateTaskStatus(t.id, 'done');
+              setTasks((prev) => prev.filter((x) => x.id !== t.id));
+            } catch (e: any) {
+              Alert.alert('Greška', e.message);
+            } finally {
+              setActionLoading(null);
+            }
+          },
         },
-        { 
-          text: "Riješi", 
-          onPress: () => {
-            // Update alert status
-            const updatedAlerts = alerts.map(alert => 
-              alert.id === id 
-                ? { ...alert, isResolved: true } 
-                : alert
-            );
-            setAlerts(updatedAlerts);
-            applyFilters();
-            
-            Alert.alert("Uspjeh", "Alarm je označen kao riješen.");
-          }
-        }
-      ]
+      ],
     );
   };
-  
-  const renderAlertIcon = (type: WaterAlert['type'], severity: WaterAlert['severity']) => {
-    const color = severity === 'critical' ? Colors.error : 
-                 severity === 'warning' ? Colors.warning : 
-                 Colors.info;
-    
-    switch (type) {
-      case 'high_consumption':
-        return <ArrowUpRight size={24} color={color} />;
-      case 'low_consumption':
-        return <ArrowDownRight size={24} color={color} />;
-      case 'leak':
-        return <Droplet size={24} color={color} />;
-      case 'no_reading':
-        return <Clock size={24} color={color} />;
-      default:
-        return <AlertTriangle size={24} color={color} />;
-    }
-  };
-  
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('bs-BA') + ' ' + date.toLocaleTimeString('bs-BA', { hour: '2-digit', minute: '2-digit' });
-  };
-  
-  const renderAlertCard = ({ item }: { item: WaterAlert }) => {
-    const isResolved = item.isResolved;
-    
-    return (
-      <Card style={[styles.alertCard, isResolved && styles.resolvedCard]}>
-        <TouchableOpacity 
-          style={styles.cardContent}
-          onPress={() => handleViewAlert(item.id)}
-          activeOpacity={0.7}
-        >
-          <View style={styles.alertHeader}>
-            {renderAlertIcon(item.type, item.severity)}
-            <View style={styles.alertInfo}>
-              <Text style={styles.alertTitle}>{item.title}</Text>
-              <Text style={styles.alertDate}>{formatDate(String(item.createdAt))}</Text>
-            </View>
-            {isResolved ? (
-              <View style={styles.resolvedBadge}>
-                <Text style={styles.resolvedText}>Riješeno</Text>
-              </View>
-            ) : (
-              <ChevronRight size={20} color={Colors.textLight} />
-            )}
-          </View>
-          
-          <Text style={styles.alertMessage}>{item.message}</Text>
-          
-          <View style={styles.alertDetails}>
-            <Text style={styles.alertLocation}>
-              <Text style={styles.alertDetailLabel}>Lokacija: </Text>
-              {item.locationName}
-            </Text>
-            <Text style={styles.alertMeter}>
-              <Text style={styles.alertDetailLabel}>Vodomjer: </Text>
-              {item.meterName}
-            </Text>
-            {item.value !== null && item.threshold !== null && item.unit !== null && (
-              <Text style={styles.alertValue}>
-                <Text style={styles.alertDetailLabel}>Vrijednost: </Text>
-                {item.value} {item.unit} (prag: {item.threshold} {item.unit})
-              </Text>
-            )}
-          </View>
-        </TouchableOpacity>
-        
-        {!isResolved && (user?.role === 'super_admin' || user?.role === 'utility_admin' || user?.role === 'worker') && (
-          <View style={styles.cardActions}>
-            <TouchableOpacity
-              style={styles.resolveButton}
-              onPress={() => handleResolveAlert(item.id)}
-            >
-              <Text style={styles.resolveButtonText}>Označi kao riješeno</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-      </Card>
-    );
-  };
-  
-  const renderEmptyState = () => {
-    return (
-      <EmptyState
-        title="Nema alarma"
-        message="Trenutno nema alarma koji odgovaraju vašoj pretrazi."
-        icon={<AlertTriangle size={48} color={Colors.textLight} />}
-      />
-    );
-  };
-  
-  return (
-    <View style={styles.container}>
-      <Header 
-        title="Alarmi"
-        showBack
-        leftIcon={<Menu size={24} color={Colors.text} />}
-        onLeftPress={() => router.push('/(tabs)' as any)}
-      />
-      
-      <View style={styles.searchContainer}>
-        <View style={styles.searchInputContainer}>
-          <Search size={20} color={Colors.textLight} style={styles.searchIcon} />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Pretraži alarme..."
-            value={searchQuery}
-            onChangeText={handleSearch}
+
+  /* ── filter ──────────────────────────────────────── */
+  const filtered = tasks.filter(
+    (t) =>
+      !search ||
+      t.title.toLowerCase().includes(search.toLowerCase()) ||
+      (t.description ?? '').toLowerCase().includes(search.toLowerCase()) ||
+      (t.connection_address ?? '').toLowerCase().includes(search.toLowerCase()),
+  );
+
+  /* ── card ────────────────────────────────────────── */
+  const renderCard = ({ item: t }: { item: Task }) => (
+    <Card style={styles.card}>
+      <TouchableOpacity
+        style={styles.cardBody}
+        onPress={() => router.push('/tasks' as any)}
+        activeOpacity={0.7}
+      >
+        {/* Priority flame + title */}
+        <View style={styles.titleRow}>
+          <Flame size={16} color={PRIORITY_COLORS[t.priority] ?? '#FF9800'} />
+          <Text style={styles.cardTitle} numberOfLines={1}>{t.title}</Text>
+          <ChevronRight size={16} color={Colors.textLight} />
+        </View>
+
+        {/* Badges */}
+        <View style={styles.badgeRow}>
+          <Badge
+            label={PRIORITY_LABELS[t.priority] ?? t.priority}
+            color={PRIORITY_COLORS[t.priority] ?? '#FF9800'}
+            size="small"
+          />
+          <Badge
+            label={STATUS_LABELS[t.status]}
+            color={STATUS_COLORS[t.status]}
+            size="small"
+            style={{ marginLeft: 6 }}
           />
         </View>
-        
-        <TouchableOpacity
-          style={styles.filterButton}
-          onPress={() => setShowFilters(!showFilters)}
-        >
-          <Filter size={20} color={Colors.primary} />
-        </TouchableOpacity>
-      </View>
-      
-      {showFilters && (
-        <View style={styles.filtersContainer}>
-          <Text style={styles.filtersTitle}>Ozbiljnost:</Text>
-          <View style={styles.filterOptions}>
-            <TouchableOpacity
-              style={[
-                styles.filterOption,
-                filterSeverity === 'all' && styles.filterOptionActive
-              ]}
-              onPress={() => handleFilterSeverityChange('all')}
-            >
-              <Text style={[
-                styles.filterOptionText,
-                filterSeverity === 'all' && styles.filterOptionTextActive
-              ]}>Svi</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity
-              style={[
-                styles.filterOption,
-                filterSeverity === 'critical' && styles.filterOptionActive,
-                styles.criticalOption
-              ]}
-              onPress={() => handleFilterSeverityChange('critical')}
-            >
-              <Text style={[
-                styles.filterOptionText,
-                filterSeverity === 'critical' && styles.filterOptionTextActive
-              ]}>Kritični</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity
-              style={[
-                styles.filterOption,
-                filterSeverity === 'warning' && styles.filterOptionActive,
-                styles.warningOption
-              ]}
-              onPress={() => handleFilterSeverityChange('warning')}
-            >
-              <Text style={[
-                styles.filterOptionText,
-                filterSeverity === 'warning' && styles.filterOptionTextActive
-              ]}>Upozorenja</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity
-              style={[
-                styles.filterOption,
-                filterSeverity === 'info' && styles.filterOptionActive,
-                styles.infoOption
-              ]}
-              onPress={() => handleFilterSeverityChange('info')}
-            >
-              <Text style={[
-                styles.filterOptionText,
-                filterSeverity === 'info' && styles.filterOptionTextActive
-              ]}>Informacije</Text>
-            </TouchableOpacity>
-          </View>
-          
-          <Text style={styles.filtersTitle}>Status:</Text>
-          <View style={styles.filterOptions}>
-            <TouchableOpacity
-              style={[
-                styles.filterOption,
-                filterResolved === 'all' && styles.filterOptionActive
-              ]}
-              onPress={() => handleFilterResolvedChange('all')}
-            >
-              <Text style={[
-                styles.filterOptionText,
-                filterResolved === 'all' && styles.filterOptionTextActive
-              ]}>Svi</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity
-              style={[
-                styles.filterOption,
-                filterResolved === 'active' && styles.filterOptionActive
-              ]}
-              onPress={() => handleFilterResolvedChange('active')}
-            >
-              <Text style={[
-                styles.filterOptionText,
-                filterResolved === 'active' && styles.filterOptionTextActive
-              ]}>Aktivni</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity
-              style={[
-                styles.filterOption,
-                filterResolved === 'resolved' && styles.filterOptionActive
-              ]}
-              onPress={() => handleFilterResolvedChange('resolved')}
-            >
-              <Text style={[
-                styles.filterOptionText,
-                filterResolved === 'resolved' && styles.filterOptionTextActive
-              ]}>Riješeni</Text>
-            </TouchableOpacity>
-          </View>
+
+        {/* Meta info */}
+        {t.description ? (
+          <Text style={styles.desc} numberOfLines={2}>{t.description}</Text>
+        ) : null}
+
+        <View style={styles.metaRow}>
+          {t.connection_address ? (
+            <View style={styles.metaItem}>
+              <MapPin size={12} color={Colors.textLight} />
+              <Text style={styles.metaText}>{t.connection_address}</Text>
+            </View>
+          ) : null}
+          {t.due_date ? (
+            <View style={styles.metaItem}>
+              <Calendar size={12} color={Colors.textLight} />
+              <Text style={styles.metaText}>{t.due_date}</Text>
+            </View>
+          ) : null}
+          {t.assigned_to_name ? (
+            <View style={styles.metaItem}>
+              <User size={12} color={Colors.textLight} />
+              <Text style={styles.metaText}>{t.assigned_to_name}</Text>
+            </View>
+          ) : null}
         </View>
-      )}
-      
+      </TouchableOpacity>
+
+      {/* Quick actions */}
+      <View style={styles.cardActions}>
+        {t.status === 'open' && (
+          <Button
+            title="Počni"
+            size="small"
+            variant="outline"
+            leftIcon={<PlayCircle size={14} color={Colors.primary} />}
+            onPress={() => handleStart(t)}
+            isLoading={actionLoading === t.id}
+            style={styles.actBtn}
+          />
+        )}
+        {t.status === 'in_progress' && (
+          <Button
+            title="Završi"
+            size="small"
+            variant="outline"
+            leftIcon={<CheckCircle size={14} color={Colors.success} />}
+            onPress={() => handleDone(t)}
+            isLoading={actionLoading === t.id}
+            style={[styles.actBtn, { borderColor: Colors.success }]}
+          />
+        )}
+        <Button
+          title="Detalji"
+          size="small"
+          variant="outline"
+          onPress={() => router.push('/tasks' as any)}
+          style={styles.actBtn}
+        />
+      </View>
+    </Card>
+  );
+
+  /* ── render ──────────────────────────────────────── */
+  return (
+    <SafeAreaView style={styles.safeArea}>
+      <Header title="Alarmi" showBack onLeftPress={() => router.back()} />
+
+      {/* Search */}
+      <View style={styles.searchBar}>
+        <Search size={16} color={Colors.textLight} />
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Pretraži alarme..."
+          value={search}
+          onChangeText={setSearch}
+        />
+      </View>
+
+      {/* Summary */}
+      <View style={styles.summary}>
+        <AlertTriangle size={14} color={Colors.error} />
+        <Text style={styles.summaryText}>
+          {' '}{filtered.length} aktivnih alarma (visok/hitan prioritet)
+        </Text>
+      </View>
+
       <FlatList
-        data={filteredAlerts}
-        renderItem={renderAlertCard}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.listContainer}
-        ListEmptyComponent={renderEmptyState}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        data={filtered}
+        renderItem={renderCard}
+        keyExtractor={(t) => t.id}
+        contentContainerStyle={styles.list}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        ListEmptyComponent={
+          <EmptyState
+            title="Nema alarma"
+            message="Trenutno nema aktivnih zadataka visokog ili hitnog prioriteta."
+            icon={<AlertTriangle size={48} color={Colors.textLight} />}
+          />
         }
       />
-    </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
+  safeArea: { flex: 1, backgroundColor: '#f4f6f9' },
+
+  searchBar: {
+    flexDirection: 'row', alignItems: 'center',
+    marginHorizontal: 16, marginTop: 12, marginBottom: 4,
+    paddingHorizontal: 12, paddingVertical: 8,
+    backgroundColor: Colors.highlight, borderRadius: 10, gap: 8,
   },
-  searchContainer: {
-    flexDirection: 'row',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
+  searchInput: { flex: 1, fontSize: 14, color: Colors.text },
+
+  summary: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 16, paddingVertical: 6,
   },
-  searchInputContainer: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.highlight,
-    borderRadius: 8,
-    paddingHorizontal: 12,
+  summaryText: { fontSize: 12, color: Colors.textLight },
+
+  list: { padding: 16, paddingBottom: Platform.OS === 'android' ? 80 : 40 },
+  card: { marginBottom: 12 },
+
+  cardBody: { padding: 14 },
+  titleRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8,
   },
-  searchIcon: {
-    marginRight: 8,
-  },
-  searchInput: {
-    flex: 1,
-    height: 40,
-    color: Colors.text,
-  },
-  filterButton: {
-    marginLeft: 12,
-    width: 40,
-    height: 40,
-    borderRadius: 8,
-    backgroundColor: Colors.highlight,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  filtersContainer: {
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-  },
-  filtersTitle: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: Colors.text,
-    marginBottom: 8,
-    marginTop: 8,
-  },
-  filterOptions: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  filterOption: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    backgroundColor: Colors.highlight,
-  },
-  filterOptionActive: {
-    backgroundColor: Colors.primary,
-  },
-  criticalOption: {
-    borderColor: Colors.error,
-    borderWidth: 1,
-  },
-  warningOption: {
-    borderColor: Colors.warning,
-    borderWidth: 1,
-  },
-  infoOption: {
-    borderColor: Colors.info,
-    borderWidth: 1,
-  },
-  filterOptionText: {
-    fontSize: 12,
-    color: Colors.text,
-  },
-  filterOptionTextActive: {
-    color: '#fff',
-  },
-  listContainer: {
-    padding: 16,
-    paddingBottom: 32,
-  },
-  alertCard: {
-    marginBottom: 16,
-  },
-  resolvedCard: {
-    opacity: 0.7,
-  },
-  cardContent: {
-    padding: 16,
-  },
-  alertHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  alertInfo: {
-    flex: 1,
-    marginLeft: 12,
-  },
-  alertTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: Colors.text,
-    marginBottom: 2,
-  },
-  alertDate: {
-    fontSize: 12,
-    color: Colors.textLight,
-  },
-  resolvedBadge: {
-    backgroundColor: Colors.success,
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-    borderRadius: 4,
-  },
-  resolvedText: {
-    fontSize: 12,
-    color: '#fff',
-    fontWeight: '500',
-  },
-  alertMessage: {
-    fontSize: 14,
-    color: Colors.text,
-    marginBottom: 12,
-  },
-  alertDetails: {
-    backgroundColor: Colors.highlight,
-    padding: 12,
-    borderRadius: 8,
-  },
-  alertLocation: {
-    fontSize: 14,
-    color: Colors.text,
-    marginBottom: 4,
-  },
-  alertMeter: {
-    fontSize: 14,
-    color: Colors.text,
-    marginBottom: 4,
-  },
-  alertValue: {
-    fontSize: 14,
-    color: Colors.text,
-  },
-  alertDetailLabel: {
-    fontWeight: 'bold',
-  },
+  cardTitle: { flex: 1, fontSize: 15, fontWeight: '700', color: Colors.text },
+  badgeRow:  { flexDirection: 'row', marginBottom: 8 },
+  desc:      { fontSize: 13, color: Colors.textLight, marginBottom: 8, lineHeight: 18 },
+  metaRow:   { gap: 4 },
+  metaItem:  { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  metaText:  { fontSize: 12, color: Colors.textLight },
+
   cardActions: {
-    borderTopWidth: 1,
-    borderTopColor: Colors.border,
-    padding: 12,
+    flexDirection: 'row', gap: 8,
+    borderTopWidth: 1, borderTopColor: Colors.border,
+    padding: 10,
   },
-  resolveButton: {
-    backgroundColor: Colors.success,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  resolveButtonText: {
-    color: '#fff',
-    fontWeight: '500',
-    fontSize: 14,
-  },
+  actBtn: { flex: 1 },
 });

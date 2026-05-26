@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
   TextInput, RefreshControl, Alert, SafeAreaView, Platform
 } from 'react-native';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import {
   Users, Search, Plus, Filter, ChevronRight,
   Mail, Phone, Edit, Trash2
@@ -19,26 +19,49 @@ import Colors from '@/constants/colors';
 import { supabase } from '@/lib/supabase';
 import { Profile } from '@/types/user';
 
+/* ── pure filter helper ──────────────────────────── */
+const filterUsers = (source: Profile[], q: string, role: string, status: string): Profile[] => {
+  let f = source;
+  if (q) {
+    const ql = q.toLowerCase();
+    f = f.filter(u =>
+      u.full_name.toLowerCase().includes(ql) ||
+      u.email.toLowerCase().includes(ql) ||
+      (u.phone ? u.phone.includes(q) : false),
+    );
+  }
+  if (role   !== 'all')      f = f.filter(u => u.role === role);
+  if (status === 'active')   f = f.filter(u => u.is_active);
+  if (status === 'inactive') f = f.filter(u => !u.is_active);
+  return f;
+};
+
 export default function UsersScreen() {
   const router = useRouter();
   const { user } = useAuthStore();
   const { utilityId } = useLocalSearchParams<{ utilityId?: string }>();
 
-  const [users, setUsers] = useState<Profile[]>([]);
-  const [filteredUsers, setFilteredUsers] = useState<Profile[]>([]);
+  const [users, setUsers]           = useState<Profile[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const [filterRole, setFilterRole] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
 
+  // Derived — always consistent with users + filter state
+  const filteredUsers = filterUsers(users, searchQuery, filterRole, filterStatus);
+
   useEffect(() => {
     if (!user || !['super_admin', 'utility_admin', 'distributor_admin'].includes(user.role)) {
       router.replace('/login');
-      return;
     }
-    fetchUsers();
-  }, [user, utilityId]);
+  }, [user]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (user) fetchUsers();
+    }, [user, utilityId])
+  );
 
   const fetchUsers = async () => {
     try {
@@ -56,7 +79,6 @@ export default function UsersScreen() {
       const { data, error } = await query;
       if (error) throw error;
       setUsers(data || []);
-      setFilteredUsers(data || []);
     } catch (err) {
       console.error('Greška pri učitavanju korisnika:', err);
     } finally {
@@ -67,25 +89,6 @@ export default function UsersScreen() {
   const onRefresh = () => {
     setRefreshing(true);
     fetchUsers();
-  };
-
-  useEffect(() => {
-    applyFilters();
-  }, [searchQuery, filterRole, filterStatus, users]);
-
-  const applyFilters = () => {
-    let filtered = [...users];
-    if (searchQuery) {
-      filtered = filtered.filter(u =>
-        u.full_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        u.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (u.phone && u.phone.includes(searchQuery))
-      );
-    }
-    if (filterRole !== 'all') filtered = filtered.filter(u => u.role === filterRole);
-    if (filterStatus === 'active') filtered = filtered.filter(u => u.is_active);
-    if (filterStatus === 'inactive') filtered = filtered.filter(u => !u.is_active);
-    setFilteredUsers(filtered);
   };
 
   const handleDeleteUser = (id: string) => {

@@ -42,3 +42,6 @@ android/
 core
 node_modules
 .expo
+
+#passwords
+superbase.txt

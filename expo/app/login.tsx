@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  TouchableOpacity, 
-  KeyboardAvoidingView, 
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  KeyboardAvoidingView,
   Platform,
   ScrollView,
   Image,
@@ -18,65 +18,59 @@ import { Button } from '@/components/ui/Button';
 import { useAuthStore } from '@/store/auth-store';
 import Colors from '@/constants/colors';
 
+const DEV_ACCOUNTS = __DEV__ ? [
+  { role: 'Super Admin',    email: 'superadmin@aquapulse.com',   password: 'password' },
+  { role: 'Utility Admin',  email: 'admin@vodovod.com',          password: 'password' },
+  { role: 'Finansije',      email: 'finance@vodovod.com',        password: 'password' },
+  { role: 'Radnik',         email: 'radnik@vodovod.com',         password: 'password' },
+  { role: 'Održavanje',     email: 'odrzavanje@vodovod.com',     password: 'password' },
+  { role: 'Građanin',       email: 'gradjanin@email.com',        password: 'password' },
+] : [];
+
 export default function LoginScreen() {
   const router = useRouter();
   const { login, isLoading, error, clearError, user } = useAuthStore();
-  
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [emailError, setEmailError] = useState('');
-  
+
   useEffect(() => {
-    // If user is already logged in, redirect to home
     if (user) {
       router.replace('/(tabs)');
     }
   }, [user, router]);
-  
-  const validateEmail = (email: string) => {
+
+  const validateEmail = (value: string) => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!email) {
+    if (!value) {
       setEmailError('Email je obavezan');
       return false;
-    } else if (!emailRegex.test(email)) {
+    } else if (!emailRegex.test(value)) {
       setEmailError('Unesite validnu email adresu');
       return false;
     }
-    
     setEmailError('');
     return true;
   };
-  
+
   const handleLogin = async () => {
     clearError();
-    
-    const isEmailValid = validateEmail(email);
-    
-    if (isEmailValid) {
+    if (validateEmail(email)) {
       await login(email, password);
     }
   };
-  
+
   const handleRegister = () => {
     router.push('/register');
   };
-  
-  // Demo accounts for quick login
-  const demoAccounts = [
-    { role: 'super_admin', email: 'superadmin@aquapulse.com', password: 'password' },
-    { role: 'utility_admin', email: 'admin@vodovod.com', password: 'password' },
-    { role: 'finance', email: 'finance@vodovod.com', password: 'password' },
-    { role: 'worker', email: 'radnik@vodovod.com', password: 'password' },
-    { role: 'end_user', email: 'gradjanin@email.com', password: 'password' },
-    { role: 'worker', email: 'odrzavanje@vodovod.com', password: 'password' }
-  ];
-  
+
   const loginWithDemoAccount = async (demoEmail: string, demoPassword: string) => {
     setEmail(demoEmail);
     setPassword(demoPassword);
     await login(demoEmail, demoPassword);
   };
-  
+
   return (
     <KeyboardAvoidingView
       style={styles.container}
@@ -98,16 +92,16 @@ export default function LoginScreen() {
           <Text style={styles.appName}>MyAquaPulse</Text>
           <Text style={styles.tagline}>Pametno upravljanje vodomjerima</Text>
         </LinearGradient>
-        
+
         <View style={styles.formContainer}>
           <Text style={styles.title}>Prijava</Text>
-          
+
           {error ? (
             <View style={styles.errorContainer}>
               <Text style={styles.errorText}>{error}</Text>
             </View>
           ) : null}
-          
+
           <Input
             label="Email adresa"
             placeholder="Unesite vašu email adresu"
@@ -121,7 +115,7 @@ export default function LoginScreen() {
             error={emailError}
             leftIcon={<Mail size={20} color={Colors.textLight} />}
           />
-          
+
           <Input
             label="Lozinka"
             placeholder="Unesite vašu lozinku"
@@ -130,14 +124,14 @@ export default function LoginScreen() {
             isPassword
             leftIcon={<Lock size={20} color={Colors.textLight} />}
           />
-          
+
           <Button
             title="Prijavi se"
             onPress={handleLogin}
             isLoading={isLoading}
             style={styles.loginButton}
           />
-          
+
           <View style={styles.registerContainer}>
             <Text style={styles.registerText}>
               Nemate račun?
@@ -146,29 +140,23 @@ export default function LoginScreen() {
               <Text style={styles.registerLink}>Registrujte se</Text>
             </TouchableOpacity>
           </View>
-          
-          <View style={styles.demoContainer}>
-            <Text style={styles.demoTitle}>Demo računi za brzu prijavu:</Text>
-            
-            <View style={styles.demoAccountsContainer}>
-              {demoAccounts.map((account) => (
-                <TouchableOpacity
-                  key={account.role}
-                  style={styles.demoAccount}
-                  onPress={() => loginWithDemoAccount(account.email, account.password)}
-                >
-                  <Text style={styles.demoAccountRole}>
-                    {account.role === 'super_admin' ? 'Super Admin' :
-                     account.role === 'utility_admin' ? 'utility_admin' :
-                     account.role === 'finance' ? 'Finansije' :
-                     account.role === 'worker' ? 'Radnik' :
-                     account.role === 'worker' ? 'Održavanje' :
-                     'Građanin'}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+
+          {__DEV__ && (
+            <View style={styles.demoContainer}>
+              <Text style={styles.demoTitle}>Demo računi (samo development):</Text>
+              <View style={styles.demoAccountsContainer}>
+                {DEV_ACCOUNTS.map((account) => (
+                  <TouchableOpacity
+                    key={account.email}
+                    style={styles.demoAccount}
+                    onPress={() => loginWithDemoAccount(account.email, account.password)}
+                  >
+                    <Text style={styles.demoAccountRole}>{account.role}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
             </View>
-          </View>
+          )}
         </View>
       </ScrollView>
     </KeyboardAvoidingView>

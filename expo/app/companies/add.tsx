@@ -22,7 +22,9 @@ export default function AddCompanyScreen() {
   const [cityError, setCityError] = useState('');
 
   useEffect(() => {
-    if (!user || user.role !== 'super_admin') router.replace('/(tabs)');
+    if (!user || !['super_admin', 'distributor_admin'].includes(user.role)) {
+      router.replace('/(tabs)');
+    }
   }, [user]);
 
   const validate = () => {
@@ -42,6 +44,7 @@ export default function AddCompanyScreen() {
         address: address.trim() || null,
         pib: pib.trim() || null,
         is_active: true,
+        distributor_id: user?.distributor_id || null,
       });
       if (error) throw error;
       Alert.alert('Uspjeh', 'Vodovod je uspješno dodan.', [
