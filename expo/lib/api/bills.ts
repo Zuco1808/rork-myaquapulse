@@ -95,3 +95,47 @@ export const updateBillStatus = async (
   if (error) throw error;
   return mapInvoice(data);
 };
+
+/**
+ * Poziva calculate-invoice Edge Function koja automatski:
+ *  1. Kalkuliše potrošnju (to.value - from.value)
+ *  2. Pronalazi odgovarajući cjenovni paket (user_group → package → tiers)
+ *  3. Primjenjuje tiered pricing
+ *  4. Kreira fakturu sa status='draft'
+ *
+ * Vraća kreiran invoice mapiran na lokalnu strukturu.
+ */
+export const calculateInvoice = async (params: {
+  connection_id:   string;
+  reading_from_id: string;
+  reading_to_id:   string;
+  due_date?:       string; // ISO date string, npr. '2026-07-15'
+}) => {
+  const { data, error } = await supabase.functions.invoke<{ invoice: any }>('calculate-invoice', {
+    body: params,
+  });
+  if (error) throw error;
+  if (!data?.invoice) throw new Error('No invoice returned from calculate-invoice');
+  return mapInvoice(data.invoice);
+};
+
+export const getInvoicesByUser = async (userId: string) => {
+  const { data: conns, error: connsError } = await supabase
+    .from('connections')
+    .select('id')
+    .eq('user_id', userId);
+
+  if (connsError) throw connsError;
+  if (!conns || conns.length === 0) return [];
+
+  const ids = conns.map((c: any) => c.id);
+
+  const { data, error } = await supabase
+    .from('invoices')
+    .select('*, connections(meter_serial, address)')
+    .in('connection_id', ids)
+    .order('created_at', { ascending: false });
+
+  if (error) throw error;
+  return (data || []).map(mapInvoice);
+};
