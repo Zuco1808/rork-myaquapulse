@@ -3,6 +3,7 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@/lib/supabase';
 import { Profile, UserRole, getPermissions } from '@/types/user';
+import { setSentryUser, clearSentryUser } from '@/lib/sentry';
 
 interface AuthState {
   user: Profile | null;
@@ -64,6 +65,7 @@ export const useAuthStore = create<AuthState>()(
           };
 
           set({ user: mappedProfile, isLoading: false });
+          setSentryUser(mappedProfile.id, mappedProfile.email, mappedProfile.role);
         } catch {
           set({ error: 'Greška prilikom prijave', isLoading: false });
         }
@@ -71,6 +73,7 @@ export const useAuthStore = create<AuthState>()(
 
       logout: async () => {
         await supabase.auth.signOut();
+        clearSentryUser();
         set({ user: null });
       },
 

@@ -9,6 +9,10 @@ import { useAuthStore } from '@/store/auth-store';
 import { useNotificationStore } from '@/store/notification-store';
 import { registerPushToken, clearPushToken } from '@/lib/push-notifications';
 import { deepLinkForNotification } from '@/lib/notification-routing';
+import { initSentry, Sentry } from '@/lib/sentry';
+
+// Inicijalizacija što ranije — prije renderinga bilo čega
+initSentry();
 
 SplashScreen.preventAutoHideAsync();
 
@@ -16,7 +20,7 @@ export const unstable_settings = {
   initialRouteName: "(tabs)",
 };
 
-export default function RootLayout() {
+function RootLayout() {
   const [loaded, error] = useFonts({
     ...FontAwesome.font,
   });
@@ -40,6 +44,9 @@ export default function RootLayout() {
 
   return <RootLayoutNav />;
 }
+
+// Sentry.wrap instrumentira navigaciju i hvata unhandled JS greške
+export default Sentry.wrap(RootLayout);
 
 function RootLayoutNav() {
   const router  = useRouter();
