@@ -1,5 +1,13 @@
 import { supabase } from '@/lib/supabase';
 
+// is_verified=true → verified, is_verified=false + verified_at set → rejected,
+// is_verified=false + verified_at null → pending (never reviewed)
+const deriveStatus = (r: any): 'pending' | 'verified' | 'rejected' => {
+  if (r.is_verified) return 'verified';
+  if (r.verified_at != null) return 'rejected'; // was reviewed but set back to false
+  return 'pending';
+};
+
 const mapReading = (r: any) => ({
   id: r.id,
   connection_id: r.connection_id,
@@ -11,7 +19,7 @@ const mapReading = (r: any) => ({
   readBy: r.worker_id,
   readMethod: r.reading_type,
   imageUrl: r.photo_url,
-  status: (r.is_verified ? 'verified' : 'pending') as 'pending' | 'verified' | 'rejected',
+  status: deriveStatus(r),
   notes: r.note,
   meterSerialNumber: r.connections?.meter_serial,
   createdAt: new Date(r.created_at).getTime(),
@@ -61,10 +69,35 @@ export const createReading = async (reading: {
   return mapReading(data);
 };
 
+export const getReadingsByUser = async (userId: string) => {
+  const { data: conns, error: connsError } = await supabase
+    .from('connections')
+    .select('id')
+    .eq('user_id', userId);
+
+  if (connsError) throw connsError;
+  if (!conns || conns.length === 0) return [];
+
+  const ids = conns.map((c: any) => c.id);
+
+  const { data, error } = await supabase
+    .from('meter_readings')
+    .select('*, connections(meter_serial, address)')
+    .in('connection_id', ids)
+    .order('reading_date', { ascending: false });
+
+  if (error) throw error;
+  return (data || []).map(mapReading);
+};
+
 export const verifyReading = async (id: string, verified: boolean) => {
   const { data, error } = await supabase
     .from('meter_readings')
-    .update({ is_verified: verified })
+    .update({
+      is_verified: verified,
+      // stamp verified_at so we can distinguish rejected (false+stamp) from pending (false+no stamp)
+      verified_at: new Date().toISOString(),
+    })
     .eq('id', id)
     .select()
     .single();
