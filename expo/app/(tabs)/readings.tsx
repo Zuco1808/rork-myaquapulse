@@ -9,6 +9,7 @@ import {
   Modal,
   Alert,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import {
@@ -62,6 +63,7 @@ export default function ReadingsScreen() {
   const router  = useRouter();
   const { user } = useAuthStore();
 
+  const [loading, setLoading]   = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [showCamera, setShowCamera] = useState(false);
@@ -90,6 +92,7 @@ export default function ReadingsScreen() {
       router.replace('/login' as any);
       return;
     }
+    setLoading(true);
     try {
       const [metersData, readingsData] = await Promise.all([
         getMeters(),
@@ -110,6 +113,9 @@ export default function ReadingsScreen() {
       }
     } catch (err) {
       console.error('Greška pri učitavanju:', err);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
     }
   };
 
@@ -119,10 +125,9 @@ export default function ReadingsScreen() {
     }, [user?.id, user?.role]),
   );
 
-  const onRefresh = async () => {
+  const onRefresh = () => {
     setRefreshing(true);
-    await fetchData();
-    setRefreshing(false);
+    fetchData();
   };
 
   /* ── Manual submit ──────────────────────────────────────────────────────── */
@@ -293,7 +298,11 @@ export default function ReadingsScreen() {
         contentContainerStyle={styles.scrollContent}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
-        {filteredReadings.length > 0 ? (
+        {loading ? (
+          <View style={styles.emptyContainer}>
+            <ActivityIndicator size="large" color={Colors.primary} />
+          </View>
+        ) : filteredReadings.length > 0 ? (
           filteredReadings.map((reading) => (
             <ReadingCard
               key={reading.id}

@@ -10,6 +10,7 @@ import {
   Alert,
   Platform,
   TextInput,
+  ActivityIndicator,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import {
@@ -58,12 +59,14 @@ export default function AlertsScreen() {
   const isWorker = user?.role === 'worker';
 
   const [tasks, setTasks]       = useState<Task[]>([]);
+  const [loading, setLoading]   = useState(true);
   const [search, setSearch]     = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
   /* ── fetch only high/urgent tasks ────────────────── */
   const fetchAlerts = async () => {
+    setLoading(true);
     try {
       const all = isWorker
         ? await getMyTasks(user!.id, user!.utility_id ?? '')
@@ -79,6 +82,7 @@ export default function AlertsScreen() {
     } catch (e: any) {
       console.error('Greška pri učitavanju alarma:', e.message);
     } finally {
+      setLoading(false);
       setRefreshing(false);
     }
   };
@@ -226,6 +230,17 @@ export default function AlertsScreen() {
   );
 
   /* ── render ──────────────────────────────────────── */
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <Header title="Alarmi" showBack onLeftPress={() => router.back()} />
+        <View style={styles.center}>
+          <ActivityIndicator size="large" color={Colors.primary} />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <Header title="Alarmi" showBack onLeftPress={() => router.back()} />
@@ -269,6 +284,7 @@ export default function AlertsScreen() {
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: '#f4f6f9' },
+  center:   { flex: 1, alignItems: 'center', justifyContent: 'center' },
 
   searchBar: {
     flexDirection: 'row', alignItems: 'center',
