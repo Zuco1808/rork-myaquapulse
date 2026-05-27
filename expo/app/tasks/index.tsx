@@ -211,7 +211,7 @@ export default function TasksScreen() {
       setConnections((c.data ?? []) as { id: string; address: string; meter_serial: string }[]);
     } catch { /* ignore */ }
     setNewTitle(''); setNewDesc(''); setNewType('worker');
-    setNewPriority('normal'); setNewDueDate('');
+    setNewPriority('normal'); setNewDueDate(''); setShowDatePicker(false);
     setNewAssignedTo(''); setNewConnectionId(''); setTitleError('');
     setShowCreate(true);
   };

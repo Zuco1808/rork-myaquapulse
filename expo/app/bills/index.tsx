@@ -248,6 +248,9 @@ export default function BillsScreen() {
     setNewConsumption('');
     setNewDueDate('');
     setShowConnPicker(false);
+    setShowPeriodFromPicker(false);
+    setShowPeriodToPicker(false);
+    setShowDueDatePicker(false);
   };
 
   /* ── Create invoice ────────────────────────────── */
