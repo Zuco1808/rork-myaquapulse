@@ -7,7 +7,10 @@ import {
   TouchableOpacity,
   TextInput,
   RefreshControl,
-  Alert
+  Alert,
+  SafeAreaView,
+  Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import {
@@ -45,6 +48,7 @@ export default function CompaniesScreen() {
   const router = useRouter();
   const { user } = useAuthStore();
   const [utilities, setUtilities]   = useState<WaterUtility[]>([]);
+  const [loading, setLoading]       = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [filterStatus, setFilterStatus] = useState('all');
@@ -63,6 +67,7 @@ export default function CompaniesScreen() {
   );
 
   const fetchUtilities = async () => {
+    setLoading(true);
     try {
       const { data, error } = await supabase
         .from('water_utilities')
@@ -73,13 +78,15 @@ export default function CompaniesScreen() {
       setUtilities(data || []);
     } catch (err) {
       console.error('Greška pri učitavanju vodovoda:', err);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
     }
   };
 
-  const onRefresh = async () => {
+  const onRefresh = () => {
     setRefreshing(true);
-    await fetchUtilities();
-    setRefreshing(false);
+    fetchUtilities();
   };
 
   const handleSearch       = (text: string) => setSearchQuery(text);
@@ -190,7 +197,25 @@ export default function CompaniesScreen() {
     </Card>
   );
 
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.container}>
+          <Header
+            title="Vodovodi"
+            showBack
+            onLeftPress={() => router.push('/(tabs)' as any)}
+          />
+          <View style={styles.center}>
+            <ActivityIndicator size="large" color={Colors.primary} />
+          </View>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
+    <SafeAreaView style={styles.safeArea}>
     <View style={styles.container}>
       <Header
         title="Vodovodi"
@@ -264,11 +289,14 @@ export default function CompaniesScreen() {
         </TouchableOpacity>
       )}
     </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  safeArea:  { flex: 1, backgroundColor: '#fff' },
   container: { flex: 1, backgroundColor: '#fff' },
+  center:    { flex: 1, alignItems: 'center', justifyContent: 'center' },
   searchContainer: {
     flexDirection: 'row',
     paddingHorizontal: 16,
@@ -311,7 +339,7 @@ const styles = StyleSheet.create({
   filterOptionActive: { backgroundColor: Colors.primary },
   filterOptionText: { fontSize: 12, color: Colors.text },
   filterOptionTextActive: { color: '#fff' },
-  listContainer: { padding: 16, paddingBottom: 80 },
+  listContainer: { padding: 16, paddingBottom: Platform.OS === 'android' ? 100 : 80 },
   card: { marginBottom: 16 },
   cardContent: { padding: 16 },
   cardHeader: {
@@ -341,7 +369,7 @@ const styles = StyleSheet.create({
   iconButton: { padding: 8, marginLeft: 8 },
   fab: {
     position: 'absolute',
-    bottom: 24,
+    bottom: Platform.OS === 'android' ? 40 : 24,
     right: 24,
     width: 56,
     height: 56,
