@@ -10,8 +10,7 @@ import {
   Platform,
   ActivityIndicator,
 } from 'react-native';
-import { useRouter } from 'expo-router';
-import { useFocusEffect } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import {
   Droplet,
   MapPin,
@@ -68,19 +67,21 @@ export default function MetersScreen() {
     fetchData();
   };
 
-const getMeterTypeLabel = (type: string) => {
+  const getMeterTypeLabel = (type: string) => {
     switch (type) {
-      case 'standard': return 'Standardni';
-      case 'smart': return 'Pametni';
-      case 'prepaid': return 'Prepaid';
+      case 'standard':   return 'Standardni';
+      case 'smart':      return 'Pametni';
+      case 'industrial': return 'Industrijski';
+      case 'prepaid':    return 'Prepaid';
       default: return type || 'Nepoznat';
     }
   };
 
   const getMeterTypeColor = (type: string) => {
     switch (type) {
-      case 'smart': return '#4CAF50';
-      case 'prepaid': return '#FF9800';
+      case 'smart':      return '#4CAF50';
+      case 'industrial': return '#9C27B0';
+      case 'prepaid':    return '#FF9800';
       default: return Colors.primary;
     }
   };
