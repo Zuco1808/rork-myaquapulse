@@ -75,8 +75,11 @@ export default function TasksScreen() {
   const { user } = useAuthStore();
 
   const isWorker       = user?.role === 'worker';
-  const isAdmin        = ['super_admin', 'utility_admin'].includes(user?.role ?? '');
-  const canCreateTasks = ['super_admin', 'utility_admin', 'finance'].includes(user?.role ?? '');
+  // Task creation requires a utility_id scope — super_admin has global read but no utility
+  // scope to assign a new task to, so they can view/update but not create.
+  const canCreateTasks = (
+    ['utility_admin', 'finance'].includes(user?.role ?? '') && !!user?.utility_id
+  );
 
   const [tasks, setTasks]               = useState<Task[]>([]);
   const [refreshing, setRefreshing]     = useState(false);
