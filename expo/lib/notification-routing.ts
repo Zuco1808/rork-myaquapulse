@@ -28,8 +28,7 @@ export function deepLinkForNotification(
       return entityId ? `/bills/${entityId}` : '/bills';
 
     case 'task':
-      // No tasks/[id] detail screen yet — navigate to list
-      return '/tasks';
+      return entityId ? `/tasks/${entityId}` : '/tasks';
 
     case 'reading':
       return '/(tabs)/readings';

@@ -156,6 +156,7 @@ function RootLayoutNav() {
 
       {/* ── Tasks / Alerts ────────────────────────────────────────────── */}
       <Stack.Screen name="tasks" />
+      <Stack.Screen name="tasks/[id]" />
       <Stack.Screen name="alerts" />
 
       {/* ── Pricing ───────────────────────────────────────────────────── */}
