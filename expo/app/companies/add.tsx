@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Alert, SafeAreaView } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Building, MapPin, FileText } from 'lucide-react-native';
 import { Header } from '@/components/layout/Header';
@@ -58,6 +58,7 @@ export default function AddCompanyScreen() {
   };
 
   return (
+    <SafeAreaView style={styles.safeArea}>
     <View style={styles.container}>
       <Header title="Novi vodovod" showBack onLeftPress={() => router.back()} />
       <ScrollView contentContainerStyle={styles.content}>
@@ -110,10 +111,12 @@ export default function AddCompanyScreen() {
         </View>
       </ScrollView>
     </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  safeArea:  { flex: 1, backgroundColor: '#fff' },
   container: { flex: 1, backgroundColor: '#fff' },
   content: { padding: 16, paddingBottom: 32 },
   card: { marginBottom: 16, padding: 16 },
