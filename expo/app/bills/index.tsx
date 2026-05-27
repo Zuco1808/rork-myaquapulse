@@ -16,6 +16,7 @@ import {
   KeyboardAvoidingView,
 } from 'react-native';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import {
   CreditCard,
   Calendar,
@@ -70,6 +71,13 @@ const STATUS_COLOR: Record<InvoiceStatus, string> = {
   paid: '#4CAF50',
   overdue: Colors.error,
   cancelled: '#9E9E9E',
+};
+
+const toDateStr = (d: Date): string => {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 };
 
 const formatDate = (dateStr: string | undefined | null) => {
@@ -179,6 +187,9 @@ export default function BillsScreen() {
   const [newConsumption, setNewConsumption] = useState('');
   const [newDueDate, setNewDueDate] = useState('');
   const [creating, setCreating] = useState(false);
+  const [showPeriodFromPicker, setShowPeriodFromPicker] = useState(false);
+  const [showPeriodToPicker,   setShowPeriodToPicker]   = useState(false);
+  const [showDueDatePicker,    setShowDueDatePicker]    = useState(false);
 
   const isEndUser = user?.role === 'end_user';
   const { canManageBilling: canManage } = usePermissions();
@@ -563,20 +574,48 @@ export default function BillsScreen() {
                 {/* Period */}
                 <View style={styles.row2}>
                   <View style={{ flex: 1, marginRight: 8 }}>
-                    <Input
-                      label="Period od *"
-                      placeholder="2025-01-01"
-                      value={newPeriodFrom}
-                      onChangeText={setNewPeriodFrom}
-                    />
+                    <Text style={styles.datePickerLabel}>Period od *</Text>
+                    <TouchableOpacity style={styles.datePickerBtn} onPress={() => setShowPeriodFromPicker(true)} activeOpacity={0.7}>
+                      <Calendar size={14} color={newPeriodFrom ? Colors.primary : Colors.textLight} />
+                      <Text style={newPeriodFrom ? styles.datePickerVal : styles.datePickerPh} numberOfLines={1}>
+                        {newPeriodFrom || 'YYYY-MM-DD'}
+                      </Text>
+                    </TouchableOpacity>
+                    {showPeriodFromPicker && (
+                      <DateTimePicker
+                        value={newPeriodFrom ? new Date(newPeriodFrom) : new Date()}
+                        mode="date"
+                        display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                        onChange={(_, d) => { if (Platform.OS === 'android') setShowPeriodFromPicker(false); if (d) setNewPeriodFrom(toDateStr(d)); }}
+                      />
+                    )}
+                    {showPeriodFromPicker && Platform.OS === 'ios' && (
+                      <TouchableOpacity style={styles.datePickerDone} onPress={() => setShowPeriodFromPicker(false)}>
+                        <Text style={styles.datePickerDoneText}>Gotovo</Text>
+                      </TouchableOpacity>
+                    )}
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Input
-                      label="Period do *"
-                      placeholder="2025-01-31"
-                      value={newPeriodTo}
-                      onChangeText={setNewPeriodTo}
-                    />
+                    <Text style={styles.datePickerLabel}>Period do *</Text>
+                    <TouchableOpacity style={styles.datePickerBtn} onPress={() => setShowPeriodToPicker(true)} activeOpacity={0.7}>
+                      <Calendar size={14} color={newPeriodTo ? Colors.primary : Colors.textLight} />
+                      <Text style={newPeriodTo ? styles.datePickerVal : styles.datePickerPh} numberOfLines={1}>
+                        {newPeriodTo || 'YYYY-MM-DD'}
+                      </Text>
+                    </TouchableOpacity>
+                    {showPeriodToPicker && (
+                      <DateTimePicker
+                        value={newPeriodTo ? new Date(newPeriodTo) : new Date()}
+                        mode="date"
+                        display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                        onChange={(_, d) => { if (Platform.OS === 'android') setShowPeriodToPicker(false); if (d) setNewPeriodTo(toDateStr(d)); }}
+                      />
+                    )}
+                    {showPeriodToPicker && Platform.OS === 'ios' && (
+                      <TouchableOpacity style={styles.datePickerDone} onPress={() => setShowPeriodToPicker(false)}>
+                        <Text style={styles.datePickerDoneText}>Gotovo</Text>
+                      </TouchableOpacity>
+                    )}
                   </View>
                 </View>
 
@@ -603,12 +642,32 @@ export default function BillsScreen() {
                 </View>
 
                 {/* Due date */}
-                <Input
-                  label="Rok plaćanja"
-                  placeholder="2025-02-15"
-                  value={newDueDate}
-                  onChangeText={setNewDueDate}
-                />
+                <Text style={styles.datePickerLabel}>Rok plaćanja</Text>
+                <TouchableOpacity style={styles.datePickerBtn} onPress={() => setShowDueDatePicker(true)} activeOpacity={0.7}>
+                  <Calendar size={14} color={newDueDate ? Colors.primary : Colors.textLight} />
+                  <Text style={newDueDate ? styles.datePickerVal : styles.datePickerPh}>
+                    {newDueDate || 'Odaberi rok plaćanja'}
+                  </Text>
+                  {newDueDate ? (
+                    <TouchableOpacity hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} onPress={(e) => { e.stopPropagation(); setNewDueDate(''); }}>
+                      <X size={14} color={Colors.textLight} />
+                    </TouchableOpacity>
+                  ) : null}
+                </TouchableOpacity>
+                {showDueDatePicker && (
+                  <DateTimePicker
+                    value={newDueDate ? new Date(newDueDate) : new Date()}
+                    mode="date"
+                    display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                    minimumDate={new Date()}
+                    onChange={(_, d) => { if (Platform.OS === 'android') setShowDueDatePicker(false); if (d) setNewDueDate(toDateStr(d)); }}
+                  />
+                )}
+                {showDueDatePicker && Platform.OS === 'ios' && (
+                  <TouchableOpacity style={styles.datePickerDone} onPress={() => setShowDueDatePicker(false)}>
+                    <Text style={styles.datePickerDoneText}>Gotovo</Text>
+                  </TouchableOpacity>
+                )}
               </ScrollView>
 
               <View style={styles.modalFooter}>
@@ -916,4 +975,20 @@ const styles = StyleSheet.create({
   pickerItemText: { fontSize: 14, color: Colors.text },
   pickerItemSub: { fontSize: 11, color: Colors.textLight, marginTop: 2 },
   row2: { flexDirection: 'row' },
+
+  /* date picker shared styles */
+  datePickerLabel: { fontSize: 13, fontWeight: '500', color: Colors.text, marginBottom: 5 },
+  datePickerBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    borderWidth: 1, borderColor: Colors.border,
+    borderRadius: 10, paddingHorizontal: 10, paddingVertical: 11,
+    marginBottom: 12, backgroundColor: '#fff',
+  },
+  datePickerVal:      { flex: 1, fontSize: 13, color: Colors.text },
+  datePickerPh:       { flex: 1, fontSize: 13, color: Colors.textLight },
+  datePickerDone: {
+    alignItems: 'center', paddingVertical: 9, marginBottom: 8,
+    borderRadius: 8, backgroundColor: Colors.highlight,
+  },
+  datePickerDoneText: { fontSize: 14, fontWeight: '600', color: Colors.primary },
 });
