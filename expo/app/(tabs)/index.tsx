@@ -243,30 +243,28 @@ export default function HomeScreen() {
         </View>
 
         {/* Stats */}
-        {stats.length > 0 && (
-          <View style={styles.statsSection}>
-            {statsLoading ? (
-              <ActivityIndicator color={Colors.primary} style={{ marginVertical: 16 }} />
-            ) : (
-              <View style={styles.statsGrid}>
-                {stats.map((stat, i) => (
-                  <TouchableOpacity
-                    key={i}
-                    style={styles.statCard}
-                    onPress={() => stat.route && router.push(stat.route as any)}
-                    activeOpacity={stat.route ? 0.7 : 1}
-                  >
-                    <View style={[styles.statIconBg, { backgroundColor: stat.color }]}>
-                      {stat.icon}
-                    </View>
-                    <Text style={styles.statValue}>{stat.value}</Text>
-                    <Text style={styles.statLabel}>{stat.label}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            )}
-          </View>
-        )}
+        <View style={styles.statsSection}>
+          {statsLoading ? (
+            <ActivityIndicator color={Colors.primary} style={{ marginVertical: 16 }} />
+          ) : stats.length > 0 ? (
+            <View style={styles.statsGrid}>
+              {stats.map((stat, i) => (
+                <TouchableOpacity
+                  key={i}
+                  style={styles.statCard}
+                  onPress={() => stat.route && router.push(stat.route as any)}
+                  activeOpacity={stat.route ? 0.7 : 1}
+                >
+                  <View style={[styles.statIconBg, { backgroundColor: stat.color }]}>
+                    {stat.icon}
+                  </View>
+                  <Text style={styles.statValue}>{stat.value}</Text>
+                  <Text style={styles.statLabel}>{stat.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          ) : null}
+        </View>
 
         {/* Menu grid */}
         <View style={styles.menuGrid}>
