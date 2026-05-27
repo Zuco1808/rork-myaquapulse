@@ -8,6 +8,7 @@ import {
   Alert,
   Modal,
   ActivityIndicator,
+  SafeAreaView,
 } from 'react-native';
 import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
 import { Plus, Package, X } from 'lucide-react-native';
@@ -182,15 +183,17 @@ export default function PackageDetailsScreen() {
   const { canManageBilling: canManagePricing } = usePermissions();
   if (!canManagePricing) {
     return (
-      <View style={styles.container}>
-        <Text style={styles.noAccessText}>Nemate pristup ovoj stranici.</Text>
-      </View>
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.container}>
+          <Text style={styles.noAccessText}>Nemate pristup ovoj stranici.</Text>
+        </View>
+      </SafeAreaView>
     );
   }
 
   /* ── render ─────────────────────────────────────── */
   return (
-    <>
+    <SafeAreaView style={styles.safeArea}>
       <Header
         title={packageInfo?.name ?? 'Detalji paketa'}
         showBack
@@ -335,11 +338,12 @@ export default function PackageDetailsScreen() {
           </View>
         </Modal>
       </ScrollView>
-    </>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  safeArea:         { flex: 1, backgroundColor: '#fff' },
   container:        { flex: 1, backgroundColor: '#fff' },
   contentContainer: { padding: 16, paddingBottom: 32 },
   noAccessText:     { fontSize: 16, color: Colors.text, textAlign: 'center', marginTop: 24 },

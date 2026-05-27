@@ -8,6 +8,7 @@ import {
   Alert,
   Platform,
   KeyboardAvoidingView,
+  SafeAreaView,
   Linking,
 } from 'react-native';
 import { useRouter } from 'expo-router';
@@ -118,6 +119,7 @@ export default function ContactScreen() {
 
   /* ── Render ──────────────────────────────────────── */
   return (
+    <SafeAreaView style={styles.safeArea}>
     <KeyboardAvoidingView
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -194,11 +196,13 @@ export default function ContactScreen() {
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff' },
+  safeArea:  { flex: 1, backgroundColor: '#fff' },
+  container: { flex: 1 },
   content:   { flex: 1, padding: 16 },
   section:   { marginBottom: 16 },
 

@@ -1,11 +1,12 @@
 import React from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  ScrollView, 
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
   TouchableOpacity,
-  Image
+  Image,
+  SafeAreaView,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { 
@@ -65,14 +66,15 @@ export default function SupportScreen() {
   ];
   
   return (
+    <SafeAreaView style={styles.safeArea}>
     <View style={styles.container}>
-      <Header 
+      <Header
         title="Podrška"
         showBack
         leftIcon={<Menu size={24} color={Colors.text} />}
         onLeftPress={() => router.push('/(tabs)' as any)}
       />
-      
+
       <ScrollView style={styles.content}>
         <View style={styles.headerSection}>
           <Image
@@ -121,14 +123,13 @@ export default function SupportScreen() {
         </View>
       </ScrollView>
     </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
+  safeArea:  { flex: 1, backgroundColor: '#fff' },
+  container: { flex: 1, backgroundColor: '#fff' },
   content: {
     flex: 1,
   },
