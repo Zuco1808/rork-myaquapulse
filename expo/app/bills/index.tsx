@@ -259,6 +259,10 @@ export default function BillsScreen() {
       Alert.alert('Greška', 'Priključak, period i iznos su obavezni.');
       return;
     }
+    if (new Date(newPeriodFrom) > new Date(newPeriodTo)) {
+      Alert.alert('Greška', 'Datum početka perioda mora biti prije datuma završetka.');
+      return;
+    }
     const amount = parseFloat(newAmount);
     if (isNaN(amount) || amount <= 0) {
       Alert.alert('Greška', 'Unesite validan iznos.');
