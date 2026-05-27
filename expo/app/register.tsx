@@ -8,6 +8,7 @@ import {
   Platform,
   ScrollView,
   Alert,
+  SafeAreaView,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Mail, Lock, User, Phone, ArrowLeft } from 'lucide-react-native';
@@ -116,6 +117,7 @@ export default function RegisterScreen() {
 
   /* ── Render ──────────────────────────────────────── */
   return (
+    <SafeAreaView style={styles.safeArea}>
     <KeyboardAvoidingView
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -201,11 +203,13 @@ export default function RegisterScreen() {
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container:       { flex: 1, backgroundColor: '#fff' },
+  safeArea:        { flex: 1, backgroundColor: '#fff' },
+  container:       { flex: 1 },
   scrollContainer: { flexGrow: 1, padding: 24 },
 
   header: {

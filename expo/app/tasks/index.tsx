@@ -2,7 +2,7 @@ import React, { useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
   TextInput, RefreshControl, Alert, SafeAreaView, Platform,
-  Modal, ScrollView as RNScrollView,
+  Modal, ScrollView as RNScrollView, ActivityIndicator,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import {
@@ -91,6 +91,7 @@ export default function TasksScreen() {
   );
 
   const [tasks, setTasks]               = useState<Task[]>([]);
+  const [loading, setLoading]           = useState(true);
   const [refreshing, setRefreshing]     = useState(false);
   const [searchQuery, setSearchQuery]   = useState('');
   const [showFilters, setShowFilters]   = useState(false);
@@ -135,6 +136,7 @@ export default function TasksScreen() {
     } catch (e: any) {
       console.error('Greška pri učitavanju zadataka:', e.message);
     } finally {
+      setLoading(false);
       setRefreshing(false);
     }
   };
@@ -324,6 +326,23 @@ export default function TasksScreen() {
   };
 
   /* ── JSX ────────────────────────────────────────── */
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.container}>
+          <Header
+            title={isWorker ? 'Moji zadaci' : 'Zadaci'}
+            showBack
+            onLeftPress={() => router.back()}
+          />
+          <View style={styles.center}>
+            <ActivityIndicator size="large" color={Colors.primary} />
+          </View>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
@@ -604,6 +623,7 @@ function DetailRow({ icon, label, value }: { icon: React.ReactNode; label: strin
 const styles = StyleSheet.create({
   safeArea:    { flex: 1, backgroundColor: '#fff' },
   container:   { flex: 1, backgroundColor: '#fff' },
+  center:      { flex: 1, alignItems: 'center', justifyContent: 'center' },
   searchRow:   { flexDirection: 'row', padding: 12, borderBottomWidth: 1, borderBottomColor: Colors.border },
   searchBox:   { flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.highlight, borderRadius: 8, paddingHorizontal: 12 },
   searchInput: { flex: 1, height: 40, color: Colors.text, marginLeft: 8 },

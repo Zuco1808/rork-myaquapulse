@@ -9,6 +9,7 @@ import {
   Modal,
   ActivityIndicator,
   Platform,
+  SafeAreaView,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Plus, X, Calendar, Info } from 'lucide-react-native';
@@ -170,9 +171,11 @@ export default function PeriodsScreen() {
   const { canManageBilling: canManagePricing } = usePermissions();
   if (!canManagePricing) {
     return (
-      <View style={styles.container}>
-        <Text style={styles.noAccessText}>Nemate pristup ovoj stranici.</Text>
-      </View>
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.container}>
+          <Text style={styles.noAccessText}>Nemate pristup ovoj stranici.</Text>
+        </View>
+      </SafeAreaView>
     );
   }
 
@@ -181,7 +184,7 @@ export default function PeriodsScreen() {
 
   /* ── render ─────────────────────────────────────── */
   return (
-    <>
+    <SafeAreaView style={styles.safeArea}>
       <Header
         title="Periodi cijena"
         showBack
@@ -373,11 +376,12 @@ export default function PeriodsScreen() {
           </View>
         </Modal>
       </ScrollView>
-    </>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  safeArea:         { flex: 1, backgroundColor: '#fff' },
   container:        { flex: 1, backgroundColor: '#fff' },
   contentContainer: { padding: 16, paddingBottom: 32 },
   noAccessText:     { fontSize: 16, color: Colors.text, textAlign: 'center', marginTop: 24 },
