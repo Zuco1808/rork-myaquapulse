@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Alert, SafeAreaView, ActivityIndicator } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Building, MapPin, Users, FileText, Edit2 } from 'lucide-react-native';
 import { Header } from '@/components/layout/Header';
@@ -54,27 +54,32 @@ export default function CompanyDetailScreen() {
 
   if (isLoading) {
     return (
-      <View style={styles.container}>
-        <Header title="Detalji vodovoda" showBack onLeftPress={() => router.back()} />
-        <View style={styles.centered}>
-          <Text style={styles.loadingText}>Učitavanje...</Text>
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.container}>
+          <Header title="Detalji vodovoda" showBack onLeftPress={() => router.back()} />
+          <View style={styles.centered}>
+            <ActivityIndicator size="large" color={Colors.primary} />
+          </View>
         </View>
-      </View>
+      </SafeAreaView>
     );
   }
 
   if (!utility) {
     return (
-      <View style={styles.container}>
-        <Header title="Detalji vodovoda" showBack onLeftPress={() => router.back()} />
-        <View style={styles.centered}>
-          <Text style={styles.loadingText}>Vodovod nije pronađen.</Text>
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.container}>
+          <Header title="Detalji vodovoda" showBack onLeftPress={() => router.back()} />
+          <View style={styles.centered}>
+            <Text style={styles.loadingText}>Vodovod nije pronađen.</Text>
+          </View>
         </View>
-      </View>
+      </SafeAreaView>
     );
   }
 
   return (
+    <SafeAreaView style={styles.safeArea}>
     <View style={styles.container}>
       <Header title={utility.name} showBack onLeftPress={() => router.back()} />
       <ScrollView contentContainerStyle={styles.content}>
@@ -172,10 +177,12 @@ export default function CompanyDetailScreen() {
         </Card>
       </ScrollView>
     </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  safeArea:  { flex: 1, backgroundColor: '#fff' },
   container: { flex: 1, backgroundColor: '#fff' },
   content: { padding: 16, paddingBottom: 32 },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center' },
