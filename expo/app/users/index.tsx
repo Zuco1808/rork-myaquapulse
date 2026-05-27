@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
-  TextInput, RefreshControl, Alert, SafeAreaView, Platform
+  TextInput, RefreshControl, Alert, SafeAreaView, Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import {
@@ -42,6 +43,7 @@ export default function UsersScreen() {
   const { utilityId } = useLocalSearchParams<{ utilityId?: string }>();
 
   const [users, setUsers]           = useState<Profile[]>([]);
+  const [loading, setLoading]       = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
@@ -64,6 +66,7 @@ export default function UsersScreen() {
   );
 
   const fetchUsers = async () => {
+    setLoading(true);
     try {
       let query = supabase.from('profiles').select('*').order('full_name');
 
@@ -82,6 +85,7 @@ export default function UsersScreen() {
     } catch (err) {
       console.error('Greška pri učitavanju korisnika:', err);
     } finally {
+      setLoading(false);
       setRefreshing(false);
     }
   };
@@ -206,6 +210,19 @@ export default function UsersScreen() {
     </Card>
   );
 
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.container}>
+          <Header title={screenTitle} showBack onLeftPress={() => router.back()} />
+          <View style={styles.center}>
+            <ActivityIndicator size="large" color={Colors.primary} />
+          </View>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
@@ -295,6 +312,7 @@ export default function UsersScreen() {
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: '#fff' },
   container: { flex: 1, backgroundColor: '#fff' },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   searchContainer: {
     flexDirection: 'row',
     paddingHorizontal: 16,
