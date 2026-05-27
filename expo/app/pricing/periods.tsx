@@ -8,9 +8,11 @@ import {
   Alert,
   Modal,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Plus, X, Calendar, Info } from 'lucide-react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { PeriodCard, PricingPeriod } from '@/components/pricing/PeriodCard';
 import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
@@ -25,6 +27,15 @@ import {
   updatePricingPeriod,
   deletePricingPeriod,
 } from '@/lib/api/pricing';
+
+/* ── date helpers (DD.MM.YYYY ↔ Date) ─────────────────────────────── */
+const parseDMY = (s: string): Date => {
+  const [d, m, y] = s.split('.');
+  const parsed = new Date(+y, +m - 1, +d);
+  return isNaN(parsed.getTime()) ? new Date() : parsed;
+};
+const toDMY = (d: Date): string =>
+  `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()}`;
 
 export default function PeriodsScreen() {
   const router  = useRouter();
@@ -52,6 +63,8 @@ export default function PeriodsScreen() {
   const [nameError,      setNameError]      = useState('');
   const [startDateError, setStartDateError] = useState('');
   const [endDateError,   setEndDateError]   = useState('');
+  const [showStartPicker, setShowStartPicker] = useState(false);
+  const [showEndPicker,   setShowEndPicker]   = useState(false);
 
   /* ── fetch ──────────────────────────────────────── */
   const fetchPeriods = async () => {
@@ -213,7 +226,7 @@ export default function PeriodsScreen() {
                     key={p.id} period={p}
                     onEdit={canCreate ? openEditModal : undefined}
                     onDelete={canCreate ? handleDelete : undefined}
-                    onPress={() => router.push(`/pricing/periods/${p.id}` as any)}
+                    onPress={canCreate ? () => openEditModal(p) : undefined}
                   />
                 ))
             }
@@ -228,7 +241,7 @@ export default function PeriodsScreen() {
                     key={p.id} period={p}
                     onEdit={canCreate ? openEditModal : undefined}
                     onDelete={canCreate ? handleDelete : undefined}
-                    onPress={() => router.push(`/pricing/periods/${p.id}` as any)}
+                    onPress={canCreate ? () => openEditModal(p) : undefined}
                   />
                 ))
             }
@@ -272,20 +285,65 @@ export default function PeriodsScreen() {
                   error={nameError}
                   leftIcon={<Calendar size={20} color={Colors.textLight} />}
                 />
-                <Input
-                  label="Datum početka"
-                  placeholder="DD.MM.YYYY"
-                  value={startDate}
-                  onChangeText={(t) => { setStartDate(t); if (startDateError) setStartDateError(''); }}
-                  error={startDateError}
-                />
-                <Input
-                  label="Datum završetka"
-                  placeholder="DD.MM.YYYY"
-                  value={endDate}
-                  onChangeText={(t) => { setEndDate(t); if (endDateError) setEndDateError(''); }}
-                  error={endDateError}
-                />
+                {/* Start date */}
+                <Text style={styles.pickerLabel}>Datum početka</Text>
+                <TouchableOpacity
+                  style={[styles.datePickerBtn, startDateError ? styles.datePickerBtnErr : null]}
+                  onPress={() => { setShowStartPicker(true); if (startDateError) setStartDateError(''); }}
+                  activeOpacity={0.7}
+                >
+                  <Calendar size={16} color={startDate ? Colors.primary : Colors.textLight} />
+                  <Text style={startDate ? styles.datePickerVal : styles.datePickerPh}>
+                    {startDate || 'Odaberi datum početka'}
+                  </Text>
+                </TouchableOpacity>
+                {!!startDateError && <Text style={styles.pickerError}>{startDateError}</Text>}
+                {showStartPicker && (
+                  <DateTimePicker
+                    value={startDate ? parseDMY(startDate) : new Date()}
+                    mode="date"
+                    display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                    onChange={(_, date) => {
+                      if (Platform.OS === 'android') setShowStartPicker(false);
+                      if (date) setStartDate(toDMY(date));
+                    }}
+                  />
+                )}
+                {showStartPicker && Platform.OS === 'ios' && (
+                  <TouchableOpacity style={styles.datePickerDone} onPress={() => setShowStartPicker(false)}>
+                    <Text style={styles.datePickerDoneText}>Gotovo</Text>
+                  </TouchableOpacity>
+                )}
+
+                {/* End date */}
+                <Text style={styles.pickerLabel}>Datum završetka</Text>
+                <TouchableOpacity
+                  style={[styles.datePickerBtn, endDateError ? styles.datePickerBtnErr : null]}
+                  onPress={() => { setShowEndPicker(true); if (endDateError) setEndDateError(''); }}
+                  activeOpacity={0.7}
+                >
+                  <Calendar size={16} color={endDate ? Colors.primary : Colors.textLight} />
+                  <Text style={endDate ? styles.datePickerVal : styles.datePickerPh}>
+                    {endDate || 'Odaberi datum završetka'}
+                  </Text>
+                </TouchableOpacity>
+                {!!endDateError && <Text style={styles.pickerError}>{endDateError}</Text>}
+                {showEndPicker && (
+                  <DateTimePicker
+                    value={endDate ? parseDMY(endDate) : new Date()}
+                    mode="date"
+                    display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                    onChange={(_, date) => {
+                      if (Platform.OS === 'android') setShowEndPicker(false);
+                      if (date) setEndDate(toDMY(date));
+                    }}
+                  />
+                )}
+                {showEndPicker && Platform.OS === 'ios' && (
+                  <TouchableOpacity style={styles.datePickerDone} onPress={() => setShowEndPicker(false)}>
+                    <Text style={styles.datePickerDoneText}>Gotovo</Text>
+                  </TouchableOpacity>
+                )}
                 <Input
                   label="Opis"
                   placeholder="Unesite opis perioda"
@@ -355,6 +413,24 @@ const styles = StyleSheet.create({
   modalBody:    { padding: 16 },
   modalActions: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 16, marginBottom: 8 },
   modalButton:  { flex: 1, marginHorizontal: 8 },
+
+  /* date picker */
+  pickerLabel:      { fontSize: 14, fontWeight: '500', color: Colors.text, marginBottom: 6 },
+  datePickerBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    borderWidth: 1, borderColor: Colors.border,
+    borderRadius: 10, paddingHorizontal: 12, paddingVertical: 13,
+    marginBottom: 4, backgroundColor: '#fff',
+  },
+  datePickerBtnErr: { borderColor: Colors.error },
+  datePickerVal:      { flex: 1, fontSize: 15, color: Colors.text },
+  datePickerPh:       { flex: 1, fontSize: 15, color: Colors.textLight },
+  pickerError:        { fontSize: 12, color: Colors.error, marginBottom: 12 },
+  datePickerDone: {
+    alignItems: 'center', paddingVertical: 10, marginBottom: 8,
+    borderRadius: 8, backgroundColor: Colors.highlight,
+  },
+  datePickerDoneText: { fontSize: 14, fontWeight: '600', color: Colors.primary },
 
   switchContainer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 },
   switchLabel:     { fontSize: 16, color: Colors.text },

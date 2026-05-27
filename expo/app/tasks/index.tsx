@@ -21,8 +21,17 @@ import { getTasks, getMyTasks, updateTaskStatus, createTask } from '@/lib/api/ta
 import { getMeters } from '@/lib/api/meters';
 import { getUsersByUtility } from '@/lib/api/users';
 import { supabase } from '@/lib/supabase';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { Task } from '@/types/user';
 import Colors from '@/constants/colors';
+
+/* ─── pure date helper ────────────────────────────── */
+const toDateStr = (d: Date): string => {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+};
 
 /* ─── helpers ─────────────────────────────────────── */
 type TaskStatus = Task['status'];
@@ -110,6 +119,7 @@ export default function TasksScreen() {
   const [connections, setConnections]     = useState<{ id: string; address: string; meter_serial: string }[]>([]);
   const [creating, setCreating]           = useState(false);
   const [titleError, setTitleError]       = useState('');
+  const [showDatePicker, setShowDatePicker] = useState(false);
 
   // Derived — always fresh, no stale-closure risk
   const filteredTasks = filterTasks(tasks, searchQuery, filterStatus, filterType, filterPriority);
@@ -489,7 +499,46 @@ export default function TasksScreen() {
               <RNScrollView keyboardShouldPersistTaps="handled">
                 <Input label="Naslov *" placeholder="Naziv zadatka" value={newTitle} onChangeText={setNewTitle} error={titleError} />
                 <Input label="Opis" placeholder="Detaljan opis..." value={newDesc} onChangeText={setNewDesc} />
-                <Input label="Rok (YYYY-MM-DD)" placeholder="2026-06-01" value={newDueDate} onChangeText={setNewDueDate} />
+                <Text style={styles.filterLabel}>Rok (opcionalno):</Text>
+                <TouchableOpacity
+                  style={styles.datePickerBtn}
+                  onPress={() => setShowDatePicker(true)}
+                  activeOpacity={0.7}
+                >
+                  <Calendar size={16} color={newDueDate ? Colors.primary : Colors.textLight} />
+                  <Text style={newDueDate ? styles.datePickerVal : styles.datePickerPh}>
+                    {newDueDate || 'Odaberi datum roka'}
+                  </Text>
+                  {newDueDate ? (
+                    <TouchableOpacity
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      onPress={(e) => { e.stopPropagation(); setNewDueDate(''); }}
+                    >
+                      <X size={14} color={Colors.textLight} />
+                    </TouchableOpacity>
+                  ) : null}
+                </TouchableOpacity>
+
+                {showDatePicker && (
+                  <DateTimePicker
+                    value={newDueDate ? new Date(newDueDate) : new Date()}
+                    mode="date"
+                    display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                    minimumDate={new Date()}
+                    onChange={(_, date) => {
+                      if (Platform.OS === 'android') setShowDatePicker(false);
+                      if (date) setNewDueDate(toDateStr(date));
+                    }}
+                  />
+                )}
+                {showDatePicker && Platform.OS === 'ios' && (
+                  <TouchableOpacity
+                    style={styles.datePickerDone}
+                    onPress={() => setShowDatePicker(false)}
+                  >
+                    <Text style={styles.datePickerDoneText}>Gotovo</Text>
+                  </TouchableOpacity>
+                )}
 
                 <Text style={styles.filterLabel}>Tip:</Text>
                 <View style={styles.chipRow}>
@@ -595,4 +644,19 @@ const styles = StyleSheet.create({
   detailRow:   { flexDirection: 'row', alignItems: 'center', gap: 8 },
   detailLabel: { fontSize: 13, color: Colors.textLight, width: 72 },
   detailValue: { fontSize: 13, color: Colors.text, flex: 1 },
+
+  /* date picker */
+  datePickerBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    borderWidth: 1, borderColor: Colors.border,
+    borderRadius: 10, paddingHorizontal: 12, paddingVertical: 13,
+    marginBottom: 12, backgroundColor: '#fff',
+  },
+  datePickerVal:      { flex: 1, fontSize: 15, color: Colors.text },
+  datePickerPh:       { flex: 1, fontSize: 15, color: Colors.textLight },
+  datePickerDone:     {
+    alignItems: 'center', paddingVertical: 10, marginBottom: 8,
+    borderRadius: 8, backgroundColor: Colors.highlight,
+  },
+  datePickerDoneText: { fontSize: 14, fontWeight: '600', color: Colors.primary },
 });
