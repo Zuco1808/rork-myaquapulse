@@ -119,7 +119,7 @@ export default function TasksScreen() {
     if (!user) return;
     try {
       const data = isWorker
-        ? await getMyTasks(user.id)
+        ? await getMyTasks(user.id, user.utility_id ?? '')
         : await getTasks();
       setTasks(data);
     } catch (e: any) {

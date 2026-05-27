@@ -42,7 +42,7 @@ export const getTasks = async (): Promise<Task[]> => {
   return (data ?? []).map(mapTask);
 };
 
-export const getMyTasks = async (workerId: string): Promise<Task[]> => {
+export const getMyTasks = async (workerId: string, utilityId: string): Promise<Task[]> => {
   const { data, error } = await supabase
     .from('tasks')
     .select(`
@@ -50,6 +50,7 @@ export const getMyTasks = async (workerId: string): Promise<Task[]> => {
       profiles:assigned_to ( full_name ),
       connections:connection_id ( address, meter_serial )
     `)
+    .eq('utility_id', utilityId)
     .or(`assigned_to.eq.${workerId},assigned_to.is.null`)
     .in('status', ['open', 'in_progress'])
     .order('created_at', { ascending: false });

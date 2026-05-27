@@ -66,7 +66,7 @@ export default function AlertsScreen() {
   const fetchAlerts = async () => {
     try {
       const all = isWorker
-        ? await getMyTasks(user!.id)
+        ? await getMyTasks(user!.id, user!.utility_id ?? '')
         : await getTasks();
 
       // Only keep high + urgent, active (open/in_progress)

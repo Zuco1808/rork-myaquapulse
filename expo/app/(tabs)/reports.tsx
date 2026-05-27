@@ -111,17 +111,44 @@ export default function ReportsScreen() {
 
   const fetchConsumption = async () => {
     const months = lastNMonths(6);
-    const since = months[0].key + '-01';
+
+    // Fetch from one extra month back so we have a base reading for the first
+    // month of the 6-month window (needed to compute the delta for month[0]).
+    const sinceBase = (() => {
+      const d = new Date();
+      d.setDate(1);
+      d.setMonth(d.getMonth() - 6);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
+    })();
 
     const { data } = await supabase
       .from('meter_readings')
-      .select('reading_value, reading_date')
-      .gte('reading_date', since);
+      .select('connection_id, reading_value, reading_date')
+      .gte('reading_date', sinceBase)
+      .order('reading_date', { ascending: true });
 
-    const grouped: Record<string, number> = {};
+    // Group readings per connection so we can compute per-connection deltas
+    const byConnection: Record<string, { date: string; value: number }[]> = {};
     (data || []).forEach((r: any) => {
-      const key = String(r.reading_date).slice(0, 7);
-      grouped[key] = (grouped[key] || 0) + (Number(r.reading_value) || 0);
+      const cid = r.connection_id as string;
+      if (!byConnection[cid]) byConnection[cid] = [];
+      byConnection[cid].push({
+        date: String(r.reading_date),
+        value: Number(r.reading_value) || 0,
+      });
+    });
+
+    // Delta between consecutive readings → assign to month of the later reading
+    const grouped: Record<string, number> = {};
+    Object.values(byConnection).forEach((readings) => {
+      for (let i = 1; i < readings.length; i++) {
+        const delta = readings[i].value - readings[i - 1].value;
+        // Ignore negative deltas (meter replacement / data error)
+        if (delta > 0) {
+          const key = readings[i].date.slice(0, 7);
+          grouped[key] = (grouped[key] || 0) + delta;
+        }
+      }
     });
 
     const items = months.map((m) => ({

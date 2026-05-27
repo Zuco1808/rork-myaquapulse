@@ -123,7 +123,7 @@ function RootLayoutNav() {
       <Stack.Screen name="users/add" />
       <Stack.Screen name="users/edit/[id]" />
       {/* users/reports uses the native nav header (no custom <Header>) */}
-      <Stack.Screen name="users/reports/[id]" options={{ headerShown: true, title: 'Izvještaji korisnika' }} />
+      <Stack.Screen name="users/reports/[id]" options={{ headerShown: false }} />
 
       {/* ── Companies / Vodovodi ──────────────────────────────────────── */}
       <Stack.Screen name="companies" />

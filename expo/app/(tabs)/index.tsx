@@ -292,7 +292,7 @@ export default function HomeScreen() {
             <View style={styles.quickActionsButtons}>
               <Button
                 title="Očitaj vodomjer"
-                onPress={() => router.push('/readings' as any)}
+                onPress={() => router.push('/(tabs)/readings' as any)}
                 style={styles.quickActionButton}
               />
               <Button
