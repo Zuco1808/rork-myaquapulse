@@ -1,5 +1,104 @@
 import { supabase } from '@/lib/supabase';
 
+export type PricingPackageType = 'standard' | 'business';
+
+export const PRICING_PACKAGES: Record<PricingPackageType, {
+  name: string;
+  tiers: { min: number; max: number; price: number; label: string }[];
+}> = {
+  standard: {
+    name: 'Standardni paket',
+    tiers: [
+      { min: 0, max: 5, price: 1.20, label: 'Osnovna potrošnja' },
+      { min: 5, max: 15, price: 1.80, label: 'Standardna potrošnja' },
+      { min: 15, max: 30, price: 2.50, label: 'Povećana potrošnja' },
+      { min: 30, max: Infinity, price: 3.80, label: 'Prekomjerna potrošnja' },
+    ],
+  },
+  business: {
+    name: 'Poslovni paket',
+    tiers: [
+      { min: 0, max: 10, price: 2.00, label: 'Osnovna poslovna potrošnja' },
+      { min: 10, max: 50, price: 2.50, label: 'Standardna poslovna potrošnja' },
+      { min: 50, max: Infinity, price: 3.00, label: 'Povećana poslovna potrošnja' },
+    ],
+  },
+};
+
+export interface BillBreakdownItem {
+  label: string;
+  consumption: number;
+  pricePerUnit: number;
+  amount: number;
+}
+
+export interface BillCalculation {
+  total: number;
+  breakdown: BillBreakdownItem[];
+}
+
+export const calculateBillAmount = (
+  consumption: number,
+  packageType: PricingPackageType = 'standard'
+): BillCalculation => {
+  const pkg = PRICING_PACKAGES[packageType];
+  let remaining = consumption;
+  let total = 0;
+  const breakdown: BillBreakdownItem[] = [];
+
+  for (const tier of pkg.tiers) {
+    if (remaining <= 0) break;
+    const tierRange = tier.max === Infinity ? remaining : tier.max - tier.min;
+    const consumed = Math.min(remaining, tierRange);
+    if (consumed > 0) {
+      const amount = Math.round(consumed * tier.price * 100) / 100;
+      breakdown.push({ label: tier.label, consumption: consumed, pricePerUnit: tier.price, amount });
+      total += amount;
+    }
+    remaining -= consumed;
+  }
+
+  return { total: Math.round(total * 100) / 100, breakdown };
+};
+
+export const getReadingsForBilling = async () => {
+  const { data, error } = await supabase
+    .from('meter_readings')
+    .select(`
+      *,
+      water_meters(
+        id,
+        serial_number,
+        user_id,
+        location_id,
+        locations(name, address),
+        profiles(name, email)
+      )
+    `)
+    .eq('status', 'verified')
+    .not('consumption', 'is', null)
+    .gt('consumption', 0)
+    .order('reading_date', { ascending: false });
+
+  if (error) throw error;
+  return (data || []).map((r: any) => ({
+    id: r.id,
+    meterId: r.meter_id,
+    meterSerial: r.water_meters?.serial_number || '',
+    userId: r.water_meters?.user_id || '',
+    locationId: r.water_meters?.location_id || null,
+    userName: r.water_meters?.profiles?.name || '',
+    userEmail: r.water_meters?.profiles?.email || '',
+    locationName: r.water_meters?.locations?.name || '',
+    locationAddress: r.water_meters?.locations?.address || '',
+    value: r.value,
+    previousValue: r.previous_value,
+    consumption: r.consumption as number,
+    readingDate: new Date(r.reading_date).getTime(),
+    readMethod: r.read_method,
+  }));
+};
+
 const mapBill = (b: any) => ({
   id: b.id,
   userId: b.user_id,
