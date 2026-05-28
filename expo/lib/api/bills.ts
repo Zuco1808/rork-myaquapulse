@@ -121,7 +121,24 @@ const mapBill = (b: any) => ({
   createdAt: new Date(b.created_at).getTime(),
 });
 
+// Marks issued/draft bills past their due_date as overdue in Supabase.
+// Returns the number of bills updated.
+export const markOverdueBills = async (): Promise<number> => {
+  const now = new Date().toISOString();
+  const { data, error } = await supabase
+    .from('bills')
+    .update({ status: 'overdue' })
+    .in('status', ['issued', 'draft'])
+    .lt('due_date', now)
+    .select('id');
+
+  if (error) throw error;
+  return (data || []).length;
+};
+
 export const getBills = async () => {
+  await markOverdueBills().catch(() => {});
+
   const { data, error } = await supabase
     .from('bills')
     .select('*, profiles(name, email), water_meters(serial_number), locations(name)')
@@ -132,6 +149,8 @@ export const getBills = async () => {
 };
 
 export const getBillsByUser = async (userId: string) => {
+  await markOverdueBills().catch(() => {});
+
   const { data, error } = await supabase
     .from('bills')
     .select('*, profiles(name, email), water_meters(serial_number), locations(name)')
@@ -150,7 +169,14 @@ export const getBillById = async (id: string) => {
     .single();
 
   if (error) throw error;
-  return mapBill(data);
+
+  const bill = mapBill(data);
+  // Auto-mark this bill overdue if needed
+  if ((bill.status === 'issued' || bill.status === 'draft') && bill.dueDate < Date.now()) {
+    await supabase.from('bills').update({ status: 'overdue' }).eq('id', id).catch(() => {});
+    return { ...bill, status: 'overdue' as const };
+  }
+  return bill;
 };
 
 export const createBill = async (bill: {
