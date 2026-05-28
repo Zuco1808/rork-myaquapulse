@@ -108,76 +108,121 @@ export default function HomeScreen() {
       ];
     }
     
-    // Finance users see billing and reports
+    // Finance users see billing and reports filtered by permissions
     if (user.role === 'finance') {
-      return [
-        {
+      const items = [];
+      if (user.permissions?.canManageBilling) {
+        items.push({
           title: 'Računi',
           icon: <CreditCard size={24} color={Colors.primary} />,
           route: '/bills',
           description: 'Upravljanje računima',
-        },
-        {
+        });
+      }
+      if (user.permissions?.canViewAllData) {
+        items.push({
           title: 'Izvještaji',
           icon: <BarChart size={24} color={Colors.primary} />,
           route: '/reports',
           description: 'Finansijski izvještaji',
-        },
-        {
+        });
+      }
+      if (user.permissions?.canManageUsers) {
+        items.push({
           title: 'Korisnici',
           icon: <Users size={24} color={Colors.primary} />,
           route: '/users',
           description: 'Pregled korisnika',
-        },
-        {
+        });
+      }
+      if (user.permissions?.canSendNotifications) {
+        items.push({
           title: 'Obavještenja',
           icon: <Bell size={24} color={Colors.primary} />,
           route: '/notifications/send',
           description: 'Slanje obavještenja',
-        },
-      ];
+        });
+      }
+      return items;
     }
-    
-    // Workers see tasks and readings
+
+    // Workers see tasks and readings filtered by permissions
     if (user.role === 'worker') {
-      return [
-        {
+      const items = [];
+      if (user.permissions?.canManageTasks) {
+        items.push({
           title: 'Zadaci',
           icon: <ClipboardList size={24} color={Colors.primary} />,
           route: '/tasks',
           description: 'Radni zadaci',
-        },
-        {
+        });
+      }
+      if (user.permissions?.canReadMeters) {
+        items.push({
           title: 'Očitanja',
           icon: <Droplet size={24} color={Colors.primary} />,
           route: '/readings',
           description: 'Očitanje vodomjera',
-        },
-        ...commonItems,
-      ];
+        });
+      }
+      return [...items, ...commonItems];
     }
-    
-    // Maintenance users see tasks and repairs
+
+    // Maintenance users see tasks and meters filtered by permissions
     if (user.role === 'maintenance') {
-      return [
-        {
+      const items = [];
+      if (user.permissions?.canManageTasks) {
+        items.push({
           title: 'Zadaci',
           icon: <ClipboardList size={24} color={Colors.primary} />,
           route: '/tasks',
           description: 'Zadaci održavanja',
-        },
-        {
+        });
+      }
+      if (user.permissions?.canReadMeters) {
+        items.push({
           title: 'Vodomjeri',
           icon: <Droplet size={24} color={Colors.primary} />,
           route: '/meters',
           description: 'Pregled vodomjera',
-        },
-        ...commonItems,
-      ];
+        });
+      }
+      return [...items, ...commonItems];
     }
-    
-    // Citizens see basic menu items
-    return commonItems;
+
+    // Citizens see basic menu items filtered by permissions
+    const citizenItems = [];
+    if (user.permissions?.canManageBilling) {
+      citizenItems.push({
+        title: 'Računi',
+        icon: <CreditCard size={24} color={Colors.primary} />,
+        route: '/bills',
+        description: 'Pregled i plaćanje računa',
+      });
+    }
+    if (user.permissions?.canReadMeters) {
+      citizenItems.push({
+        title: 'Potrošnja',
+        icon: <BarChart size={24} color={Colors.primary} />,
+        route: '/consumption',
+        description: 'Analiza potrošnje vode',
+      });
+    }
+    citizenItems.push(
+      {
+        title: 'Obavještenja',
+        icon: <Bell size={24} color={Colors.primary} />,
+        route: '/notifications',
+        description: 'Pregled obavještenja',
+      },
+      {
+        title: 'Podrška',
+        icon: <Settings size={24} color={Colors.primary} />,
+        route: '/support',
+        description: 'Kontakt i pomoć',
+      }
+    );
+    return citizenItems;
   };
   
   const menuItems = getMenuItems();
@@ -232,21 +277,26 @@ export default function HomeScreen() {
           ))}
         </View>
         
-        {user?.role === 'citizen' && (
+        {user?.role === 'citizen' &&
+          (user?.permissions?.canReadMeters || user?.permissions?.canReportIssues) && (
           <Card style={styles.quickActionsCard}>
             <Text style={styles.quickActionsTitle}>Brze akcije</Text>
             <View style={styles.quickActionsButtons}>
-              <Button
-                title="Očitaj vodomjer"
-                onPress={() => router.push('/readings' as any)}
-                style={styles.quickActionButton}
-              />
-              <Button
-                title="Prijavi problem"
-                variant="outline"
-                onPress={() => router.push('/support/report-issue' as any)}
-                style={styles.quickActionButton}
-              />
+              {user?.permissions?.canReadMeters && (
+                <Button
+                  title="Očitaj vodomjer"
+                  onPress={() => router.push('/readings' as any)}
+                  style={styles.quickActionButton}
+                />
+              )}
+              {user?.permissions?.canReportIssues && (
+                <Button
+                  title="Prijavi problem"
+                  variant="outline"
+                  onPress={() => router.push('/support/report-issue' as any)}
+                  style={styles.quickActionButton}
+                />
+              )}
             </View>
           </Card>
         )}

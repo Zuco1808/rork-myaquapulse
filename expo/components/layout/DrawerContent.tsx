@@ -140,55 +140,69 @@ export const DrawerContent: React.FC<DrawerContentProps> = ({ onClose }) => {
   const renderFinanceMenu = () => {
     return (
       <>
-        <MenuItem 
+        <MenuItem
           icon={<Home size={20} color={Colors.primary} />}
           label="Početna"
           onPress={() => handleNavigation('/(tabs)')}
         />
-        
-        <MenuItem 
-          icon={<Users size={20} color={Colors.primary} />}
-          label="Korisnici"
-          onPress={() => handleNavigation('/users')}
-        />
-        
-        <MenuItem 
-          icon={<Droplet size={20} color={Colors.primary} />}
-          label="Vodomjeri"
-          onPress={() => handleNavigation('/meters')}
-        />
-        
-        <MenuItem 
-          icon={<FileText size={20} color={Colors.primary} />}
-          label="Očitanja"
-          onPress={() => handleNavigation('/(tabs)/readings')}
-        />
-        
-        <MenuItem 
-          icon={<CreditCard size={20} color={Colors.primary} />}
-          label="Računi"
-          onPress={() => handleNavigation('/bills')}
-        />
-        
-        <MenuItem 
-          icon={<ClipboardList size={20} color={Colors.primary} />}
-          label="Zadaci"
-          onPress={() => handleNavigation('/tasks')}
-        />
-        
-        <MenuItem 
-          icon={<BarChart3 size={20} color={Colors.primary} />}
-          label="Izvještaji"
-          onPress={() => handleNavigation('/(tabs)/reports')}
-        />
-        
-        <MenuItem 
-          icon={<Bell size={20} color={Colors.primary} />}
-          label="Obavještenja"
-          onPress={() => handleNavigation('/notifications')}
-        />
-        
-        <MenuItem 
+
+        {user?.permissions?.canManageUsers && (
+          <MenuItem
+            icon={<Users size={20} color={Colors.primary} />}
+            label="Korisnici"
+            onPress={() => handleNavigation('/users')}
+          />
+        )}
+
+        {user?.permissions?.canReadMeters && (
+          <MenuItem
+            icon={<Droplet size={20} color={Colors.primary} />}
+            label="Vodomjeri"
+            onPress={() => handleNavigation('/meters')}
+          />
+        )}
+
+        {user?.permissions?.canReadMeters && (
+          <MenuItem
+            icon={<FileText size={20} color={Colors.primary} />}
+            label="Očitanja"
+            onPress={() => handleNavigation('/(tabs)/readings')}
+          />
+        )}
+
+        {user?.permissions?.canManageBilling && (
+          <MenuItem
+            icon={<CreditCard size={20} color={Colors.primary} />}
+            label="Računi"
+            onPress={() => handleNavigation('/bills')}
+          />
+        )}
+
+        {user?.permissions?.canManageTasks && (
+          <MenuItem
+            icon={<ClipboardList size={20} color={Colors.primary} />}
+            label="Zadaci"
+            onPress={() => handleNavigation('/tasks')}
+          />
+        )}
+
+        {user?.permissions?.canViewAllData && (
+          <MenuItem
+            icon={<BarChart3 size={20} color={Colors.primary} />}
+            label="Izvještaji"
+            onPress={() => handleNavigation('/(tabs)/reports')}
+          />
+        )}
+
+        {user?.permissions?.canSendNotifications && (
+          <MenuItem
+            icon={<Bell size={20} color={Colors.primary} />}
+            label="Obavještenja"
+            onPress={() => handleNavigation('/notifications')}
+          />
+        )}
+
+        <MenuItem
           icon={<Settings size={20} color={Colors.primary} />}
           label="Postavke"
           onPress={() => handleNavigation('/(tabs)/profile')}
@@ -200,55 +214,123 @@ export const DrawerContent: React.FC<DrawerContentProps> = ({ onClose }) => {
   const renderWorkerMenu = () => {
     return (
       <>
-        <MenuItem 
+        <MenuItem
           icon={<Home size={20} color={Colors.primary} />}
           label="Početna"
           onPress={() => handleNavigation('/(tabs)')}
         />
-        
-        <MenuItem 
-          icon={<FileText size={20} color={Colors.primary} />}
-          label="Očitanja"
-          onPress={() => handleNavigation('/(tabs)/readings')}
-        />
-        
-        <MenuItem 
-          icon={<ClipboardList size={20} color={Colors.primary} />}
-          label="Zadaci"
-          onPress={() => handleNavigation('/tasks')}
-        />
-        
-        <MenuItem 
-          icon={<MapPin size={20} color={Colors.primary} />}
-          label="Lokacije"
-          onPress={() => handleNavigation('/locations')}
-        />
-        
-        <MenuItem 
-          icon={<Droplet size={20} color={Colors.primary} />}
-          label="Vodomjeri"
-          onPress={() => handleNavigation('/meters')}
-        />
-        
-        <MenuItem 
-          icon={<Bell size={20} color={Colors.primary} />}
-          label="Obavještenja"
-          onPress={() => handleNavigation('/notifications')}
-        />
-        
-        <MenuItem 
-          icon={<AlertTriangle size={20} color={Colors.primary} />}
-          label="Prijavi kvar"
-          onPress={() => handleNavigation('/support/report-issue')}
-        />
-        
-        <MenuItem 
+
+        {user?.permissions?.canReadMeters && (
+          <MenuItem
+            icon={<FileText size={20} color={Colors.primary} />}
+            label="Očitanja"
+            onPress={() => handleNavigation('/(tabs)/readings')}
+          />
+        )}
+
+        {user?.permissions?.canManageTasks && (
+          <MenuItem
+            icon={<ClipboardList size={20} color={Colors.primary} />}
+            label="Zadaci"
+            onPress={() => handleNavigation('/tasks')}
+          />
+        )}
+
+        {user?.permissions?.canReadMeters && (
+          <MenuItem
+            icon={<MapPin size={20} color={Colors.primary} />}
+            label="Lokacije"
+            onPress={() => handleNavigation('/locations')}
+          />
+        )}
+
+        {user?.permissions?.canReadMeters && (
+          <MenuItem
+            icon={<Droplet size={20} color={Colors.primary} />}
+            label="Vodomjeri"
+            onPress={() => handleNavigation('/meters')}
+          />
+        )}
+
+        {user?.permissions?.canSendNotifications && (
+          <MenuItem
+            icon={<Bell size={20} color={Colors.primary} />}
+            label="Obavještenja"
+            onPress={() => handleNavigation('/notifications')}
+          />
+        )}
+
+        {user?.permissions?.canReportIssues && (
+          <MenuItem
+            icon={<AlertTriangle size={20} color={Colors.primary} />}
+            label="Prijavi kvar"
+            onPress={() => handleNavigation('/support/report-issue')}
+          />
+        )}
+
+        <MenuItem
           icon={<HelpCircle size={20} color={Colors.primary} />}
           label="Podrška"
           onPress={() => handleNavigation('/support')}
         />
-        
-        <MenuItem 
+
+        <MenuItem
+          icon={<Settings size={20} color={Colors.primary} />}
+          label="Postavke"
+          onPress={() => handleNavigation('/(tabs)/profile')}
+        />
+      </>
+    );
+  };
+
+  const renderMaintenanceMenu = () => {
+    return (
+      <>
+        <MenuItem
+          icon={<Home size={20} color={Colors.primary} />}
+          label="Početna"
+          onPress={() => handleNavigation('/(tabs)')}
+        />
+
+        {user?.permissions?.canManageTasks && (
+          <MenuItem
+            icon={<ClipboardList size={20} color={Colors.primary} />}
+            label="Zadaci"
+            onPress={() => handleNavigation('/tasks')}
+          />
+        )}
+
+        {user?.permissions?.canReadMeters && (
+          <MenuItem
+            icon={<Droplet size={20} color={Colors.primary} />}
+            label="Vodomjeri"
+            onPress={() => handleNavigation('/meters')}
+          />
+        )}
+
+        {user?.permissions?.canSendNotifications && (
+          <MenuItem
+            icon={<Bell size={20} color={Colors.primary} />}
+            label="Obavještenja"
+            onPress={() => handleNavigation('/notifications')}
+          />
+        )}
+
+        {user?.permissions?.canReportIssues && (
+          <MenuItem
+            icon={<AlertTriangle size={20} color={Colors.primary} />}
+            label="Prijavi kvar"
+            onPress={() => handleNavigation('/support/report-issue')}
+          />
+        )}
+
+        <MenuItem
+          icon={<HelpCircle size={20} color={Colors.primary} />}
+          label="Podrška"
+          onPress={() => handleNavigation('/support')}
+        />
+
+        <MenuItem
           icon={<Settings size={20} color={Colors.primary} />}
           label="Postavke"
           onPress={() => handleNavigation('/(tabs)/profile')}
@@ -260,57 +342,65 @@ export const DrawerContent: React.FC<DrawerContentProps> = ({ onClose }) => {
   const renderCitizenMenu = () => {
     return (
       <>
-        <MenuItem 
+        <MenuItem
           icon={<Home size={20} color={Colors.primary} />}
           label="Početna"
           onPress={() => handleNavigation('/(tabs)')}
         />
-        
-        <MenuItem 
-          icon={<Droplet size={20} color={Colors.primary} />}
-          label="Vodomjeri"
-          onPress={() => handleNavigation('/meters')}
-        />
-        
+
         {user?.permissions?.canReadMeters && (
-          <MenuItem 
+          <MenuItem
+            icon={<Droplet size={20} color={Colors.primary} />}
+            label="Vodomjeri"
+            onPress={() => handleNavigation('/meters')}
+          />
+        )}
+
+        {user?.permissions?.canReadMeters && (
+          <MenuItem
             icon={<FileText size={20} color={Colors.primary} />}
             label="Očitanja"
             onPress={() => handleNavigation('/(tabs)/readings')}
           />
         )}
-        
-        <MenuItem 
-          icon={<CreditCard size={20} color={Colors.primary} />}
-          label="Računi"
-          onPress={() => handleNavigation('/bills')}
-        />
-        
-        <MenuItem 
-          icon={<BarChart3 size={20} color={Colors.primary} />}
-          label="Potrošnja"
-          onPress={() => handleNavigation('/consumption')}
-        />
-        
-        <MenuItem 
+
+        {user?.permissions?.canManageBilling && (
+          <MenuItem
+            icon={<CreditCard size={20} color={Colors.primary} />}
+            label="Računi"
+            onPress={() => handleNavigation('/bills')}
+          />
+        )}
+
+        {user?.permissions?.canReadMeters && (
+          <MenuItem
+            icon={<BarChart3 size={20} color={Colors.primary} />}
+            label="Potrošnja"
+            onPress={() => handleNavigation('/consumption')}
+          />
+        )}
+
+        <MenuItem
           icon={<Bell size={20} color={Colors.primary} />}
           label="Obavještenja"
           onPress={() => handleNavigation('/notifications')}
         />
-        
-        <MenuItem 
-          icon={<AlertTriangle size={20} color={Colors.primary} />}
-          label="Prijavi kvar"
-          onPress={() => handleNavigation('/support/report-issue')}
-        />
-        
-        <MenuItem 
+
+        {user?.permissions?.canReportIssues && (
+          <MenuItem
+            icon={<AlertTriangle size={20} color={Colors.primary} />}
+            label="Prijavi kvar"
+            onPress={() => handleNavigation('/support/report-issue')}
+          />
+        )}
+
+        <MenuItem
           icon={<HelpCircle size={20} color={Colors.primary} />}
           label="Podrška"
           onPress={() => handleNavigation('/support')}
         />
-        
-        <MenuItem 
+
+        <MenuItem
           icon={<Settings size={20} color={Colors.primary} />}
           label="Postavke"
           onPress={() => handleNavigation('/(tabs)/profile')}
@@ -321,13 +411,15 @@ export const DrawerContent: React.FC<DrawerContentProps> = ({ onClose }) => {
   
   const renderMenu = () => {
     if (!user) return null;
-    
+
     if (user.role === 'superadmin' || user.role === 'admin') {
       return renderAdminMenu();
     } else if (user.role === 'finance') {
       return renderFinanceMenu();
     } else if (user.role === 'worker') {
       return renderWorkerMenu();
+    } else if (user.role === 'maintenance') {
+      return renderMaintenanceMenu();
     } else {
       return renderCitizenMenu();
     }
@@ -343,6 +435,8 @@ export const DrawerContent: React.FC<DrawerContentProps> = ({ onClose }) => {
         return 'Finansije';
       case 'worker':
         return 'Radnik';
+      case 'maintenance':
+        return 'Održavanje';
       case 'citizen':
         return 'Građanin';
       default:
