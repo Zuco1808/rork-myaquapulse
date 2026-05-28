@@ -25,7 +25,7 @@ import { ReadingCard } from '@/components/readings/ReadingCard';
 import { OCRCameraView } from '@/components/ocr/CameraView';
 import { OCRResult } from '@/components/ocr/OCRResult';
 import { useAuthStore } from '@/store/auth-store';
-import { getReadings, createReading } from '@/lib/api/readings';
+import { getReadings, createReading, updateReadingStatus } from '@/lib/api/readings';
 import { getMeters } from '@/lib/api/meters';
 import Colors from '@/constants/colors';
 import { MeterReading } from '@/types/location';
@@ -55,6 +55,10 @@ export default function ReadingsScreen() {
   const [showFilters, setShowFilters] = useState(false);
   const [filterStatus, setFilterStatus] = useState('all');
   const [readingError, setReadingError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showRejectModal, setShowRejectModal] = useState(false);
+  const [rejectingReadingId, setRejectingReadingId] = useState<string | null>(null);
+  const [rejectReason, setRejectReason] = useState('');
   
   const fetchData = async () => {
     if (!user) {
@@ -126,45 +130,35 @@ export default function ReadingsScreen() {
     return true;
   };
   
-  const handleManualSubmit = () => {
+  const handleManualSubmit = async () => {
     const value = parseFloat(manualReading);
-    
-    if (isNaN(value)) {
-      setReadingError("Unesite validnu numeričku vrijednost");
-      return;
+    if (isNaN(value)) { setReadingError("Unesite validnu numeričku vrijednost"); return; }
+    if (!validateReading(value)) return;
+
+    setIsSubmitting(true);
+    try {
+      const newReading = await createReading({
+        meter_id: selectedMeterId,
+        value,
+        read_by: user?.id || '',
+        read_method: user?.role === 'citizen' ? 'citizen' : 'manual',
+      });
+      const extended: ExtendedReading = {
+        ...newReading,
+        meterSerialNumber: availableMeters.find(m => m.id === selectedMeterId)?.serialNumber,
+      };
+      const updatedReadings = [extended, ...readings];
+      setReadings(updatedReadings);
+      applyFilters(searchQuery, filterStatus, updatedReadings);
+      setShowAddReadingModal(false);
+      setManualReading('');
+      setReadingError('');
+      Alert.alert("Uspjeh", "Očitanje je uspješno dodano.", [{ text: "OK" }]);
+    } catch {
+      Alert.alert("Greška", "Nije moguće dodati očitanje. Pokušajte ponovo.");
+    } finally {
+      setIsSubmitting(false);
     }
-    
-    if (!validateReading(value)) {
-      return;
-    }
-    
-    // In a real app, you would submit the reading to your backend
-    const newReading: ExtendedReading = {
-      id: `reading-${Date.now()}`,
-      meterId: selectedMeterId,
-      value: value,
-      readingDate: Date.now(),
-      readBy: user?.id || '',
-      readMethod: user?.role === 'citizen' ? 'citizen' : 'manual',
-      status: user?.role === 'citizen' ? 'pending' : 'verified',
-      meterSerialNumber: availableMeters.find(m => m.id === selectedMeterId)?.serialNumber
-    };
-    
-    // Add the new reading to the list
-    const updatedReadings = [newReading, ...readings];
-    setReadings(updatedReadings);
-    setFilteredReadings(updatedReadings);
-    
-    // Close modal and reset form
-    setShowAddReadingModal(false);
-    setManualReading('');
-    setReadingError('');
-    
-    Alert.alert(
-      "Uspjeh",
-      "Očitanje je uspješno dodano.",
-      [{ text: "OK" }]
-    );
   };
   
   const handleOpenCamera = () => {
@@ -178,60 +172,38 @@ export default function ReadingsScreen() {
     setShowCamera(false);
     setShowOCRResult(true);
   };
-  const handleOCRConfirm = (value: number) => {
+  const handleOCRConfirm = async (value: number) => {
     if (!validateReading(value)) {
-      Alert.alert(
-        "Greška",
-        readingError,
-        [
-          { 
-            text: "Pokušaj ponovo", 
-            onPress: () => {
-              setShowOCRResult(false);
-              setShowCamera(true);
-            }
-          },
-          { 
-            text: "Otkaži", 
-            style: "cancel",
-            onPress: () => {
-              setShowOCRResult(false);
-              setCapturedImage(null);
-              setReadingError('');
-            }
-          }
-        ]
-      );
+      Alert.alert("Greška", readingError, [
+        { text: "Pokušaj ponovo", onPress: () => { setShowOCRResult(false); setShowCamera(true); } },
+        { text: "Otkaži", style: "cancel", onPress: () => { setShowOCRResult(false); setCapturedImage(null); setReadingError(''); } },
+      ]);
       return;
     }
-    
-    // In a real app, you would submit the OCR reading to your backend
-    const newReading: ExtendedReading = {
-      id: `reading-${Date.now()}`,
-      meterId: selectedMeterId,
-      value: value,
-      readingDate: Date.now(),
-      readBy: user?.id || '',
-      readMethod: 'ocr',
-      imageUrl: capturedImage || undefined,
-      status: user?.role === 'citizen' ? 'pending' : 'verified',
-      meterSerialNumber: availableMeters.find(m => m.id === selectedMeterId)?.serialNumber
-    };
-    
-    // Add the new reading to the list
-    const updatedReadings = [newReading, ...readings];
-    setReadings(updatedReadings);
-    setFilteredReadings(updatedReadings);
-    
-    // Close OCR result screen
-    setShowOCRResult(false);
-    setCapturedImage(null);
-    
-    Alert.alert(
-      "Uspjeh",
-      "Očitanje je uspješno dodano.",
-      [{ text: "OK" }]
-    );
+
+    setIsSubmitting(true);
+    try {
+      const newReading = await createReading({
+        meter_id: selectedMeterId,
+        value,
+        read_by: user?.id || '',
+        read_method: 'ocr',
+      });
+      const extended: ExtendedReading = {
+        ...newReading,
+        meterSerialNumber: availableMeters.find(m => m.id === selectedMeterId)?.serialNumber,
+      };
+      const updatedReadings = [extended, ...readings];
+      setReadings(updatedReadings);
+      applyFilters(searchQuery, filterStatus, updatedReadings);
+      setShowOCRResult(false);
+      setCapturedImage(null);
+      Alert.alert("Uspjeh", "Očitanje je uspješno dodano.", [{ text: "OK" }]);
+    } catch {
+      Alert.alert("Greška", "Nije moguće dodati očitanje. Pokušajte ponovo.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
   
   const handleOCRRetry = () => {
@@ -258,42 +230,41 @@ export default function ReadingsScreen() {
     );
   };
   
-  const handleVerifyReading = (readingId: string) => {
-    // Only admin and finance can verify readings
-    if (user?.role !== 'admin' && user?.role !== 'finance' && user?.role !== 'superadmin') {
-      return;
+  const handleVerifyReading = async (readingId: string) => {
+    if (user?.role !== 'admin' && user?.role !== 'finance' && user?.role !== 'superadmin') return;
+    try {
+      await updateReadingStatus(readingId, 'verified');
+      const updated = readings.map(r => r.id === readingId ? { ...r, status: 'verified' as const } : r);
+      setReadings(updated);
+      applyFilters(searchQuery, filterStatus, updated);
+      Alert.alert("Uspjeh", "Očitanje je potvrđeno.");
+    } catch {
+      Alert.alert("Greška", "Nije moguće potvrditi očitanje.");
     }
-    
-    // Update reading status
-    const updatedReadings = readings.map(reading => 
-      reading.id === readingId 
-        ? { ...reading, status: 'verified' as const } 
-        : reading
-    );
-    
-    setReadings(updatedReadings);
-    setFilteredReadings(updatedReadings);
-    
-    Alert.alert("Uspjeh", "Očitanje je potvrđeno.");
   };
-  
+
   const handleRejectReading = (readingId: string) => {
-    // Only admin and finance can reject readings
-    if (user?.role !== 'admin' && user?.role !== 'finance' && user?.role !== 'superadmin') {
-      return;
+    if (user?.role !== 'admin' && user?.role !== 'finance' && user?.role !== 'superadmin') return;
+    setRejectingReadingId(readingId);
+    setRejectReason('');
+    setShowRejectModal(true);
+  };
+
+  const handleConfirmReject = async () => {
+    if (!rejectingReadingId) return;
+    try {
+      await updateReadingStatus(rejectingReadingId, 'rejected', rejectReason || undefined);
+      const updated = readings.map(r =>
+        r.id === rejectingReadingId ? { ...r, status: 'rejected' as const } : r
+      );
+      setReadings(updated);
+      applyFilters(searchQuery, filterStatus, updated);
+      setShowRejectModal(false);
+      setRejectingReadingId(null);
+      Alert.alert("Uspjeh", "Očitanje je odbijeno.");
+    } catch {
+      Alert.alert("Greška", "Nije moguće odbiti očitanje.");
     }
-    
-    // Update reading status
-    const updatedReadings = readings.map(reading => 
-      reading.id === readingId 
-        ? { ...reading, status: 'rejected' as const } 
-        : reading
-    );
-    
-    setReadings(updatedReadings);
-    setFilteredReadings(updatedReadings);
-    
-    Alert.alert("Uspjeh", "Očitanje je odbijeno.");
   };
   
   const handleSearch = (text: string) => {
@@ -306,22 +277,17 @@ export default function ReadingsScreen() {
     applyFilters(searchQuery, status);
   };
   
-  const applyFilters = (query: string, status: string) => {
-    let filtered = [...readings];
-    
-    // Apply search query
+  const applyFilters = (query: string, status: string, list?: ExtendedReading[]) => {
+    let filtered = [...(list ?? readings)];
     if (query) {
-      filtered = filtered.filter(reading => 
+      filtered = filtered.filter(reading =>
         reading.meterSerialNumber?.toLowerCase().includes(query.toLowerCase()) ||
         reading.value.toString().includes(query)
       );
     }
-    
-    // Apply status filter
     if (status !== 'all') {
       filtered = filtered.filter(reading => reading.status === status);
     }
-    
     setFilteredReadings(filtered);
   };
   
@@ -560,6 +526,40 @@ export default function ReadingsScreen() {
           </View>
         </View>
       </Modal>
+      {/* Reject reason modal */}
+      <Modal
+        visible={showRejectModal}
+        animationType="fade"
+        transparent={true}
+        onRequestClose={() => setShowRejectModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.rejectModalContent}>
+            <Text style={styles.modalTitle}>Odbijanje očitanja</Text>
+            <Text style={styles.modalSubtitle}>Unesite razlog odbijanja (opcionalno)</Text>
+            <Input
+              placeholder="Razlog odbijanja..."
+              value={rejectReason}
+              onChangeText={setRejectReason}
+              containerStyle={{ marginBottom: 16 }}
+            />
+            <View style={styles.modalButtons}>
+              <Button
+                title="Otkaži"
+                variant="outline"
+                onPress={() => { setShowRejectModal(false); setRejectingReadingId(null); }}
+                style={styles.modalButton}
+              />
+              <Button
+                title="Odbij"
+                onPress={handleConfirmReject}
+                style={[styles.modalButton, { backgroundColor: Colors.error }]}
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       <Modal visible={showCamera} animationType="slide" statusBarTranslucent={true} onRequestClose={() => setShowCamera(false)}>
         <OCRCameraView
           onCapture={handleCameraCapture}
@@ -764,6 +764,12 @@ const styles = StyleSheet.create({
   },
   closeButton: {
     width: '100%',
+  },
+  rejectModalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 24,
+    margin: 24,
   },
 });
 
