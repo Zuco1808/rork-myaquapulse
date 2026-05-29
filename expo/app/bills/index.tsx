@@ -13,12 +13,12 @@ import {
   SafeAreaView
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { 
-  CreditCard, 
-  Search, 
-  Plus, 
-  Filter, 
-  ChevronRight, 
+import {
+  CreditCard,
+  Search,
+  Plus,
+  Filter,
+  ChevronRight,
   Calendar,
   DollarSign,
   CheckCircle,
@@ -28,6 +28,7 @@ import {
   Menu,
   X,
   Mail,
+  Bell,
   Check as CheckIcon
 } from 'lucide-react-native';
 import { Header } from '@/components/layout/Header';
@@ -38,6 +39,7 @@ import { StatusIndicator } from '@/components/ui/StatusIndicator';
 import { Input } from '@/components/ui/Input';
 import { useAuthStore } from '@/store/auth-store';
 import { getBills } from '@/lib/api/bills';
+import { sendOverdueBillReminders } from '@/lib/api/notifications';
 import { Drawer } from '@/components/layout/Drawer';
 import Colors from '@/constants/colors';
 
@@ -85,6 +87,7 @@ export default function BillsScreen() {
   const [selectAllBills, setSelectAllBills] = useState(false);
   const [bulkOperationModalVisible, setBulkOperationModalVisible] = useState(false);
   const [emailModalVisible, setEmailModalVisible] = useState(false);
+  const [isSendingReminders, setIsSendingReminders] = useState(false);
   const [emailBill, setEmailBill] = useState<any>(null);
 
   
@@ -135,6 +138,40 @@ export default function BillsScreen() {
     setFilterPeriod(period);
   };
   
+  const handleSendOverdueReminders = () => {
+    const overdueCount = bills.filter((b: any) => b.status === 'overdue').length;
+
+    if (overdueCount === 0) {
+      Alert.alert('Informacija', 'Nema prekoračenih računa za slanje podsjetnika.');
+      return;
+    }
+
+    Alert.alert(
+      'Pošalji podsjetnike',
+      `Slanje podsjetnika za ${overdueCount} prekoračen${overdueCount === 1 ? 'i račun' : 'a računa'}. Korisnici će biti obavješteni.`,
+      [
+        { text: 'Otkaži', style: 'cancel' },
+        {
+          text: 'Pošalji',
+          onPress: async () => {
+            setIsSendingReminders(true);
+            try {
+              const result = await sendOverdueBillReminders();
+              Alert.alert(
+                'Uspješno',
+                `Podsjetnik poslan za ${result.usersNotified} korisnika (${result.billsCount} računa).`
+              );
+            } catch {
+              Alert.alert('Greška', 'Nije moguće poslati podsjetnik. Pokušajte ponovo.');
+            } finally {
+              setIsSendingReminders(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const handleAddBill = () => {
     router.push('/bills/add');
   };
@@ -482,6 +519,16 @@ export default function BillsScreen() {
               onPress={handleOpenBulkOperations}
             >
               <Printer size={20} color={Colors.primary} />
+            </TouchableOpacity>
+          )}
+
+          {canManageBills && (
+            <TouchableOpacity
+              style={[styles.bulkButton, isSendingReminders && { opacity: 0.4 }]}
+              onPress={handleSendOverdueReminders}
+              disabled={isSendingReminders}
+            >
+              <Bell size={20} color={Colors.error} />
             </TouchableOpacity>
           )}
         </View>
