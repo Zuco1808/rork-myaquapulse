@@ -91,7 +91,7 @@ function RootLayoutNav() {
       <Stack.Screen name="meters" options={{ headerShown: true, title: 'Vodomjeri' }} />
       <Stack.Screen name="alerts" options={{ headerShown: true, title: 'Alarmi' }} />
       <Stack.Screen name="tasks" options={{ headerShown: true, title: 'Zadaci' }} />
-      <Stack.Screen name="my-meters" options={{ headerShown: true, title: 'Moji vodomjeri' }} />
+      <Stack.Screen name="my-meters" options={{ headerShown: false, title: 'Moj pregled' }} />
       <Stack.Screen name="bills" options={{ headerShown: true, title: 'Računi' }} />
       <Stack.Screen name="support" options={{ headerShown: true, title: 'Podrška' }} />
       <Stack.Screen name="notifications" options={{ headerShown: true, title: 'Notifikacije' }} />
