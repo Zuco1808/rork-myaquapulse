@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { mockNotifications } from '@/mocks/notifications';
+import { supabase } from '@/lib/supabase';
 
 export type NotificationType = 'info' | 'warning' | 'error' | 'success';
 
@@ -17,19 +17,53 @@ export interface Notification {
   relatedEntityType?: 'meter' | 'reading' | 'bill' | 'task';
 }
 
+export interface SendNotificationInput {
+  title: string;
+  message: string;
+  type: NotificationType;
+  targetAll?: boolean;
+  targetRoles?: string[];
+  targetUserIds?: string[];
+  relatedEntityId?: string;
+  relatedEntityType?: Notification['relatedEntityType'];
+}
+
 interface NotificationState {
   notifications: Notification[];
   unreadCount: number;
   isLoading: boolean;
   error: string | null;
-  
-  // Actions
+
   fetchNotifications: (userId?: string) => Promise<void>;
-  markAsRead: (notificationId: string) => void;
-  markAllAsRead: (userId?: string) => void;
-  deleteNotification: (notificationId: string) => void;
-  sendNotification: (notification: any) => Promise<void>;
+  markAsRead: (notificationId: string) => Promise<void>;
+  markAllAsRead: (userId?: string) => Promise<void>;
+  deleteNotification: (notificationId: string) => Promise<void>;
+  sendNotification: (notification: SendNotificationInput) => Promise<void>;
 }
+
+interface NotificationRow {
+  id: string;
+  user_id: string;
+  title: string;
+  message: string;
+  type: NotificationType;
+  is_read: boolean;
+  created_at: string;
+  related_entity_id?: string | null;
+  related_entity_type?: Notification['relatedEntityType'] | null;
+}
+
+const mapRow = (row: NotificationRow): Notification => ({
+  id: row.id,
+  userId: row.user_id,
+  title: row.title,
+  message: row.message,
+  type: row.type,
+  isRead: row.is_read,
+  createdAt: new Date(row.created_at).getTime(),
+  relatedEntityId: row.related_entity_id ?? undefined,
+  relatedEntityType: row.related_entity_type ?? undefined,
+});
 
 export const useNotificationStore = create<NotificationState>()(
   persist(
@@ -38,110 +72,125 @@ export const useNotificationStore = create<NotificationState>()(
       unreadCount: 0,
       isLoading: false,
       error: null,
-      
+
       fetchNotifications: async (userId?: string) => {
         set({ isLoading: true, error: null });
-        
+
         try {
-          // In a real app, this would be an API call
-          // For now, we'll use mock data
-          const userNotifications = mockNotifications.filter(
-            notif => notif.userId === userId
-          );
-          
+          let query = supabase
+            .from('notifications')
+            .select('*')
+            .order('created_at', { ascending: false });
+
+          if (userId) {
+            query = query.eq('user_id', userId);
+          }
+
+          const { data, error } = await query;
+
+          if (error) throw error;
+
+          const list = (data ?? []).map((row) => mapRow(row as NotificationRow));
           set({
-            notifications: userNotifications,
-            unreadCount: userNotifications.filter(n => !n.isRead).length,
-            isLoading: false
+            notifications: list,
+            unreadCount: list.filter((n) => !n.isRead).length,
+            isLoading: false,
           });
-        } catch (error) {
-          set({
-            error: 'Failed to fetch notifications',
-            isLoading: false
-          });
+        } catch {
+          set({ error: 'Failed to fetch notifications', isLoading: false });
         }
       },
-      
-      markAsRead: (notificationId: string) => {
+
+      markAsRead: async (notificationId: string) => {
         const { notifications } = get();
-        
-        const updatedNotifications = notifications.map(notif =>
-          notif.id === notificationId ? { ...notif, isRead: true } : notif
+        const updated = notifications.map((n) =>
+          n.id === notificationId ? { ...n, isRead: true } : n
         );
-        
         set({
-          notifications: updatedNotifications,
-          unreadCount: updatedNotifications.filter(n => !n.isRead).length
+          notifications: updated,
+          unreadCount: updated.filter((n) => !n.isRead).length,
         });
+
+        await supabase
+          .from('notifications')
+          .update({ is_read: true })
+          .eq('id', notificationId);
       },
-      
-      markAllAsRead: (userId?: string) => {
+
+      markAllAsRead: async (userId?: string) => {
         const { notifications } = get();
-        
-        const updatedNotifications = notifications.map(notif =>
-          notif.userId === userId ? { ...notif, isRead: true } : notif
+        const updated = notifications.map((n) =>
+          userId ? (n.userId === userId ? { ...n, isRead: true } : n) : { ...n, isRead: true }
         );
-        
         set({
-          notifications: updatedNotifications,
-          unreadCount: 0
+          notifications: updated,
+          unreadCount: updated.filter((n) => !n.isRead).length,
         });
+
+        let query = supabase.from('notifications').update({ is_read: true });
+        if (userId) query = query.eq('user_id', userId);
+        await query;
       },
-      
-      deleteNotification: (notificationId: string) => {
+
+      deleteNotification: async (notificationId: string) => {
         const { notifications } = get();
-        
-        const updatedNotifications = notifications.filter(
-          notif => notif.id !== notificationId
-        );
-        
+        const updated = notifications.filter((n) => n.id !== notificationId);
         set({
-          notifications: updatedNotifications,
-          unreadCount: updatedNotifications.filter(n => !n.isRead).length
+          notifications: updated,
+          unreadCount: updated.filter((n) => !n.isRead).length,
         });
+
+        await supabase.from('notifications').delete().eq('id', notificationId);
       },
-      
-      sendNotification: async (notification: any) => {
+
+      sendNotification: async (notification: SendNotificationInput) => {
         set({ isLoading: true, error: null });
-        
+
         try {
-          // In a real app, this would be an API call to send the notification
-          // For now, we'll simulate a delay
-          await new Promise(resolve => setTimeout(resolve, 1000));
-          
-          // Create a new notification object
-          const newNotification: Notification = {
-            id: `notif${Date.now()}`,
-            userId: notification.targetAll ? 'all' : notification.targetRoles.join(','),
+          let targetIds: string[] = [];
+
+          if (notification.targetUserIds && notification.targetUserIds.length > 0) {
+            targetIds = notification.targetUserIds;
+          } else if (notification.targetAll) {
+            const { data } = await supabase.from('profiles').select('id');
+            targetIds = (data ?? []).map((p) => p.id as string);
+          } else if (notification.targetRoles && notification.targetRoles.length > 0) {
+            const { data } = await supabase
+              .from('profiles')
+              .select('id')
+              .in('role', notification.targetRoles);
+            targetIds = (data ?? []).map((p) => p.id as string);
+          }
+
+          if (targetIds.length === 0) {
+            set({ isLoading: false });
+            return;
+          }
+
+          const rows = targetIds.map((uid) => ({
+            user_id: uid,
             title: notification.title,
             message: notification.message,
-            type: notification.type as NotificationType,
-            isRead: false,
-            createdAt: Date.now()
-          };
-          
-          // In a real app, this would be handled by the backend
-          // For now, we'll just add it to our local state
-          const { notifications } = get();
-          
-          set({
-            notifications: [...notifications, newNotification],
-            isLoading: false
-          });
-          
-          return Promise.resolve();
-        } catch (error) {
-          set({
-            error: 'Failed to send notification',
-            isLoading: false
-          });
-          return Promise.reject(error);
+            type: notification.type,
+            is_read: false,
+            related_entity_id: notification.relatedEntityId ?? null,
+            related_entity_type: notification.relatedEntityType ?? null,
+            created_at: new Date().toISOString(),
+          }));
+
+          const { error } = await supabase.from('notifications').insert(rows);
+          if (error) throw error;
+
+          set({ isLoading: false });
+        } catch {
+          set({ error: 'Failed to send notification', isLoading: false });
+          throw new Error('Failed to send notification');
         }
-      }
+      },
     }),
     {
       name: 'notification-storage',
-      storage: createJSONStorage(() => AsyncStorage)
+      storage: createJSONStorage(() => AsyncStorage),
     }
   )
 );

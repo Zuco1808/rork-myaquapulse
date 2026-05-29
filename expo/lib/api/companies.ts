@@ -20,6 +20,16 @@ const mapCompany = (c: any) => ({
   updatedAt: c.updated_at ? new Date(c.updated_at).getTime() : undefined,
 });
 
+export const getCompanies = async () => {
+  const { data, error } = await supabase
+    .from('companies')
+    .select('*')
+    .order('name');
+
+  if (error) throw error;
+  return (data ?? []).map(mapCompany);
+};
+
 export const getCompanyById = async (id: string) => {
   const { data, error } = await supabase
     .from('companies')

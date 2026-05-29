@@ -27,8 +27,14 @@ import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { useAuthStore } from '@/store/auth-store';
 import { useNotificationStore } from '@/store/notification-store';
+import { getCompanies } from '@/lib/api/companies';
 import { mockCompanies } from '@/mocks/companies';
 import Colors from '@/constants/colors';
+
+interface CompanyOption {
+  id: string;
+  name: string;
+}
 
 // Notification types
 const notificationTypes = [
@@ -66,7 +72,25 @@ export default function SendNotificationScreen() {
   
   // Company selection state
   const [showCompanySelector, setShowCompanySelector] = useState(false);
-  
+  const [companies, setCompanies] = useState<CompanyOption[]>([]);
+
+  // Load companies from Supabase (fallback to mock if it fails)
+  useEffect(() => {
+    let mounted = true;
+    getCompanies()
+      .then((data) => {
+        if (!mounted) return;
+        setCompanies(data.map((c) => ({ id: c.id, name: c.name })));
+      })
+      .catch(() => {
+        if (!mounted) return;
+        setCompanies(mockCompanies.map((c) => ({ id: c.id, name: c.name })));
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
   // Check if user has permission to access this screen
   useEffect(() => {
     if (!user || (user.role !== 'superadmin' && user.role !== 'admin' && user.role !== 'worker')) {
@@ -169,9 +193,11 @@ export default function SendNotificationScreen() {
   };
   
   // Filter companies based on user role
-  const availableCompanies = user?.role === 'admin' 
-    ? mockCompanies.filter(company => company.id === user.companyId)
-    : mockCompanies;
+  const userCompanyId = (user as any)?.companyId ?? (user as any)?.company_id;
+  const availableCompanies =
+    user?.role === 'admin'
+      ? companies.filter((company) => company.id === userCompanyId)
+      : companies;
   
   const renderCompanySelector = () => {
     if (!showCompanySelector) return null;

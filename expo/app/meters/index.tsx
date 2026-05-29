@@ -36,55 +36,6 @@ import Colors from '@/constants/colors';
 import { WaterMeter, MeterReading } from '@/types/location';
 import { getMeters } from '@/lib/api/meters';
 
-// Mock meters data
-const mockMeters: any[] = [
-  {
-    id: 'm1',
-    serialNumber: 'VM-2023-001',
-    type: 'standard',
-    installDate: Date.now() - 365 * 24 * 60 * 60 * 1000,
-    status: 'active',
-    locationId: 'l1',
-    userId: 'u1',
-  },
-  {
-    id: 'm2',
-    serialNumber: 'VM-2023-002',
-    type: 'smart',
-    installDate: Date.now() - 180 * 24 * 60 * 60 * 1000,
-    status: 'active',
-    locationId: 'l2',
-    userId: 'u2',
-  },
-  {
-    id: 'm3',
-    serialNumber: 'VM-2023-003',
-    type: 'industrial',
-    installDate: Date.now() - 90 * 24 * 60 * 60 * 1000,
-    status: 'inactive',
-    locationId: 'l3',
-    userId: 'u3',
-  },
-  {
-    id: 'm4',
-    serialNumber: 'VM-2023-004',
-    type: 'standard',
-    installDate: Date.now() - 45 * 24 * 60 * 60 * 1000,
-    status: 'active',
-    locationId: 'l4',
-    userId: 'u4',
-  },
-  {
-    id: 'm5',
-    serialNumber: 'VM-2023-005',
-    type: 'smart',
-    installDate: Date.now() - 30 * 24 * 60 * 60 * 1000,
-    status: 'active',
-    locationId: 'l5',
-    userId: 'u5',
-  }
-];
-
 // Extended meter data for UI
 interface ExtendedMeter {
   id: string;
@@ -120,11 +71,9 @@ export default function MetersScreen() {
   const fetchMeters = async () => {
     try {
       const data = await getMeters();
-      console.log("Meters data:", JSON.stringify(data));
       setMeters(data);
       setFilteredMeters(data);
-    } catch (err) {
-      console.error("Greska pri ucitavanju vodomjera:", err);
+    } catch {
     } finally {
       setRefreshing(false);
     }

@@ -28,6 +28,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { StatusIndicator } from '@/components/ui/StatusIndicator';
 import { useAuthStore } from '@/store/auth-store';
 import { mockCompanies } from '@/mocks/companies';
+import { getCompanies } from '@/lib/api/companies';
 import Colors from '@/constants/colors';
 import { Company } from '@/types/user';
 
@@ -36,39 +37,54 @@ interface CompanyWithStatus extends Company {
   status: 'active' | 'inactive' | 'pending';
 }
 
-// Convert mockCompanies to include status
-const companiesWithStatus: CompanyWithStatus[] = mockCompanies.map((company: any) => ({
+// Fallback mock with status (used if Supabase fetch fails)
+const fallbackCompanies: CompanyWithStatus[] = mockCompanies.map((company: any) => ({
   ...company,
-  status: company.id.includes('1') ? 'active' : 
+  status: company.id.includes('1') ? 'active' :
           company.id.includes('2') ? 'inactive' : 'pending'
 }));
 
 export default function CompaniesScreen() {
   const router = useRouter();
   const { user } = useAuthStore();
-  const [companies, setCompanies] = useState<CompanyWithStatus[]>(companiesWithStatus);
-  const [filteredCompanies, setFilteredCompanies] = useState<CompanyWithStatus[]>(companiesWithStatus);
+  const [companies, setCompanies] = useState<CompanyWithStatus[]>([]);
+  const [filteredCompanies, setFilteredCompanies] = useState<CompanyWithStatus[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const [filterStatus, setFilterStatus] = useState('all');
-  
+
+  const fetchCompanies = async () => {
+    try {
+      const data = await getCompanies();
+      const withStatus: CompanyWithStatus[] = data.map((c) => ({
+        ...c,
+        status: c.isActive === false ? 'inactive' : 'active',
+      } as CompanyWithStatus));
+      setCompanies(withStatus);
+      setFilteredCompanies(withStatus);
+    } catch {
+      setCompanies(fallbackCompanies);
+      setFilteredCompanies(fallbackCompanies);
+    }
+  };
+
+  useEffect(() => {
+    fetchCompanies();
+  }, []);
+
   // Check if user has permission to access this screen
   useEffect(() => {
     if (!user || user.role !== 'superadmin') {
       router.replace('/(tabs)');
     }
   }, [user, router]);
-  
-  const onRefresh = () => {
+
+  const onRefresh = async () => {
     setRefreshing(true);
-    
-    // Simulate refresh
-    setTimeout(() => {
-      setCompanies(companiesWithStatus);
-      applyFilters(searchQuery, filterStatus);
-      setRefreshing(false);
-    }, 1000);
+    await fetchCompanies();
+    applyFilters(searchQuery, filterStatus);
+    setRefreshing(false);
   };
   
   const applyFilters = (query: string, status: string) => {
