@@ -348,6 +348,12 @@ export const DrawerContent: React.FC<DrawerContentProps> = ({ onClose }) => {
           onPress={() => handleNavigation('/(tabs)')}
         />
 
+        <MenuItem
+          icon={<Droplet size={20} color={Colors.primary} />}
+          label="Moj pregled"
+          onPress={() => handleNavigation('/my-meters')}
+        />
+
         {user?.permissions?.canReadMeters && (
           <MenuItem
             icon={<Droplet size={20} color={Colors.primary} />}

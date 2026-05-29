@@ -257,6 +257,12 @@ export default function HomeScreen() {
 
     // Citizens see basic menu items filtered by permissions
     const citizenItems = [];
+    citizenItems.push({
+      title: 'Moj pregled',
+      icon: <Droplet size={24} color={Colors.primary} />,
+      route: '/my-meters',
+      description: 'Vodomjeri i dugovanja',
+    });
     if (user.permissions?.canManageBilling) {
       citizenItems.push({
         title: 'Računi',
