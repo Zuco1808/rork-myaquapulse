@@ -1,18 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  FlatList, 
+import {
+  View,
+  Text,
+  StyleSheet,
+  FlatList,
   TouchableOpacity,
   RefreshControl,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { ArrowLeft, CheckCircle, Plus, Send } from 'lucide-react-native';
+import { ArrowLeft, Bell, CheckCircle, Plus, Send } from 'lucide-react-native';
 import { NotificationItem } from '@/components/notifications/NotificationItem';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { useNotificationStore } from '@/store/notification-store';
-import { Notification } from '@/mocks/notifications';
+import { useNotificationStore, type Notification } from '@/store/notification-store';
 import { useAuthStore } from '@/store/auth-store';
 import Colors from '@/constants/colors';
 
@@ -23,13 +22,18 @@ export default function NotificationsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   
   useEffect(() => {
-    fetchNotifications();
-  }, []);
-  
-  const onRefresh = () => {
+    if (user?.id) {
+      fetchNotifications(user.id);
+    }
+  }, [user?.id]);
+
+  const onRefresh = async () => {
     setRefreshing(true);
-    fetchNotifications();
-    setRefreshing(false);
+    try {
+      await fetchNotifications(user?.id);
+    } finally {
+      setRefreshing(false);
+    }
   };
   
   const handleNotificationPress = (notification: Notification) => {
@@ -58,8 +62,12 @@ export default function NotificationsScreen() {
   };
   
   const handleMarkAllAsRead = () => {
-    markAllAsRead();
+    if (user?.id) {
+      markAllAsRead(user.id);
+    }
   };
+
+  const canSendNotifications = user?.role === 'admin' || user?.role === 'superadmin';
   
   const handleSendNotification = () => {
     router.push('/notifications/send' as any);
@@ -92,9 +100,8 @@ export default function NotificationsScreen() {
             </TouchableOpacity>
           )}
           
-          {/* Only show send button for superadmin */}
-          {user && user.role === 'superadmin' && (
-            <TouchableOpacity 
+          {canSendNotifications && (
+            <TouchableOpacity
               style={styles.sendButton}
               onPress={handleSendNotification}
               activeOpacity={0.7}
@@ -138,8 +145,7 @@ export default function NotificationsScreen() {
         contentContainerStyle={notifications.length === 0 ? styles.emptyList : null}
       />
       
-      {/* Floating action button for superadmin */}
-      {user && user.role === 'superadmin' && (
+      {canSendNotifications && (
         <TouchableOpacity
           style={styles.fab}
           onPress={handleSendNotification}
@@ -151,9 +157,6 @@ export default function NotificationsScreen() {
     </View>
   );
 }
-
-// Import Bell icon for the empty state
-import { Bell } from 'lucide-react-native';
 
 const styles = StyleSheet.create({
   container: {

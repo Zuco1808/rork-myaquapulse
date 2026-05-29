@@ -26,7 +26,7 @@ import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { useAuthStore } from '@/store/auth-store';
-import { useNotificationStore } from '@/store/notification-store';
+import { useNotificationStore, type NotificationType, type SendNotificationInput } from '@/store/notification-store';
 import { getCompanies } from '@/lib/api/companies';
 import { mockCompanies } from '@/mocks/companies';
 import Colors from '@/constants/colors';
@@ -158,20 +158,16 @@ export default function SendNotificationScreen() {
     if (!validateForm()) return;
     
     setIsLoading(true);
-    
+
     try {
-      // Create notification object
-      const notification = {
-        title,
-        message,
-        type: selectedType,
+      const notification: SendNotificationInput = {
+        title: title.trim(),
+        message: message.trim(),
+        type: selectedType as NotificationType,
         targetAll,
-        targetRoles: selectedRoles,
-        targetCompanies: selectedCompanies,
-        targetLocations: selectedLocations,
+        targetRoles: targetAll ? undefined : selectedRoles,
       };
-      
-      // Send notification
+
       await sendNotification(notification);
       
       // Show success message

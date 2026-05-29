@@ -1,10 +1,9 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { 
-  Bell, 
-  AlertTriangle, 
-  Info, 
-  CheckCircle, 
+import {
+  AlertTriangle,
+  Info,
+  CheckCircle,
   AlertCircle,
   Droplet,
   FileText,
@@ -12,17 +11,14 @@ import {
   ClipboardList
 } from 'lucide-react-native';
 import Colors from '@/constants/colors';
-import { Notification } from '@/mocks/notifications';
+import { Notification } from '@/store/notification-store';
 
 interface NotificationItemProps {
   notification: Notification;
   onPress: (notification: Notification) => void;
 }
 
-export const NotificationItem: React.FC<NotificationItemProps> = ({
-  notification,
-  onPress,
-}) => {
+export function NotificationItem({ notification, onPress }: NotificationItemProps) {
   const getIcon = () => {
     // First determine by type
     let IconComponent;
