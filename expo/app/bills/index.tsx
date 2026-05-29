@@ -634,6 +634,17 @@ export default function BillsScreen() {
           </View>
         )}
         
+        {canManageBills && (
+          <TouchableOpacity
+            style={styles.batchLink}
+            onPress={() => router.push('/bills/batch' as any)}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.batchLinkText}>Batch generisanje računa</Text>
+            <ChevronRight size={16} color={Colors.primary} />
+          </TouchableOpacity>
+        )}
+
         <FlatList
           data={filteredBills}
           renderItem={renderBillCard}
@@ -1561,6 +1572,19 @@ const styles = StyleSheet.create({
   },
   bulkActionButton: {
     marginBottom: 8,
+  },
+  batchLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 10,
+    paddingHorizontal: 4,
+    marginBottom: 4,
+  },
+  batchLinkText: {
+    fontSize: 14,
+    color: Colors.primary,
+    fontWeight: '500',
   },
 });
 
