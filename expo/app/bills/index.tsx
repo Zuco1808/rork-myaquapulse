@@ -38,7 +38,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { StatusIndicator } from '@/components/ui/StatusIndicator';
 import { Input } from '@/components/ui/Input';
 import { useAuthStore } from '@/store/auth-store';
-import { getBills } from '@/lib/api/bills';
+import { getBills, updateBillStatus } from '@/lib/api/bills';
 import { sendOverdueBillReminders } from '@/lib/api/notifications';
 import { Drawer } from '@/components/layout/Drawer';
 import Colors from '@/constants/colors';
@@ -186,33 +186,39 @@ export default function BillsScreen() {
     setPaymentModalVisible(true);
   };
   
-  const handleConfirmPayment = () => {
+  const handleConfirmPayment = async () => {
     if (!selectedBill) return;
-    
+
     const amount = parseFloat(paymentAmount);
     if (isNaN(amount) || amount <= 0) {
       Alert.alert("Greška", "Unesite validan iznos za plaćanje.");
       return;
     }
-    
-    // Update bill status
-    const updatedBills = bills.map(bill => 
-      bill.id === selectedBill.id 
-        ? { ...bill, status: 'paid' as const, paidDate: new Date().toISOString().split('T')[0] } 
-        : bill
-    );
-    setBills(updatedBills);
-    applyFilters();
-    
-    // Close modal
-    setPaymentModalVisible(false);
-    setSelectedBill(null);
-    
-    // Show success message
-    Alert.alert(
-      "Uspjeh", 
-      `Račun je uspješno plaćen u iznosu od ${amount.toFixed(2)} KM.`
-    );
+
+    const billId = selectedBill.id;
+    const paidDate = new Date().toISOString();
+
+    try {
+      await updateBillStatus(billId, 'paid', paidDate);
+
+      const updatedBills = bills.map(bill =>
+        bill.id === billId
+          ? { ...bill, status: 'paid' as const, paidDate: new Date(paidDate).getTime() }
+          : bill
+      );
+      setBills(updatedBills);
+      setFilteredBills(updatedBills);
+
+      setPaymentModalVisible(false);
+      setSelectedBill(null);
+
+      Alert.alert(
+        "Uspjeh",
+        `Račun je uspješno plaćen u iznosu od ${amount.toFixed(2)} KM.`
+      );
+    } catch {
+      Alert.alert("Greška", "Nije moguće spremiti plaćanje. Pokušajte ponovo.");
+    }
   };
   
   const handleViewPdf = (bill: any) => {

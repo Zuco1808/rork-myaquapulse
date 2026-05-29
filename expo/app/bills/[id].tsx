@@ -31,6 +31,7 @@ import { Card } from '@/components/ui/Card';
 import { Header } from '@/components/layout/Header';
 import { Drawer } from '@/components/layout/Drawer';
 import { useAuthStore } from '@/store/auth-store';
+import { updateBillStatus } from '@/lib/api/bills';
 import Colors from '@/constants/colors';
 
 // Bill type
@@ -197,30 +198,34 @@ export default function BillDetailsScreen() {
     setPaymentModalVisible(true);
   };
   
-  const handleConfirmPayment = () => {
+  const handleConfirmPayment = async () => {
     if (!bill) return;
-    
+
     const amount = parseFloat(paymentAmount);
     if (isNaN(amount) || amount <= 0) {
       Alert.alert("Greška", "Unesite validan iznos za plaćanje.");
       return;
     }
-    
-    // Update bill status
-    setBill({
-      ...bill,
-      status: 'paid',
-      paidDate: new Date().toISOString().split('T')[0]
-    });
-    
-    // Close modal
-    setPaymentModalVisible(false);
-    
-    // Show success message
-    Alert.alert(
-      "Uspjeh", 
-      `Račun je uspješno plaćen u iznosu od ${amount.toFixed(2)} KM.`
-    );
+
+    const paidDateIso = new Date().toISOString();
+
+    try {
+      await updateBillStatus(bill.id, 'paid', paidDateIso);
+
+      setBill({
+        ...bill,
+        status: 'paid',
+        paidDate: paidDateIso.split('T')[0],
+      });
+      setPaymentModalVisible(false);
+
+      Alert.alert(
+        "Uspjeh",
+        `Račun je uspješno plaćen u iznosu od ${amount.toFixed(2)} KM.`
+      );
+    } catch {
+      Alert.alert("Greška", "Nije moguće spremiti plaćanje. Pokušajte ponovo.");
+    }
   };
   
   const handleViewPdf = () => {
