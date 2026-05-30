@@ -60,11 +60,15 @@ export default function BillsScreen() {
   const fetchBills = async () => {
     try {
       const data = await getBills();
-      const userFiltered = userId ? data.filter((b: any) => b.userId === userId) : data;
+      // Citizen always sees only own bills, regardless of URL param.
+      const scopedUserId = user?.role === 'citizen' ? user.id : userId;
+      const userFiltered = scopedUserId
+        ? data.filter((b: any) => b.userId === scopedUserId)
+        : data;
       setBills(userFiltered);
       setFilteredBills(userFiltered);
-    } catch (err) {
-      console.error('Greska:', err);
+    } catch {
+      // ignore — list stays empty
     } finally {
       setRefreshing(false);
     }

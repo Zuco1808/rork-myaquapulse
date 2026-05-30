@@ -255,31 +255,26 @@ export default function HomeScreen() {
       return [...items, ...commonItems];
     }
 
-    // Citizens see basic menu items filtered by permissions
-    const citizenItems = [];
-    citizenItems.push({
-      title: 'Moj pregled',
-      icon: <Droplet size={24} color={Colors.primary} />,
-      route: '/my-meters',
-      description: 'Vodomjeri i dugovanja',
-    });
-    if (user.permissions?.canManageBilling) {
-      citizenItems.push({
+    // Citizens always see their own personal info — these are not admin permissions
+    return [
+      {
+        title: 'Moj pregled',
+        icon: <Droplet size={24} color={Colors.primary} />,
+        route: '/my-meters',
+        description: 'Vodomjeri i dugovanja',
+      },
+      {
         title: 'Računi',
         icon: <CreditCard size={24} color={Colors.primary} />,
         route: '/bills',
         description: 'Pregled i plaćanje računa',
-      });
-    }
-    if (user.permissions?.canReadMeters) {
-      citizenItems.push({
+      },
+      {
         title: 'Potrošnja',
         icon: <BarChart size={24} color={Colors.primary} />,
         route: '/consumption',
         description: 'Analiza potrošnje vode',
-      });
-    }
-    citizenItems.push(
+      },
       {
         title: 'Obavještenja',
         icon: <Bell size={24} color={Colors.primary} />,
@@ -291,9 +286,8 @@ export default function HomeScreen() {
         icon: <Settings size={24} color={Colors.primary} />,
         route: '/support',
         description: 'Kontakt i pomoć',
-      }
-    );
-    return citizenItems;
+      },
+    ];
   };
   
   const menuItems = getMenuItems();

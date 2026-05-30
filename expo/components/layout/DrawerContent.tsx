@@ -358,37 +358,29 @@ export const DrawerContent: React.FC<DrawerContentProps> = ({ onClose }) => {
           onPress={() => handleNavigation('/my-meters')}
         />
 
-        {user?.permissions?.canReadMeters && (
-          <MenuItem
-            icon={<Droplet size={20} color={Colors.primary} />}
-            label="Vodomjeri"
-            onPress={() => handleNavigation('/meters')}
-          />
-        )}
+        <MenuItem
+          icon={<Droplet size={20} color={Colors.primary} />}
+          label="Vodomjeri"
+          onPress={() => handleNavigation('/meters')}
+        />
 
-        {user?.permissions?.canReadMeters && (
-          <MenuItem
-            icon={<FileText size={20} color={Colors.primary} />}
-            label="Očitanja"
-            onPress={() => handleNavigation('/(tabs)/readings')}
-          />
-        )}
+        <MenuItem
+          icon={<FileText size={20} color={Colors.primary} />}
+          label="Očitanja"
+          onPress={() => handleNavigation('/(tabs)/readings')}
+        />
 
-        {user?.permissions?.canManageBilling && (
-          <MenuItem
-            icon={<CreditCard size={20} color={Colors.primary} />}
-            label="Računi"
-            onPress={() => handleNavigation('/bills')}
-          />
-        )}
+        <MenuItem
+          icon={<CreditCard size={20} color={Colors.primary} />}
+          label="Računi"
+          onPress={() => handleNavigation('/bills')}
+        />
 
-        {user?.permissions?.canReadMeters && (
-          <MenuItem
-            icon={<BarChart3 size={20} color={Colors.primary} />}
-            label="Potrošnja"
-            onPress={() => handleNavigation('/consumption')}
-          />
-        )}
+        <MenuItem
+          icon={<BarChart3 size={20} color={Colors.primary} />}
+          label="Potrošnja"
+          onPress={() => handleNavigation('/consumption')}
+        />
 
         <MenuItem
           icon={<Bell size={20} color={Colors.primary} />}
