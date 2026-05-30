@@ -8,13 +8,13 @@ import {
   Image
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { 
-  Users, 
-  Building, 
-  MapPin, 
-  Droplet, 
-  FileText, 
-  Bell, 
+import {
+  Users,
+  Building,
+  MapPin,
+  Droplet,
+  FileText,
+  Bell,
   Settings,
   BarChart3,
   LogOut,
@@ -23,14 +23,14 @@ import {
   HelpCircle,
   AlertTriangle,
   ClipboardList,
-  Database
+  Tag,
+  Briefcase,
 } from 'lucide-react-native';
 import { useAuthStore } from '@/store/auth-store';
 import { Avatar } from '@/components/ui/Avatar';
 import Colors from '@/constants/colors';
 
-// Logo URL from the provided image
-const LOGO_URL = "https://i.imgur.com/Tn5JnZR.png";
+const LOGO_SOURCE = require('@/assets/images/icon.png');
 
 interface DrawerContentProps {
   onClose: () => void;
@@ -120,15 +120,19 @@ export const DrawerContent: React.FC<DrawerContentProps> = ({ onClose }) => {
           onPress={() => handleNavigation('/alerts')}
         />
         
-        {user?.role === 'admin' && (
-          <MenuItem 
-            icon={<Database size={20} color={Colors.primary} />}
-            label="Backup podataka"
-            onPress={() => handleNavigation('/backup')}
-          />
-        )}
-        
-        <MenuItem 
+        <MenuItem
+          icon={<Tag size={20} color={Colors.primary} />}
+          label="Cjenovnik"
+          onPress={() => handleNavigation('/pricing')}
+        />
+
+        <MenuItem
+          icon={<Briefcase size={20} color={Colors.primary} />}
+          label="Profil kompanije"
+          onPress={() => handleNavigation('/companies/profile')}
+        />
+
+        <MenuItem
           icon={<Settings size={20} color={Colors.primary} />}
           label="Postavke"
           onPress={() => handleNavigation('/(tabs)/profile')}
@@ -136,7 +140,7 @@ export const DrawerContent: React.FC<DrawerContentProps> = ({ onClose }) => {
       </>
     );
   };
-  
+
   const renderFinanceMenu = () => {
     return (
       <>
@@ -453,9 +457,9 @@ export const DrawerContent: React.FC<DrawerContentProps> = ({ onClose }) => {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Image 
-          source={{ uri: LOGO_URL }} 
-          style={styles.logo} 
+        <Image
+          source={LOGO_SOURCE}
+          style={styles.logo}
           resizeMode="contain"
         />
         <Text style={styles.appName}>MyAquaPulse</Text>
