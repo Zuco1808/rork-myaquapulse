@@ -34,7 +34,7 @@ import { Drawer } from '@/components/layout/Drawer';
 import { useAuthStore } from '@/store/auth-store';
 import Colors from '@/constants/colors';
 import { WaterMeter, MeterReading } from '@/types/location';
-import { getMeters } from '@/lib/api/meters';
+import { getMeters, deleteMeter } from '@/lib/api/meters';
 
 // Extended meter data for UI
 interface ExtendedMeter {
@@ -164,26 +164,27 @@ export default function MetersScreen() {
   };
   
   const handleDeleteMeter = (id: string) => {
+    const performDelete = async () => {
+      try {
+        await deleteMeter(id);
+        const updatedMeters = meters.filter((meter) => meter.id !== id);
+        setMeters(updatedMeters);
+        setFilteredMeters(updatedMeters);
+        Alert.alert("Uspjeh", "Vodomjer je uspješno obrisan.");
+      } catch {
+        Alert.alert(
+          "Greška",
+          "Nije moguće obrisati vodomjer. Možda postoje vezana očitanja ili računi."
+        );
+      }
+    };
+
     Alert.alert(
       "Brisanje vodomjera",
       "Da li ste sigurni da želite obrisati ovaj vodomjer?",
       [
-        {
-          text: "Otkaži",
-          style: "cancel"
-        },
-        { 
-          text: "Obriši", 
-          style: "destructive",
-          onPress: () => {
-            // In a real app, you would call an API to delete the meter
-            const updatedMeters = meters.filter(meter => meter.id !== id);
-            setMeters(updatedMeters);
-            setFilteredMeters(updatedMeters);
-            
-            Alert.alert("Uspjeh", "Vodomjer je uspješno obrisan.");
-          }
-        }
+        { text: "Otkaži", style: "cancel" },
+        { text: "Obriši", style: "destructive", onPress: performDelete },
       ]
     );
   };

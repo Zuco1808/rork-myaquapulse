@@ -84,3 +84,12 @@ export const updateMeter = async (id: string, updates: Partial<{
   if (error) throw error;
   return mapMeter(data);
 };
+
+export const deleteMeter = async (id: string): Promise<void> => {
+  const { error } = await supabase
+    .from('water_meters')
+    .delete()
+    .eq('id', id);
+
+  if (error) throw error;
+};
