@@ -24,9 +24,9 @@ import { Button } from '@/components/ui/Button';
 import { Header } from '@/components/layout/Header';
 import { Drawer } from '@/components/layout/Drawer';
 import { useAuthStore } from '@/store/auth-store';
-import { mockCompanies } from '@/mocks/companies';
 import { User, UserRole, canManageUser, getDefaultPermissions } from '@/types/user';
 import { getUserById, updateUser } from '@/lib/api/users';
+import { useCompanies } from '@/lib/hooks/useCompanies';
 import Colors from '@/constants/colors';
 
 type PermissionState = {
@@ -95,6 +95,7 @@ export default function EditUserScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { user: currentUser } = useAuthStore();
+  const { companies } = useCompanies();
 
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -450,7 +451,7 @@ export default function EditUserScreen() {
           <>
             <Text style={styles.sectionTitle}>Kompanija</Text>
             <View style={styles.companyButtons}>
-              {mockCompanies.map((company) => (
+              {companies.map((company) => (
                 <TouchableOpacity
                   key={company.id}
                   style={[

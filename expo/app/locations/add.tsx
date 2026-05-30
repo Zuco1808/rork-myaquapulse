@@ -24,11 +24,12 @@ import { Card } from '@/components/ui/Card';
 import { Drawer } from '@/components/layout/Drawer';
 import { useAuthStore } from '@/store/auth-store';
 import Colors from '@/constants/colors';
-import { mockCompanies } from '@/mocks/companies';
+import { useCompanies } from '@/lib/hooks/useCompanies';
 
 export default function AddLocationScreen() {
   const router = useRouter();
   const { user } = useAuthStore();
+  const { companies } = useCompanies();
   
   // Form state
   const [name, setName] = useState('');
@@ -176,7 +177,7 @@ export default function AddLocationScreen() {
             <Text style={styles.label}>Kompanija:</Text>
             {companyIdError ? <Text style={styles.errorText}>{companyIdError}</Text> : null}
             <View style={styles.optionsContainer}>
-              {mockCompanies.map(company => (
+              {companies.map(company => (
                 <TouchableOpacity
                   key={company.id}
                   style={[
