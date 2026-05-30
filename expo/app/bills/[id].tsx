@@ -31,10 +31,22 @@ import { Card } from '@/components/ui/Card';
 import { Header } from '@/components/layout/Header';
 import { Drawer } from '@/components/layout/Drawer';
 import { useAuthStore } from '@/store/auth-store';
-import { updateBillStatus } from '@/lib/api/bills';
+import {
+  getBillById,
+  updateBillStatus,
+  calculateBillAmount,
+} from '@/lib/api/bills';
 import Colors from '@/constants/colors';
 
-// Bill type
+type BillStatus = 'paid' | 'pending' | 'overdue' | 'issued' | 'draft' | 'cancelled';
+
+interface BillItem {
+  description: string;
+  amount: number;
+  quantity?: number;
+  pricePerUnit?: number;
+}
+
 interface Bill {
   id: string;
   number: string;
@@ -44,120 +56,67 @@ interface Bill {
   companyId: string;
   companyName: string;
   amount: number;
-  status: 'paid' | 'pending' | 'overdue';
+  status: BillStatus;
   dueDate: string;
   paidDate: string | null;
   period: string;
   consumption: number;
-  items: Array<{
-    description: string;
-    amount: number;
-  }>;
+  items: BillItem[];
 }
 
-// Mock bills data
-const mockBills: Bill[] = [
-  {
-    id: 'b1',
-    number: 'F-2023-001',
-    userId: 'u1',
-    userName: 'Amina Hodžić',
-    userAddress: 'Zmaja od Bosne 8, Sarajevo',
-    companyId: 'c1',
-    companyName: 'Vodovod Sarajevo',
-    amount: 45.80,
-    status: 'paid',
-    dueDate: '2023-05-15',
-    paidDate: '2023-05-10',
-    period: 'April 2023',
-    consumption: 12.5,
-    items: [
-      { description: 'Potrošnja vode', amount: 32.50 },
-      { description: 'Kanalizacija', amount: 8.30 },
-      { description: 'Održavanje', amount: 5.00 }
-    ]
-  },
-  {
-    id: 'b2',
-    number: 'F-2023-002',
-    userId: 'u2',
-    userName: 'Emir Kovačević',
-    userAddress: 'Ferhadija 12, Sarajevo',
-    companyId: 'c1',
-    companyName: 'Vodovod Sarajevo',
-    amount: 68.20,
-    status: 'paid',
-    dueDate: '2023-05-15',
-    paidDate: '2023-05-12',
-    period: 'April 2023',
-    consumption: 18.3,
-    items: [
-      { description: 'Potrošnja vode', amount: 48.50 },
-      { description: 'Kanalizacija', amount: 12.70 },
-      { description: 'Održavanje', amount: 7.00 }
-    ]
-  },
-  {
-    id: 'b3',
-    number: 'F-2023-003',
-    userId: 'u3',
-    userName: 'Selma Begić',
-    userAddress: 'Titova 18, Sarajevo',
-    companyId: 'c1',
-    companyName: 'Vodovod Sarajevo',
-    amount: 52.40,
-    status: 'overdue',
-    dueDate: '2023-05-15',
-    paidDate: null,
-    period: 'April 2023',
-    consumption: 14.2,
-    items: [
-      { description: 'Potrošnja vode', amount: 37.20 },
-      { description: 'Kanalizacija', amount: 10.20 },
-      { description: 'Održavanje', amount: 5.00 }
-    ]
-  },
-  {
-    id: 'b4',
-    number: 'F-2023-004',
-    userId: 'u4',
-    userName: 'Adnan Mehić',
-    userAddress: 'Alipašina 22, Sarajevo',
-    companyId: 'c1',
-    companyName: 'Vodovod Sarajevo',
-    amount: 38.60,
-    status: 'pending',
-    dueDate: '2023-06-15',
-    paidDate: null,
-    period: 'Maj 2023',
-    consumption: 10.5,
-    items: [
-      { description: 'Potrošnja vode', amount: 27.30 },
-      { description: 'Kanalizacija', amount: 6.30 },
-      { description: 'Održavanje', amount: 5.00 }
-    ]
-  },
-  {
-    id: 'b5',
-    number: 'F-2023-005',
-    userId: 'u5',
-    userName: 'Lejla Hadžić',
-    userAddress: 'Koševo 5, Sarajevo',
-    companyId: 'c1',
-    companyName: 'Vodovod Sarajevo',
-    amount: 42.10,
-    status: 'pending',
-    dueDate: '2023-06-15',
-    paidDate: null,
-    period: 'Maj 2023',
-    consumption: 11.8,
-    items: [
-      { description: 'Potrošnja vode', amount: 29.80 },
-      { description: 'Kanalizacija', amount: 7.30 },
-      { description: 'Održavanje', amount: 5.00 }
-    ]
-  }
+const MONTH_NAMES = [
+  'Januar', 'Februar', 'Mart', 'April', 'Maj', 'Jun',
+  'Jul', 'August', 'Septembar', 'Oktobar', 'Novembar', 'Decembar',
 ];
+
+function formatPeriod(fromTs: number, toTs: number): string {
+  const to = new Date(toTs);
+  return `${MONTH_NAMES[to.getMonth()]} ${to.getFullYear()}`;
+}
+
+function formatDate(ts: number | null | undefined): string {
+  if (!ts) return '';
+  return new Date(ts).toLocaleDateString('bs-BA');
+}
+
+function deriveBillNumber(id: string, createdAt: number): string {
+  const year = new Date(createdAt).getFullYear();
+  const shortId = id.slice(-6).toUpperCase();
+  return `F-${year}-${shortId}`;
+}
+
+function mapApiBillToUiBill(api: any): Bill {
+  const consumption = Number(api.consumption ?? 0);
+  const breakdown = consumption > 0
+    ? calculateBillAmount(consumption, 'standard').breakdown
+    : [];
+
+  const items: BillItem[] = breakdown.length > 0
+    ? breakdown.map((b) => ({
+        description: b.label,
+        amount: b.amount,
+        quantity: b.consumption,
+        pricePerUnit: b.pricePerUnit,
+      }))
+    : [{ description: 'Iznos', amount: Number(api.amount ?? 0) }];
+
+  return {
+    id: api.id,
+    number: deriveBillNumber(api.id, api.createdAt ?? Date.now()),
+    userId: api.userId ?? '',
+    userName: api.userName ?? 'Nepoznat korisnik',
+    userAddress: api.locationName ?? '',
+    companyId: '',
+    companyName: 'Vodovod',
+    amount: Number(api.amount ?? 0),
+    status: (api.status ?? 'pending') as BillStatus,
+    dueDate: formatDate(api.dueDate),
+    paidDate: api.paidDate ? formatDate(api.paidDate) : null,
+    period: api.periodFrom && api.periodTo ? formatPeriod(api.periodFrom, api.periodTo) : '',
+    consumption,
+    items,
+  };
+}
 
 export default function BillDetailsScreen() {
   const params = useLocalSearchParams();
@@ -172,25 +131,33 @@ export default function BillDetailsScreen() {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   
   useEffect(() => {
-    // Check if user is logged in
     if (!user) {
       router.replace('/login');
       return;
     }
-    
-    // Load bill data
-    if (id) {
-      const foundBill = mockBills.find(b => b.id === id);
-      if (foundBill) {
-        setBill(foundBill);
-        if (foundBill.amount) {
-          setPaymentAmount(foundBill.amount.toFixed(2));
+
+    if (!id) return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const apiBill = await getBillById(String(id));
+        if (cancelled) return;
+        const uiBill = mapApiBillToUiBill(apiBill);
+        setBill(uiBill);
+        if (uiBill.amount) {
+          setPaymentAmount(uiBill.amount.toFixed(2));
         }
-      } else {
-        Alert.alert("Greška", "Račun nije pronađen.");
+      } catch {
+        if (cancelled) return;
+        Alert.alert('Greška', 'Račun nije pronađen.');
         router.back();
       }
-    }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [id, router, user]);
   
   const handlePayBill = () => {
@@ -296,9 +263,12 @@ export default function BillDetailsScreen() {
               <StatusIndicator 
                 status={bill.status} 
                 labels={{
-                  paid: "Plaćeno",
-                  pending: "Na čekanju",
-                  overdue: "Prekoračeno"
+                  paid: 'Plaćeno',
+                  pending: 'Na čekanju',
+                  overdue: 'Prekoračeno',
+                  issued: 'Izdat',
+                  draft: 'Nacrt',
+                  cancelled: 'Otkazan',
                 }}
                 size="large"
               />
@@ -388,7 +358,7 @@ export default function BillDetailsScreen() {
           </Card>
           
           <View style={styles.actions}>
-            {bill.status !== 'paid' && (
+            {bill.status !== 'paid' && bill.status !== 'cancelled' && (
               <Button
                 title="Plati račun"
                 onPress={handlePayBill}
