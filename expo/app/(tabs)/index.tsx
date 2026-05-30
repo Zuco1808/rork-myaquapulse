@@ -26,7 +26,7 @@ import { getReadings, updateReadingStatus } from '@/lib/api/readings';
 import { getMeters } from '@/lib/api/meters';
 import Colors from '@/constants/colors';
 
-const LOGO_URL = 'https://i.imgur.com/Ql4jQMl.png';
+const LOGO_SOURCE = require('@/assets/images/icon.png');
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -317,7 +317,7 @@ export default function HomeScreen() {
       >
         <View style={styles.welcomeSection}>
           <Image
-            source={{ uri: LOGO_URL }}
+            source={LOGO_SOURCE}
             style={styles.logo}
             resizeMode="contain"
           />
