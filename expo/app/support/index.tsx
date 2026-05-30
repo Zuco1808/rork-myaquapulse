@@ -76,7 +76,7 @@ export default function SupportScreen() {
       <ScrollView style={styles.content}>
         <View style={styles.headerSection}>
           <Image
-            source={{ uri: 'https://i.imgur.com/JQdxX9Z.png' }}
+            source={require('@/assets/images/icon.png')}
             style={styles.logo}
             resizeMode="contain"
           />

@@ -90,7 +90,7 @@ export default function LoginScreen() {
         >
           <View style={styles.logoContainer}>
             <Image
-              source={{ uri: 'https://i.imgur.com/JQdxX9Z.png' }}
+              source={require('@/assets/images/icon.png')}
               style={styles.logo}
               resizeMode="contain"
             />
