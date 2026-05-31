@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
-import { FileText, AlertTriangle, CheckCircle, XCircle } from 'lucide-react-native';
+import { FileText, AlertTriangle, CheckCircle, XCircle, Edit3 } from 'lucide-react-native';
 import { Card } from '../ui/Card';
 import { StatusIndicator } from '../ui/StatusIndicator';
 import Colors from '@/constants/colors';
@@ -114,8 +114,18 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
           </View>
         )}
 
-        {(onVerify || onReject) && (
+        {(onVerify || onReject || onEdit) && (
           <View style={styles.actions}>
+            {onEdit && (
+              <TouchableOpacity
+                style={styles.editBtn}
+                onPress={(e) => { e.stopPropagation?.(); onEdit(); }}
+                activeOpacity={0.8}
+              >
+                <Edit3 size={16} color="#fff" />
+                <Text style={styles.actionBtnText}>Uredi</Text>
+              </TouchableOpacity>
+            )}
             {onVerify && (
               <TouchableOpacity
                 style={styles.verifyBtn}
@@ -213,6 +223,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     borderTopWidth: 1,
     borderTopColor: Colors.border,
+  },
+  editBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    backgroundColor: Colors.primary,
+    gap: 6,
+    borderRightWidth: 1,
+    borderRightColor: 'rgba(255,255,255,0.3)',
   },
   verifyBtn: {
     flex: 1,

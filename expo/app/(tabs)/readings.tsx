@@ -25,7 +25,7 @@ import { ReadingCard } from '@/components/readings/ReadingCard';
 import { OCRCameraView } from '@/components/ocr/CameraView';
 import { OCRResult } from '@/components/ocr/OCRResult';
 import { useAuthStore } from '@/store/auth-store';
-import { getReadings, createReading, updateReadingStatus } from '@/lib/api/readings';
+import { getReadings, createReading, updateReadingStatus, updateReading } from '@/lib/api/readings';
 import { getMeters } from '@/lib/api/meters';
 import Colors from '@/constants/colors';
 import { MeterReading } from '@/types/location';
@@ -59,6 +59,11 @@ export default function ReadingsScreen() {
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [rejectingReadingId, setRejectingReadingId] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState('');
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editingReading, setEditingReading] = useState<ExtendedReading | null>(null);
+  const [editValue, setEditValue] = useState('');
+  const [editNotes, setEditNotes] = useState('');
+  const [editError, setEditError] = useState('');
   
   const fetchData = async () => {
     if (!user) {
@@ -217,17 +222,61 @@ export default function ReadingsScreen() {
   };
   
   const handleEditReading = (readingId: string) => {
-    // Only admin and finance can edit readings
     if (user?.role !== 'admin' && user?.role !== 'finance' && user?.role !== 'superadmin') {
-      Alert.alert("Nemate dozvolu", "Samo administratori i finansije mogu uređivati očitanja.");
+      Alert.alert('Nemate dozvolu', 'Samo administratori i finansije mogu uređivati očitanja.');
       return;
     }
-    
-    // In a real app, you would navigate to an edit screen
-    Alert.alert(
-      "Uređivanje očitanja",
-      "Ova funkcionalnost će biti implementirana uskoro."
-    );
+
+    const reading = readings.find((r) => r.id === readingId);
+    if (!reading) return;
+    setEditingReading(reading);
+    setEditValue(String(reading.value ?? ''));
+    setEditNotes((reading as { notes?: string }).notes ?? '');
+    setEditError('');
+    setShowEditModal(true);
+  };
+
+  const handleConfirmEdit = async () => {
+    if (!editingReading) return;
+
+    const value = parseFloat(editValue);
+    if (isNaN(value) || value < 0) {
+      setEditError('Unesite validnu numeričku vrijednost (>= 0)');
+      return;
+    }
+    if (
+      editingReading.previousValue !== undefined &&
+      editingReading.previousValue !== null &&
+      value < editingReading.previousValue
+    ) {
+      setEditError(
+        `Nova vrijednost mora biti veća ili jednaka prethodnoj (${editingReading.previousValue} m³)`,
+      );
+      return;
+    }
+
+    try {
+      const updated = await updateReading(editingReading.id, {
+        value,
+        notes: editNotes,
+      });
+      const newConsumption =
+        editingReading.previousValue !== undefined && editingReading.previousValue !== null
+          ? value - editingReading.previousValue
+          : editingReading.consumption;
+      const updatedReadings = readings.map((r) =>
+        r.id === editingReading.id
+          ? { ...r, value, consumption: newConsumption, ...(updated as object) }
+          : r,
+      );
+      setReadings(updatedReadings);
+      applyFilters(searchQuery, filterStatus, updatedReadings);
+      setShowEditModal(false);
+      setEditingReading(null);
+      Alert.alert('Uspjeh', 'Očitanje je ažurirano.');
+    } catch {
+      Alert.alert('Greška', 'Nije moguće sačuvati izmjene očitanja.');
+    }
   };
   
   const handleVerifyReading = async (readingId: string) => {
@@ -390,7 +439,11 @@ export default function ReadingsScreen() {
               reading={reading} 
               showMeterInfo={true}
               meterSerialNumber={reading.meterSerialNumber}
-              onEdit={() => handleEditReading(reading.id)}
+              onEdit={
+                user?.role === 'admin' || user?.role === 'finance' || user?.role === 'superadmin'
+                  ? () => handleEditReading(reading.id)
+                  : undefined
+              }
               onVerify={
                 (user?.role === 'admin' || user?.role === 'finance' || user?.role === 'superadmin') && reading.status === 'pending'
                   ? () => handleVerifyReading(reading.id)
@@ -526,6 +579,53 @@ export default function ReadingsScreen() {
           </View>
         </View>
       </Modal>
+      {/* Edit reading modal */}
+      <Modal
+        visible={showEditModal}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setShowEditModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.rejectModalContent}>
+            <Text style={styles.modalTitle}>Uredi očitanje</Text>
+            {editingReading?.meterSerialNumber ? (
+              <Text style={styles.modalSubtitle}>
+                Vodomjer: {editingReading.meterSerialNumber}
+              </Text>
+            ) : null}
+            <Input
+              label="Stanje vodomjera (m³)"
+              placeholder="0"
+              value={editValue}
+              onChangeText={setEditValue}
+              keyboardType="numeric"
+              error={editError}
+            />
+            <Input
+              label="Napomena"
+              placeholder="Opcionalno"
+              value={editNotes}
+              onChangeText={setEditNotes}
+              containerStyle={{ marginBottom: 16 }}
+            />
+            <View style={styles.modalButtons}>
+              <Button
+                title="Otkaži"
+                variant="outline"
+                onPress={() => { setShowEditModal(false); setEditingReading(null); }}
+                style={styles.modalButton}
+              />
+              <Button
+                title="Sačuvaj"
+                onPress={handleConfirmEdit}
+                style={styles.modalButton}
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       {/* Reject reason modal */}
       <Modal
         visible={showRejectModal}

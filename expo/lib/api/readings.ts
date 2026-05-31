@@ -74,6 +74,40 @@ export const createReading = async (reading: {
   return mapReading(data);
 };
 
+export const updateReading = async (
+  id: string,
+  updates: { value?: number; notes?: string },
+) => {
+  const patch: Record<string, unknown> = {};
+  if (typeof updates.value === 'number') {
+    patch.value = updates.value;
+
+    // Recalculate consumption from the persisted previous_value.
+    const { data: existing } = await supabase
+      .from('meter_readings')
+      .select('previous_value')
+      .eq('id', id)
+      .single();
+    const prev = (existing as { previous_value: number | null } | null)?.previous_value;
+    if (prev !== null && prev !== undefined) {
+      patch.consumption = updates.value - prev;
+    }
+  }
+  if (updates.notes !== undefined) {
+    patch.notes = updates.notes;
+  }
+
+  const { data, error } = await supabase
+    .from('meter_readings')
+    .update(patch)
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return mapReading(data);
+};
+
 export const updateReadingStatus = async (
   id: string,
   status: 'verified' | 'rejected',
