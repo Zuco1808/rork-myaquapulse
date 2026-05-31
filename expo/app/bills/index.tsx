@@ -119,13 +119,33 @@ export default function BillsScreen() {
       filtered = filtered.filter(bill => bill.status === filterStatus);
     }
     
-    // Apply period filter
+    // Apply period filter ('YYYY-MM' format) — matches periodTo month
     if (filterPeriod !== 'all') {
-      filtered = filtered.filter(bill => bill.period.includes(filterPeriod));
+      filtered = filtered.filter((bill) => {
+        if (!bill.periodTo) return false;
+        const d = new Date(bill.periodTo);
+        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        return key === filterPeriod;
+      });
     }
-    
+
     setFilteredBills(filtered);
   };
+
+  // Build last 12 months as filter options
+  const periodOptions = React.useMemo(() => {
+    const months = [
+      'Januar', 'Februar', 'Mart', 'April', 'Maj', 'Jun',
+      'Jul', 'August', 'Septembar', 'Oktobar', 'Novembar', 'Decembar',
+    ];
+    const now = new Date();
+    return Array.from({ length: 12 }, (_, i) => {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const label = `${months[d.getMonth()]} ${d.getFullYear()}`;
+      return { key, label };
+    });
+  }, []);
   
   useEffect(() => {
     applyFilters();
@@ -638,41 +658,31 @@ export default function BillsScreen() {
               <TouchableOpacity
                 style={[
                   styles.filterOption,
-                  filterPeriod === 'all' && styles.filterOptionActive
+                  filterPeriod === 'all' && styles.filterOptionActive,
                 ]}
                 onPress={() => handlePeriodChange('all')}
               >
                 <Text style={[
                   styles.filterOptionText,
-                  filterPeriod === 'all' && styles.filterOptionTextActive
+                  filterPeriod === 'all' && styles.filterOptionTextActive,
                 ]}>Svi</Text>
               </TouchableOpacity>
-              
-              <TouchableOpacity
-                style={[
-                  styles.filterOption,
-                  filterPeriod === 'April' && styles.filterOptionActive
-                ]}
-                onPress={() => handlePeriodChange('April')}
-              >
-                <Text style={[
-                  styles.filterOptionText,
-                  filterPeriod === 'April' && styles.filterOptionTextActive
-                ]}>April 2023</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity
-                style={[
-                  styles.filterOption,
-                  filterPeriod === 'Maj' && styles.filterOptionActive
-                ]}
-                onPress={() => handlePeriodChange('Maj')}
-              >
-                <Text style={[
-                  styles.filterOptionText,
-                  filterPeriod === 'Maj' && styles.filterOptionTextActive
-                ]}>Maj 2023</Text>
-              </TouchableOpacity>
+
+              {periodOptions.map((opt) => (
+                <TouchableOpacity
+                  key={opt.key}
+                  style={[
+                    styles.filterOption,
+                    filterPeriod === opt.key && styles.filterOptionActive,
+                  ]}
+                  onPress={() => handlePeriodChange(opt.key)}
+                >
+                  <Text style={[
+                    styles.filterOptionText,
+                    filterPeriod === opt.key && styles.filterOptionTextActive,
+                  ]}>{opt.label}</Text>
+                </TouchableOpacity>
+              ))}
             </View>
           </View>
         )}
