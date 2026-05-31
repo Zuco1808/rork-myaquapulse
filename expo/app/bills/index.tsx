@@ -1,16 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  FlatList, 
-  TouchableOpacity, 
+import {
+  View,
+  Text,
+  StyleSheet,
+  FlatList,
+  TouchableOpacity,
   TextInput,
   RefreshControl,
   Alert,
   Modal,
   Platform,
-  SafeAreaView
+  SafeAreaView,
+  Linking,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import {
@@ -230,28 +231,60 @@ export default function BillsScreen() {
     setPdfModalVisible(true);
   };
   
+  const handlePrintBill = (_id: string) => {
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      window.print();
+    } else {
+      Alert.alert(
+        'Štampanje',
+        'Štampanje računa trenutno je podržano samo iz web aplikacije.'
+      );
+    }
+  };
+
+  // Same as Print on web — browser's print dialog has Save as PDF option.
   const handleDownloadPdf = (id: string) => {
-    Alert.alert(
-      "Preuzimanje PDF-a",
-      "PDF računa će biti preuzet.",
-      [{ text: "OK" }]
-    );
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      window.print();
+    } else {
+      Alert.alert(
+        'Preuzimanje PDF-a',
+        'PDF preuzimanje trenutno je podržano samo iz web aplikacije.'
+      );
+    }
+    void id;
   };
-  
-  const handlePrintBill = (id: string) => {
-    Alert.alert(
-      "Štampanje računa",
-      "Račun će biti poslan na štampač.",
-      [{ text: "OK" }]
+
+  const handleSendEmail = async (bill: any) => {
+    const recipient = bill.userEmail || '';
+    if (!recipient) {
+      Alert.alert('Greška', 'Korisnik nema postavljenu email adresu.');
+      return;
+    }
+    const subject = encodeURIComponent(`Račun ${bill.id?.slice?.(-6) ?? ''}`);
+    const period = bill.periodFrom && bill.periodTo
+      ? `${new Date(bill.periodFrom).toLocaleDateString('bs-BA')} - ${new Date(bill.periodTo).toLocaleDateString('bs-BA')}`
+      : '';
+    const due = bill.dueDate ? new Date(bill.dueDate).toLocaleDateString('bs-BA') : '';
+    const body = encodeURIComponent(
+      `Poštovani ${bill.userName ?? ''},\n\n` +
+      `U prilogu je vaš račun:\n` +
+      `Iznos: ${Number(bill.amount ?? 0).toFixed(2)} KM\n` +
+      `Period: ${period}\n` +
+      `Rok plaćanja: ${due}\n\n` +
+      `Hvala.`
     );
-  };
-  
-  const handleSendEmail = (bill: any) => {
-    Alert.alert(
-      "Slanje računa",
-      `Račun će biti poslan na email: ${bill.userEmail || 'korisnika'}`,
-      [{ text: "OK" }]
-    );
+    const url = `mailto:${recipient}?subject=${subject}&body=${body}`;
+    try {
+      const supported = await Linking.canOpenURL(url);
+      if (supported) {
+        await Linking.openURL(url);
+      } else {
+        Alert.alert('Greška', 'Email klijent nije dostupan.');
+      }
+    } catch {
+      Alert.alert('Greška', 'Nije moguće otvoriti email klijent.');
+    }
   };
   
   const handleOpenBulkOperations = () => {

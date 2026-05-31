@@ -200,20 +200,27 @@ export default function BillDetailsScreen() {
     setPdfModalVisible(true);
   };
   
-  const handleDownloadPdf = () => {
-    Alert.alert(
-      "Preuzimanje PDF-a",
-      "PDF računa će biti preuzet.",
-      [{ text: "OK" }]
-    );
-  };
-  
   const handlePrintBill = () => {
-    Alert.alert(
-      "Štampanje računa",
-      "Račun će biti poslan na štampač.",
-      [{ text: "OK" }]
-    );
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      window.print();
+    } else {
+      Alert.alert(
+        'Štampanje',
+        'Štampanje računa trenutno je podržano samo iz web aplikacije.'
+      );
+    }
+  };
+
+  // Same as Print on web — browser's print dialog has Save as PDF option.
+  const handleDownloadPdf = () => {
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      window.print();
+    } else {
+      Alert.alert(
+        'Preuzimanje PDF-a',
+        'PDF preuzimanje trenutno je podržano samo iz web aplikacije.'
+      );
+    }
   };
   
   if (!bill) {
