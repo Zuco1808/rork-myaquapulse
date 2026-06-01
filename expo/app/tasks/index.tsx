@@ -1,32 +1,31 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  FlatList, 
-  TouchableOpacity, 
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  FlatList,
+  TouchableOpacity,
   TextInput,
   RefreshControl,
   Alert,
   SafeAreaView,
   Platform,
   Modal,
-  ScrollView as RNScrollView
+  ActivityIndicator,
+  ScrollView as RNScrollView,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { 
-  ClipboardList, 
-  Search, 
-  Plus, 
-  Filter, 
-  ChevronRight, 
-  MapPin, 
-  Calendar, 
+import {
+  ClipboardList,
+  Search,
+  Filter,
+  ChevronRight,
+  MapPin,
+  Calendar,
   Clock,
   CheckCircle,
   XCircle,
-  Menu,
-  X
+  X,
 } from 'lucide-react-native';
 import { Header } from '@/components/layout/Header';
 import { Card } from '@/components/ui/Card';
@@ -34,367 +33,159 @@ import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Badge } from '@/components/ui/Badge';
 import { Drawer } from '@/components/layout/Drawer';
-import { Input } from '@/components/ui/Input';
 import { useAuthStore } from '@/store/auth-store';
+import {
+  getTasks,
+  getTasksByUser,
+  updateTaskStatus,
+  type Task,
+  type TaskStatus,
+  type TaskPriority,
+} from '@/lib/api/tasks';
 import Colors from '@/constants/colors';
 
-// Task types
-type TaskType = 'reading' | 'repair' | 'inspection' | 'installation' | 'other';
-type TaskStatus = 'pending' | 'in_progress' | 'completed' | 'cancelled';
-
-interface Task {
-  id: string;
-  title: string;
-  description: string;
-  type: TaskType;
-  status: TaskStatus;
-  priority: 'low' | 'medium' | 'high';
-  assignedTo: string;
-  assignedToName: string;
-  locationId: string;
-  locationName: string;
-  address: string;
-  dueDate: string;
-  createdAt: string;
-  completedAt?: string;
-  cancelReason?: string;
-}
-
-// Mock tasks data
-const mockTasks: Task[] = [
-  {
-    id: 't1',
-    title: 'Očitanje vodomjera VM-2023-001',
-    description: 'Potrebno očitati stanje vodomjera za mjesečni obračun.',
-    type: 'reading',
-    status: 'pending',
-    priority: 'medium',
-    assignedTo: 'u4',
-    assignedToName: 'Adnan Mehić',
-    locationId: 'l1',
-    locationName: 'Ilidža',
-    address: 'Zmaja od Bosne 8, Sarajevo',
-    dueDate: '2023-05-20',
-    createdAt: '2023-05-01',
-  },
-  {
-    id: 't2',
-    title: 'Popravka curenja na vodomjeru VM-2023-002',
-    description: 'Prijavljeno curenje vode na spoju vodomjera. Potrebno hitno sanirati.',
-    type: 'repair',
-    status: 'in_progress',
-    priority: 'high',
-    assignedTo: 'u6',
-    assignedToName: 'Mirza Bašić',
-    locationId: 'l2',
-    locationName: 'Centar',
-    address: 'Ferhadija 12, Sarajevo',
-    dueDate: '2023-05-15',
-    createdAt: '2023-05-10',
-  },
-  {
-    id: 't3',
-    title: 'Inspekcija vodomjera VM-2023-003',
-    description: 'Redovna godišnja inspekcija vodomjera.',
-    type: 'inspection',
-    status: 'completed',
-    priority: 'low',
-    assignedTo: 'u4',
-    assignedToName: 'Adnan Mehić',
-    locationId: 'l3',
-    locationName: 'Novi Grad',
-    address: 'Titova 18, Sarajevo',
-    dueDate: '2023-05-05',
-    createdAt: '2023-04-20',
-    completedAt: '2023-05-04',
-  },
-  {
-    id: 't4',
-    title: 'Instalacija novog vodomjera',
-    description: 'Instalacija novog pametnog vodomjera u stambenom objektu.',
-    type: 'installation',
-    status: 'pending',
-    priority: 'medium',
-    assignedTo: 'u6',
-    assignedToName: 'Mirza Bašić',
-    locationId: 'l4',
-    locationName: 'Stari Grad',
-    address: 'Alipašina 22, Sarajevo',
-    dueDate: '2023-05-25',
-    createdAt: '2023-05-12',
-  },
-  {
-    id: 't5',
-    title: 'Zamjena neispravnog vodomjera VM-2023-005',
-    description: 'Vodomjer pokazuje netačna očitanja. Potrebno zamijeniti novim.',
-    type: 'repair',
-    status: 'cancelled',
-    priority: 'medium',
-    assignedTo: 'u4',
-    assignedToName: 'Adnan Mehić',
-    locationId: 'l5',
-    locationName: 'Novo Sarajevo',
-    address: 'Koševo 5, Sarajevo',
-    dueDate: '2023-05-18',
-    createdAt: '2023-05-08',
-    cancelReason: 'Korisnik nije bio dostupan u zakazano vrijeme.'
-  }
-];
+const formatDate = (value: string | null): string => {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '—';
+  return date.toLocaleDateString('bs-BA', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  });
+};
 
 export default function TasksScreen() {
   const router = useRouter();
   const { user } = useAuthStore();
-  
+
   // Tasks data
-  const [tasks, setTasks] = useState<Task[]>(mockTasks);
-  const [filteredTasks, setFilteredTasks] = useState<Task[]>(mockTasks);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [filteredTasks, setFilteredTasks] = useState<Task[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
-  const [filterType, setFilterType] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterPriority, setFilterPriority] = useState('all');
-  
+
   // Task action modals
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [showCompleteModal, setShowCompleteModal] = useState(false);
   const [showTaskDetailModal, setShowTaskDetailModal] = useState(false);
-  const [cancelReason, setCancelReason] = useState('');
-  const [completionNotes, setCompletionNotes] = useState('');
-  
+  const [isUpdating, setIsUpdating] = useState(false);
+
   // Drawer state
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-  
-  // Check if user has permission to access this screen
+
+  const canSeeAllTasks =
+    user?.permissions?.canViewAllData === true ||
+    user?.role === 'superadmin' ||
+    user?.role === 'admin' ||
+    user?.role === 'finance';
+
+  const loadTasks = useCallback(async () => {
+    if (!user) return;
+    try {
+      const data = canSeeAllTasks
+        ? await getTasks()
+        : await getTasksByUser(user.id);
+      setTasks(data);
+    } catch (error) {
+      console.error('Greška pri učitavanju zadataka:', error);
+      Alert.alert('Greška', 'Nije moguće učitati zadatke. Pokušajte ponovo.');
+    }
+  }, [user, canSeeAllTasks]);
+
+  // Redirect unauthenticated users and load tasks
   useEffect(() => {
     if (!user) {
       router.replace('/login');
       return;
     }
-    
-    // Filter tasks based on user role
-    if (user.role === 'worker') {
-      // Workers only see tasks assigned to them
-      const userTasks = mockTasks.filter(task => task.assignedTo === user.id);
-      setTasks(userTasks);
-      setFilteredTasks(userTasks);
-    } else if (user.role === 'citizen') {
-      // Citizens only see reading tasks for their meters
-      const userTasks = mockTasks.filter(task => 
-        task.type === 'reading' && task.assignedTo === user.id
-      );
-      setTasks(userTasks);
-      setFilteredTasks(userTasks);
-    }
-    
-    // Create monthly reading tasks on the 1st of each month
-    const today = new Date();
-    if (today.getDate() === 1) {
-      createMonthlyReadingTasks();
-    }
-  }, [user, router]);
-  
-  const createMonthlyReadingTasks = () => {
-    // In a real app, this would be done on the server
-    // Here we're just simulating it
-    
-    // Only create tasks for workers and citizens with reading permission
-    if (user?.role !== 'worker' && 
-        (user?.role !== 'citizen' || !user.permissions?.canReadMeters)) {
-      return;
-    }
-    
-    const today = new Date();
-    const dueDate = new Date(today);
-    dueDate.setDate(dueDate.getDate() + 7); // Due in 7 days
-    
-    const newTask: Task = {
-      id: `t-${Date.now()}`,
-      title: `Mjesečno očitanje vodomjera za ${today.toLocaleString('bs-BA', { month: 'long', year: 'numeric' })}`,
-      description: 'Potrebno očitati stanje vodomjera za mjesečni obračun.',
-      type: 'reading',
-      status: 'pending',
-      priority: 'medium',
-      assignedTo: user.id,
-      assignedToName: user.name,
-      locationId: user.locationIds?.[0] || 'unknown',
-      locationName: 'Vaša lokacija',
-      address: user.address || 'Nepoznata adresa',
-      dueDate: dueDate.toISOString().split('T')[0],
-      createdAt: today.toISOString().split('T')[0],
+
+    let isMounted = true;
+    setIsLoading(true);
+    loadTasks().finally(() => {
+      if (isMounted) setIsLoading(false);
+    });
+
+    return () => {
+      isMounted = false;
     };
-    
-    setTasks(prevTasks => [newTask, ...prevTasks]);
-    setFilteredTasks(prevTasks => [newTask, ...prevTasks]);
-    
-    Alert.alert(
-      "Novi zadatak",
-      "Kreiran je novi zadatak za mjesečno očitanje vodomjera."
-    );
-  };
-  
-  const onRefresh = () => {
-    setRefreshing(true);
-    // In a real app, you would fetch tasks from an API
-    setRefreshing(false);
-  };
-  
-  const applyFilters = () => {
+  }, [user, router, loadTasks]);
+
+  const applyFilters = useCallback(() => {
     let filtered = [...tasks];
-    
-    // Apply search query
+
     if (searchQuery) {
-      filtered = filtered.filter(task => 
-        task.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        task.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        task.address.toLowerCase().includes(searchQuery.toLowerCase())
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(
+        (task) =>
+          task.title.toLowerCase().includes(query) ||
+          task.description.toLowerCase().includes(query) ||
+          task.address.toLowerCase().includes(query),
       );
     }
-    
-    // Apply type filter
-    if (filterType !== 'all') {
-      filtered = filtered.filter(task => task.type === filterType);
-    }
-    
-    // Apply status filter
+
     if (filterStatus !== 'all') {
-      filtered = filtered.filter(task => task.status === filterStatus);
+      filtered = filtered.filter((task) => task.status === filterStatus);
     }
-    
-    // Apply priority filter
+
     if (filterPriority !== 'all') {
-      filtered = filtered.filter(task => task.priority === filterPriority);
+      filtered = filtered.filter((task) => task.priority === filterPriority);
     }
-    
+
     setFilteredTasks(filtered);
-  };
-  
+  }, [tasks, searchQuery, filterStatus, filterPriority]);
+
   useEffect(() => {
     applyFilters();
-  }, [searchQuery, filterType, filterStatus, filterPriority, tasks]);
-  
-  const handleSearch = (text: string) => {
-    setSearchQuery(text);
+  }, [applyFilters]);
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await loadTasks();
+    setRefreshing(false);
   };
-  
-  const handleTypeChange = (type: string) => {
-    setFilterType(type);
-  };
-  
-  const handleStatusChange = (status: string) => {
-    setFilterStatus(status);
-  };
-  
-  const handlePriorityChange = (priority: string) => {
-    setFilterPriority(priority);
-  };
-  
-  const handleAddTask = () => {
-    router.push('/tasks/add' as any);
-  };
-  
+
   const handleViewTaskDetails = (task: Task) => {
     setSelectedTask(task);
     setShowTaskDetailModal(true);
   };
-  
+
   const handleCompleteTask = (task: Task) => {
     setSelectedTask(task);
-    setCompletionNotes('');
     setShowCompleteModal(true);
   };
-  
-  const confirmCompleteTask = () => {
-    if (!selectedTask) return;
-    
-    // Update task status
-    const updatedTasks = tasks.map(task => {
-      if (task.id === selectedTask.id) {
-        return {
-          ...task,
-          status: 'completed' as TaskStatus,
-          completedAt: new Date().toISOString().split('T')[0]
-        };
-      }
-      return task;
-    });
-    
-    setTasks(updatedTasks);
-    setShowCompleteModal(false);
-    setSelectedTask(null);
-    
-    Alert.alert("Uspjeh", "Zadatak je uspješno završen.");
-  };
-  
+
   const handleCancelTask = (task: Task) => {
     setSelectedTask(task);
-    setCancelReason('');
     setShowCancelModal(true);
   };
-  
-  const confirmCancelTask = () => {
+
+  const changeStatus = async (status: TaskStatus, successMessage: string) => {
     if (!selectedTask) return;
-    
-    if (!cancelReason.trim()) {
-      Alert.alert("Greška", "Morate unijeti razlog otkazivanja.");
-      return;
-    }
-    
-    // Update task status
-    const updatedTasks = tasks.map(task => {
-      if (task.id === selectedTask.id) {
-        return {
-          ...task,
-          status: 'cancelled' as TaskStatus,
-          cancelReason: cancelReason
-        };
-      }
-      return task;
-    });
-    
-    setTasks(updatedTasks);
-    setShowCancelModal(false);
-    setSelectedTask(null);
-    setCancelReason('');
-    
-    Alert.alert("Uspjeh", "Zadatak je uspješno otkazan.");
-  };
-  
-  const getTaskTypeLabel = (type: TaskType) => {
-    switch (type) {
-      case 'reading':
-        return 'Očitanje';
-      case 'repair':
-        return 'Popravka';
-      case 'inspection':
-        return 'Inspekcija';
-      case 'installation':
-        return 'Instalacija';
-      case 'other':
-        return 'Ostalo';
-      default:
-        return type;
+
+    setIsUpdating(true);
+    try {
+      const updated = await updateTaskStatus(selectedTask.id, status);
+      setTasks((prev) =>
+        prev.map((task) => (task.id === updated.id ? updated : task)),
+      );
+      setShowCompleteModal(false);
+      setShowCancelModal(false);
+      setSelectedTask(null);
+      Alert.alert('Uspjeh', successMessage);
+    } catch (error) {
+      console.error('Greška pri ažuriranju zadatka:', error);
+      Alert.alert('Greška', 'Nije moguće ažurirati zadatak. Pokušajte ponovo.');
+    } finally {
+      setIsUpdating(false);
     }
   };
-  
-  const getTaskTypeColor = (type: TaskType) => {
-    switch (type) {
-      case 'reading':
-        return Colors.primary;
-      case 'repair':
-        return '#F44336'; // Red
-      case 'inspection':
-        return '#4CAF50'; // Green
-      case 'installation':
-        return '#FF9800'; // Orange
-      case 'other':
-        return '#9E9E9E'; // Grey
-      default:
-        return Colors.primary;
-    }
-  };
-  
+
   const getStatusLabel = (status: TaskStatus) => {
     switch (status) {
       case 'pending':
@@ -409,7 +200,7 @@ export default function TasksScreen() {
         return status;
     }
   };
-  
+
   const getStatusColor = (status: TaskStatus) => {
     switch (status) {
       case 'pending':
@@ -424,8 +215,8 @@ export default function TasksScreen() {
         return Colors.primary;
     }
   };
-  
-  const getPriorityLabel = (priority: string) => {
+
+  const getPriorityLabel = (priority: TaskPriority) => {
     switch (priority) {
       case 'low':
         return 'Nizak';
@@ -433,30 +224,34 @@ export default function TasksScreen() {
         return 'Srednji';
       case 'high':
         return 'Visok';
+      case 'urgent':
+        return 'Hitno';
       default:
         return priority;
     }
   };
-  
-  const getPriorityColor = (priority: string) => {
+
+  const getPriorityColor = (priority: TaskPriority) => {
     switch (priority) {
       case 'low':
         return '#4CAF50'; // Green
       case 'medium':
         return '#FFC107'; // Amber
       case 'high':
+        return '#FF9800'; // Orange
+      case 'urgent':
         return '#F44336'; // Red
       default:
         return Colors.primary;
     }
   };
-  
+
   const renderTaskCard = ({ item }: { item: Task }) => {
     const isActive = item.status === 'pending' || item.status === 'in_progress';
-    
+
     return (
       <Card style={styles.taskCard}>
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.cardContent}
           onPress={() => handleViewTaskDetails(item)}
           activeOpacity={0.7}
@@ -465,51 +260,47 @@ export default function TasksScreen() {
             <View style={styles.taskInfo}>
               <Text style={styles.taskTitle}>{item.title}</Text>
               <View style={styles.badgeContainer}>
-                <Badge 
-                  label={getTaskTypeLabel(item.type)} 
-                  color={getTaskTypeColor(item.type)} 
+                <Badge
+                  label={getStatusLabel(item.status)}
+                  color={getStatusColor(item.status)}
                   size="small"
                 />
-                <Badge 
-                  label={getStatusLabel(item.status)} 
-                  color={getStatusColor(item.status)} 
-                  size="small"
-                  style={styles.statusBadge}
-                />
-                <Badge 
-                  label={getPriorityLabel(item.priority)} 
-                  color={getPriorityColor(item.priority)} 
+                <Badge
+                  label={getPriorityLabel(item.priority)}
+                  color={getPriorityColor(item.priority)}
                   size="small"
                   style={styles.priorityBadge}
                 />
               </View>
             </View>
           </View>
-          
-          <Text style={styles.taskDescription}>{item.description}</Text>
-          
+
+          {!!item.description && (
+            <Text style={styles.taskDescription}>{item.description}</Text>
+          )}
+
           <View style={styles.taskDetails}>
-            <View style={styles.detailItem}>
-              <MapPin size={16} color={Colors.textLight} />
-              <Text style={styles.detailText}>{item.address}</Text>
-            </View>
-            
+            {!!item.address && (
+              <View style={styles.detailItem}>
+                <MapPin size={16} color={Colors.textLight} />
+                <Text style={styles.detailText}>{item.address}</Text>
+              </View>
+            )}
+
             <View style={styles.detailItem}>
               <Calendar size={16} color={Colors.textLight} />
-              <Text style={styles.detailText}>
-                Rok: {item.dueDate}
-              </Text>
+              <Text style={styles.detailText}>Rok: {formatDate(item.dueDate)}</Text>
             </View>
-            
+
             <View style={styles.detailItem}>
               <Clock size={16} color={Colors.textLight} />
               <Text style={styles.detailText}>
-                Kreirano: {item.createdAt}
+                Kreirano: {formatDate(item.createdAt)}
               </Text>
             </View>
           </View>
         </TouchableOpacity>
-        
+
         <View style={styles.cardActions}>
           {isActive && (
             <>
@@ -521,7 +312,7 @@ export default function TasksScreen() {
                 onPress={() => handleCompleteTask(item)}
                 style={[styles.actionButton, { borderColor: Colors.success }]}
               />
-              
+
               <Button
                 title="Otkaži"
                 variant="outline"
@@ -532,7 +323,7 @@ export default function TasksScreen() {
               />
             </>
           )}
-          
+
           <TouchableOpacity
             style={styles.detailsButton}
             onPress={() => handleViewTaskDetails(item)}
@@ -543,36 +334,27 @@ export default function TasksScreen() {
       </Card>
     );
   };
-  
-  const renderEmptyState = () => {
-    return (
-      <EmptyState
-        title="Nema zadataka"
-        message="Trenutno nema zadataka koji odgovaraju vašoj pretrazi."
-        icon={<ClipboardList size={48} color={Colors.textLight} />}
-        actionLabel={canAddTasks ? "Dodaj novi zadatak" : undefined}
-        onAction={canAddTasks ? handleAddTask : undefined}
-      />
-    );
-  };
-  
-  const canAddTasks = user?.role === 'superadmin' || user?.role === 'admin' || user?.role === 'finance';
-  
+
+  const renderEmptyState = () => (
+    <EmptyState
+      title="Nema zadataka"
+      message="Trenutno nema zadataka koji odgovaraju vašoj pretrazi."
+      icon={<ClipboardList size={48} color={Colors.textLight} />}
+    />
+  );
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
-        <Header 
+        <Header
           title="Zadaci"
           showBack
           showMenu={false}
           onLeftPress={() => setIsDrawerOpen(true)}
         />
-        
-        <Drawer
-          isOpen={isDrawerOpen}
-          onClose={() => setIsDrawerOpen(false)}
-        />
-        
+
+        <Drawer isOpen={isDrawerOpen} onClose={() => setIsDrawerOpen(false)} />
+
         <View style={styles.searchContainer}>
           <View style={styles.searchInputContainer}>
             <Search size={20} color={Colors.textLight} style={styles.searchIcon} />
@@ -580,10 +362,10 @@ export default function TasksScreen() {
               style={styles.searchInput}
               placeholder="Pretraži zadatke..."
               value={searchQuery}
-              onChangeText={handleSearch}
+              onChangeText={setSearchQuery}
             />
           </View>
-          
+
           <TouchableOpacity
             style={styles.filterButton}
             onPress={() => setShowFilters(!showFilters)}
@@ -591,223 +373,87 @@ export default function TasksScreen() {
             <Filter size={20} color={Colors.primary} />
           </TouchableOpacity>
         </View>
-        
+
         {showFilters && (
           <View style={styles.filtersContainer}>
-            <Text style={styles.filtersTitle}>Tip zadatka:</Text>
-            <View style={styles.filterOptions}>
-              <TouchableOpacity
-                style={[
-                  styles.filterOption,
-                  filterType === 'all' && styles.filterOptionActive
-                ]}
-                onPress={() => handleTypeChange('all')}
-              >
-                <Text style={[
-                  styles.filterOptionText,
-                  filterType === 'all' && styles.filterOptionTextActive
-                ]}>Svi</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity
-                style={[
-                  styles.filterOption,
-                  filterType === 'reading' && styles.filterOptionActive
-                ]}
-                onPress={() => handleTypeChange('reading')}
-              >
-                <Text style={[
-                  styles.filterOptionText,
-                  filterType === 'reading' && styles.filterOptionTextActive
-                ]}>Očitanja</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity
-                style={[
-                  styles.filterOption,
-                  filterType === 'repair' && styles.filterOptionActive
-                ]}
-                onPress={() => handleTypeChange('repair')}
-              >
-                <Text style={[
-                  styles.filterOptionText,
-                  filterType === 'repair' && styles.filterOptionTextActive
-                ]}>Popravke</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity
-                style={[
-                  styles.filterOption,
-                  filterType === 'inspection' && styles.filterOptionActive
-                ]}
-                onPress={() => handleTypeChange('inspection')}
-              >
-                <Text style={[
-                  styles.filterOptionText,
-                  filterType === 'inspection' && styles.filterOptionTextActive
-                ]}>Inspekcije</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity
-                style={[
-                  styles.filterOption,
-                  filterType === 'installation' && styles.filterOptionActive
-                ]}
-                onPress={() => handleTypeChange('installation')}
-              >
-                <Text style={[
-                  styles.filterOptionText,
-                  filterType === 'installation' && styles.filterOptionTextActive
-                ]}>Instalacije</Text>
-              </TouchableOpacity>
-            </View>
-            
             <Text style={styles.filtersTitle}>Status:</Text>
             <View style={styles.filterOptions}>
-              <TouchableOpacity
-                style={[
-                  styles.filterOption,
-                  filterStatus === 'all' && styles.filterOptionActive
-                ]}
-                onPress={() => handleStatusChange('all')}
-              >
-                <Text style={[
-                  styles.filterOptionText,
-                  filterStatus === 'all' && styles.filterOptionTextActive
-                ]}>Svi</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity
-                style={[
-                  styles.filterOption,
-                  filterStatus === 'pending' && styles.filterOptionActive
-                ]}
-                onPress={() => handleStatusChange('pending')}
-              >
-                <Text style={[
-                  styles.filterOptionText,
-                  filterStatus === 'pending' && styles.filterOptionTextActive
-                ]}>Na čekanju</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity
-                style={[
-                  styles.filterOption,
-                  filterStatus === 'in_progress' && styles.filterOptionActive
-                ]}
-                onPress={() => handleStatusChange('in_progress')}
-              >
-                <Text style={[
-                  styles.filterOptionText,
-                  filterStatus === 'in_progress' && styles.filterOptionTextActive
-                ]}>U toku</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity
-                style={[
-                  styles.filterOption,
-                  filterStatus === 'completed' && styles.filterOptionActive
-                ]}
-                onPress={() => handleStatusChange('completed')}
-              >
-                <Text style={[
-                  styles.filterOptionText,
-                  filterStatus === 'completed' && styles.filterOptionTextActive
-                ]}>Završeni</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity
-                style={[
-                  styles.filterOption,
-                  filterStatus === 'cancelled' && styles.filterOptionActive
-                ]}
-                onPress={() => handleStatusChange('cancelled')}
-              >
-                <Text style={[
-                  styles.filterOptionText,
-                  filterStatus === 'cancelled' && styles.filterOptionTextActive
-                ]}>Otkazani</Text>
-              </TouchableOpacity>
+              {[
+                { key: 'all', label: 'Svi' },
+                { key: 'pending', label: 'Na čekanju' },
+                { key: 'in_progress', label: 'U toku' },
+                { key: 'completed', label: 'Završeni' },
+                { key: 'cancelled', label: 'Otkazani' },
+              ].map((option) => (
+                <TouchableOpacity
+                  key={option.key}
+                  style={[
+                    styles.filterOption,
+                    filterStatus === option.key && styles.filterOptionActive,
+                  ]}
+                  onPress={() => setFilterStatus(option.key)}
+                >
+                  <Text
+                    style={[
+                      styles.filterOptionText,
+                      filterStatus === option.key && styles.filterOptionTextActive,
+                    ]}
+                  >
+                    {option.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
             </View>
-            
+
             <Text style={styles.filtersTitle}>Prioritet:</Text>
             <View style={styles.filterOptions}>
-              <TouchableOpacity
-                style={[
-                  styles.filterOption,
-                  filterPriority === 'all' && styles.filterOptionActive
-                ]}
-                onPress={() => handlePriorityChange('all')}
-              >
-                <Text style={[
-                  styles.filterOptionText,
-                  filterPriority === 'all' && styles.filterOptionTextActive
-                ]}>Svi</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity
-                style={[
-                  styles.filterOption,
-                  filterPriority === 'high' && styles.filterOptionActive
-                ]}
-                onPress={() => handlePriorityChange('high')}
-              >
-                <Text style={[
-                  styles.filterOptionText,
-                  filterPriority === 'high' && styles.filterOptionTextActive
-                ]}>Visok</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity
-                style={[
-                  styles.filterOption,
-                  filterPriority === 'medium' && styles.filterOptionActive
-                ]}
-                onPress={() => handlePriorityChange('medium')}
-              >
-                <Text style={[
-                  styles.filterOptionText,
-                  filterPriority === 'medium' && styles.filterOptionTextActive
-                ]}>Srednji</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity
-                style={[
-                  styles.filterOption,
-                  filterPriority === 'low' && styles.filterOptionActive
-                ]}
-                onPress={() => handlePriorityChange('low')}
-              >
-                <Text style={[
-                  styles.filterOptionText,
-                  filterPriority === 'low' && styles.filterOptionTextActive
-                ]}>Nizak</Text>
-              </TouchableOpacity>
+              {[
+                { key: 'all', label: 'Svi' },
+                { key: 'urgent', label: 'Hitno' },
+                { key: 'high', label: 'Visok' },
+                { key: 'medium', label: 'Srednji' },
+                { key: 'low', label: 'Nizak' },
+              ].map((option) => (
+                <TouchableOpacity
+                  key={option.key}
+                  style={[
+                    styles.filterOption,
+                    filterPriority === option.key && styles.filterOptionActive,
+                  ]}
+                  onPress={() => setFilterPriority(option.key)}
+                >
+                  <Text
+                    style={[
+                      styles.filterOptionText,
+                      filterPriority === option.key && styles.filterOptionTextActive,
+                    ]}
+                  >
+                    {option.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
             </View>
           </View>
         )}
-        
-        <FlatList
-          data={filteredTasks}
-          renderItem={renderTaskCard}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.listContainer}
-          ListEmptyComponent={renderEmptyState}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-          }
-        />
-        
-        {canAddTasks && (
-          <TouchableOpacity
-            style={styles.fab}
-            onPress={handleAddTask}
-            activeOpacity={0.8}
-          >
-            <Plus size={24} color="#fff" />
-          </TouchableOpacity>
+
+        {isLoading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={Colors.primary} />
+            <Text style={styles.loadingText}>Učitavanje zadataka...</Text>
+          </View>
+        ) : (
+          <FlatList
+            data={filteredTasks}
+            renderItem={renderTaskCard}
+            keyExtractor={(item) => item.id}
+            contentContainerStyle={styles.listContainer}
+            ListEmptyComponent={renderEmptyState}
+            refreshControl={
+              <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+            }
+          />
         )}
-        
+
         {/* Task Detail Modal */}
         <Modal
           visible={showTaskDetailModal}
@@ -819,97 +465,121 @@ export default function TasksScreen() {
             <View style={styles.detailModalContent}>
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>Detalji zadatka</Text>
-                <TouchableOpacity 
+                <TouchableOpacity
                   onPress={() => setShowTaskDetailModal(false)}
                   style={styles.closeButton}
                 >
                   <X size={24} color={Colors.text} />
                 </TouchableOpacity>
               </View>
-              
+
               {selectedTask && (
                 <RNScrollView style={styles.detailScrollView}>
                   <View style={styles.detailSection}>
                     <Text style={styles.detailSectionTitle}>Osnovne informacije</Text>
-                    
+
                     <View style={styles.detailRow}>
                       <Text style={styles.detailLabel}>Naslov:</Text>
                       <Text style={styles.detailValue}>{selectedTask.title}</Text>
                     </View>
-                    
-                    <View style={styles.detailRow}>
-                      <Text style={styles.detailLabel}>Tip:</Text>
-                      <Badge 
-                        label={getTaskTypeLabel(selectedTask.type)} 
-                        color={getTaskTypeColor(selectedTask.type)} 
-                      />
-                    </View>
-                    
+
                     <View style={styles.detailRow}>
                       <Text style={styles.detailLabel}>Status:</Text>
-                      <Badge 
-                        label={getStatusLabel(selectedTask.status)} 
-                        color={getStatusColor(selectedTask.status)} 
+                      <Badge
+                        label={getStatusLabel(selectedTask.status)}
+                        color={getStatusColor(selectedTask.status)}
                       />
                     </View>
-                    
+
                     <View style={styles.detailRow}>
                       <Text style={styles.detailLabel}>Prioritet:</Text>
-                      <Badge 
-                        label={getPriorityLabel(selectedTask.priority)} 
-                        color={getPriorityColor(selectedTask.priority)} 
+                      <Badge
+                        label={getPriorityLabel(selectedTask.priority)}
+                        color={getPriorityColor(selectedTask.priority)}
                       />
                     </View>
-                  </View>
-                  
-                  <View style={styles.detailSection}>
-                    <Text style={styles.detailSectionTitle}>Opis</Text>
-                    <Text style={styles.descriptionText}>{selectedTask.description}</Text>
-                  </View>
-                  
-                  <View style={styles.detailSection}>
-                    <Text style={styles.detailSectionTitle}>Lokacija</Text>
-                    
-                    <View style={styles.detailRow}>
-                      <Text style={styles.detailLabel}>Lokacija:</Text>
-                      <Text style={styles.detailValue}>{selectedTask.locationName}</Text>
-                    </View>
-                    
-                    <View style={styles.detailRow}>
-                      <Text style={styles.detailLabel}>Adresa:</Text>
-                      <Text style={styles.detailValue}>{selectedTask.address}</Text>
-                    </View>
-                  </View>
-                  
-                  <View style={styles.detailSection}>
-                    <Text style={styles.detailSectionTitle}>Vremenski okvir</Text>
-                    
-                    <View style={styles.detailRow}>
-                      <Text style={styles.detailLabel}>Kreiran:</Text>
-                      <Text style={styles.detailValue}>{selectedTask.createdAt}</Text>
-                    </View>
-                    
-                    <View style={styles.detailRow}>
-                      <Text style={styles.detailLabel}>Rok:</Text>
-                      <Text style={styles.detailValue}>{selectedTask.dueDate}</Text>
-                    </View>
-                    
-                    {selectedTask.completedAt && (
+
+                    {!!selectedTask.assignedToName && (
                       <View style={styles.detailRow}>
-                        <Text style={styles.detailLabel}>Završen:</Text>
-                        <Text style={styles.detailValue}>{selectedTask.completedAt}</Text>
+                        <Text style={styles.detailLabel}>Zaduženi:</Text>
+                        <Text style={styles.detailValue}>
+                          {selectedTask.assignedToName}
+                        </Text>
                       </View>
                     )}
                   </View>
-                  
-                  {selectedTask.cancelReason && (
+
+                  {!!selectedTask.description && (
                     <View style={styles.detailSection}>
-                      <Text style={styles.detailSectionTitle}>Razlog otkazivanja</Text>
-                      <Text style={styles.descriptionText}>{selectedTask.cancelReason}</Text>
+                      <Text style={styles.detailSectionTitle}>Opis</Text>
+                      <Text style={styles.descriptionText}>
+                        {selectedTask.description}
+                      </Text>
                     </View>
                   )}
-                  
-                  {(selectedTask.status === 'pending' || selectedTask.status === 'in_progress') && (
+
+                  {(!!selectedTask.locationName ||
+                    !!selectedTask.address ||
+                    !!selectedTask.meterSerialNumber) && (
+                    <View style={styles.detailSection}>
+                      <Text style={styles.detailSectionTitle}>Lokacija</Text>
+
+                      {!!selectedTask.locationName && (
+                        <View style={styles.detailRow}>
+                          <Text style={styles.detailLabel}>Lokacija:</Text>
+                          <Text style={styles.detailValue}>
+                            {selectedTask.locationName}
+                          </Text>
+                        </View>
+                      )}
+
+                      {!!selectedTask.address && (
+                        <View style={styles.detailRow}>
+                          <Text style={styles.detailLabel}>Adresa:</Text>
+                          <Text style={styles.detailValue}>{selectedTask.address}</Text>
+                        </View>
+                      )}
+
+                      {!!selectedTask.meterSerialNumber && (
+                        <View style={styles.detailRow}>
+                          <Text style={styles.detailLabel}>Vodomjer:</Text>
+                          <Text style={styles.detailValue}>
+                            {selectedTask.meterSerialNumber}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                  )}
+
+                  <View style={styles.detailSection}>
+                    <Text style={styles.detailSectionTitle}>Vremenski okvir</Text>
+
+                    <View style={styles.detailRow}>
+                      <Text style={styles.detailLabel}>Kreiran:</Text>
+                      <Text style={styles.detailValue}>
+                        {formatDate(selectedTask.createdAt)}
+                      </Text>
+                    </View>
+
+                    <View style={styles.detailRow}>
+                      <Text style={styles.detailLabel}>Rok:</Text>
+                      <Text style={styles.detailValue}>
+                        {formatDate(selectedTask.dueDate)}
+                      </Text>
+                    </View>
+
+                    {!!selectedTask.completedAt && (
+                      <View style={styles.detailRow}>
+                        <Text style={styles.detailLabel}>Završen:</Text>
+                        <Text style={styles.detailValue}>
+                          {formatDate(selectedTask.completedAt)}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+
+                  {(selectedTask.status === 'pending' ||
+                    selectedTask.status === 'in_progress') && (
                     <View style={styles.detailActions}>
                       <Button
                         title="Završi zadatak"
@@ -920,7 +590,7 @@ export default function TasksScreen() {
                         }}
                         style={styles.detailActionButton}
                       />
-                      
+
                       <Button
                         title="Otkaži zadatak"
                         variant="outline"
@@ -929,7 +599,10 @@ export default function TasksScreen() {
                           setShowTaskDetailModal(false);
                           handleCancelTask(selectedTask);
                         }}
-                        style={[styles.detailActionButton, { borderColor: Colors.error }]}
+                        style={[
+                          styles.detailActionButton,
+                          { borderColor: Colors.error },
+                        ]}
                       />
                     </View>
                   )}
@@ -938,7 +611,7 @@ export default function TasksScreen() {
             </View>
           </View>
         </Modal>
-        
+
         {/* Complete Task Modal */}
         <Modal
           visible={showCompleteModal}
@@ -950,47 +623,39 @@ export default function TasksScreen() {
             <View style={styles.modalContent}>
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>Završi zadatak</Text>
-                <TouchableOpacity 
+                <TouchableOpacity
                   onPress={() => setShowCompleteModal(false)}
                   style={styles.closeButton}
                 >
                   <X size={24} color={Colors.text} />
                 </TouchableOpacity>
               </View>
-              
+
               <Text style={styles.modalSubtitle}>
                 Da li ste sigurni da želite označiti ovaj zadatak kao završen?
               </Text>
-              
-              <Input
-                label="Napomena (opcionalno)"
-                placeholder="Unesite napomenu o završetku zadatka"
-                value={completionNotes}
-                onChangeText={setCompletionNotes}
-                multiline
-                numberOfLines={4}
-                containerStyle={styles.textAreaContainer}
-                inputStyle={styles.textArea}
-              />
-              
+
               <View style={styles.modalButtons}>
                 <Button
-                  title="Otkaži"
+                  title="Odustani"
                   variant="outline"
                   onPress={() => setShowCompleteModal(false)}
                   style={styles.modalButton}
+                  disabled={isUpdating}
                 />
-                
+
                 <Button
                   title="Završi"
-                  onPress={confirmCompleteTask}
+                  onPress={() => changeStatus('completed', 'Zadatak je uspješno završen.')}
                   style={styles.modalButton}
+                  isLoading={isUpdating}
+                  disabled={isUpdating}
                 />
               </View>
             </View>
           </View>
         </Modal>
-        
+
         {/* Cancel Task Modal */}
         <Modal
           visible={showCancelModal}
@@ -1002,43 +667,33 @@ export default function TasksScreen() {
             <View style={styles.modalContent}>
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>Otkaži zadatak</Text>
-                <TouchableOpacity 
+                <TouchableOpacity
                   onPress={() => setShowCancelModal(false)}
                   style={styles.closeButton}
                 >
                   <X size={24} color={Colors.text} />
                 </TouchableOpacity>
               </View>
-              
+
               <Text style={styles.modalSubtitle}>
                 Da li ste sigurni da želite otkazati ovaj zadatak?
               </Text>
-              
-              <Input
-                label="Razlog otkazivanja *"
-                placeholder="Unesite razlog otkazivanja zadatka"
-                value={cancelReason}
-                onChangeText={setCancelReason}
-                multiline
-                numberOfLines={4}
-                containerStyle={styles.textAreaContainer}
-                inputStyle={styles.textArea}
-                error={!cancelReason.trim() ? "Razlog otkazivanja je obavezan" : ""}
-              />
-              
+
               <View style={styles.modalButtons}>
                 <Button
                   title="Odustani"
                   variant="outline"
                   onPress={() => setShowCancelModal(false)}
                   style={styles.modalButton}
+                  disabled={isUpdating}
                 />
-                
+
                 <Button
                   title="Otkaži zadatak"
-                  onPress={confirmCancelTask}
+                  onPress={() => changeStatus('cancelled', 'Zadatak je uspješno otkazan.')}
                   style={styles.modalButton}
-                  variant="primary"
+                  isLoading={isUpdating}
+                  disabled={isUpdating}
                 />
               </View>
             </View>
@@ -1123,9 +778,20 @@ const styles = StyleSheet.create({
   filterOptionTextActive: {
     color: '#fff',
   },
+  loadingContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: Colors.textLight,
+  },
   listContainer: {
     padding: 16,
-    paddingBottom: Platform.OS === 'android' ? 100 : 80, // Extra padding for Android
+    paddingBottom: Platform.OS === 'android' ? 100 : 80,
   },
   taskCard: {
     marginBottom: 16,
@@ -1151,9 +817,6 @@ const styles = StyleSheet.create({
   badgeContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-  },
-  statusBadge: {
-    marginLeft: 8,
   },
   priorityBadge: {
     marginLeft: 8,
@@ -1197,22 +860,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  fab: {
-    position: 'absolute',
-    bottom: Platform.OS === 'android' ? 40 : 24, // Higher position for Android
-    right: 24,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: Colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-  },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
@@ -1252,14 +899,7 @@ const styles = StyleSheet.create({
   modalSubtitle: {
     fontSize: 16,
     color: Colors.textLight,
-    marginBottom: 16,
-  },
-  textAreaContainer: {
     marginBottom: 24,
-  },
-  textArea: {
-    minHeight: 100,
-    textAlignVertical: 'top',
   },
   modalButtons: {
     flexDirection: 'row',
