@@ -1,250 +1,178 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  FlatList, 
-  TouchableOpacity, 
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  FlatList,
+  TouchableOpacity,
   TextInput,
   RefreshControl,
-  Alert
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { 
-  AlertTriangle, 
-  Search, 
-  Filter, 
-  ChevronRight, 
+import {
+  AlertTriangle,
+  Search,
+  Filter,
   Droplet,
   Clock,
   ArrowUpRight,
   ArrowDownRight,
-  Menu
+  Menu,
 } from 'lucide-react-native';
 import { Header } from '@/components/layout/Header';
 import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { useAuthStore } from '@/store/auth-store';
 import { WaterAlert } from '@/types/location';
+import {
+  getAlerts,
+  getAlertsByCompany,
+  getAlertsByUser,
+  resolveAlert,
+} from '@/lib/api/alerts';
 import Colors from '@/constants/colors';
 
-// Mock alerts data
-const mockAlerts: WaterAlert[] = [
-  {
-    id: 'a1',
-    title: 'Visoka potrošnja',
-    message: 'Detektovana neuobičajeno visoka potrošnja na vodomjeru SJV-12345.',
-    type: 'high_consumption',
-    severity: 'warning',
-    meterId: 'm1',
-    meterName: 'SJV-12345',
-    locationName: 'Zmaja od Bosne 8, Sarajevo',
-    companyId: 'c1',
-    companyName: 'Vodovod Sarajevo',
-    value: 45.2,
-    threshold: 30,
-    unit: 'm³',
-    createdAt: Date.now(),
-    isResolved: false
-  },
-  {
-    id: 'a2',
-    title: 'Curenje vode',
-    message: 'Detektovano moguće curenje na vodomjeru SJV-23456.',
-    type: 'leak',
-    severity: 'critical',
-    meterId: 'm2',
-    meterName: 'SJV-23456',
-    locationName: 'Ferhadija 12, Sarajevo',
-    companyId: 'c1',
-    companyName: 'Vodovod Sarajevo',
-    value: undefined,
-    threshold: undefined,
-    unit: undefined,
-    createdAt: Date.now(),
-    isResolved: true
-  },
-  {
-    id: 'a3',
-    title: 'Niska potrošnja',
-    message: 'Detektovana neuobičajeno niska potrošnja na vodomjeru SJV-34567.',
-    type: 'low_consumption',
-    severity: 'info',
-    meterId: 'm3',
-    meterName: 'SJV-34567',
-    locationName: 'Titova 18, Sarajevo',
-    companyId: 'c1',
-    companyName: 'Vodovod Sarajevo',
-    value: 0.5,
-    threshold: 2,
-    unit: 'm³',
-    createdAt: Date.now(),
-    isResolved: false
-  },
-  {
-    id: 'a4',
-    title: 'Prekid očitanja',
-    message: 'Vodomjer SJV-45678 nije poslao očitanje u posljednjih 48 sati.',
-    type: 'no_reading',
-    severity: 'warning',
-    meterId: 'm4',
-    meterName: 'SJV-45678',
-    locationName: 'Alipašina 22, Sarajevo',
-    companyId: 'c1',
-    companyName: 'Vodovod Sarajevo',
-    value: 48,
-    threshold: 24,
-    unit: 'h',
-    createdAt: Date.now(),
-    isResolved: false
-  },
-  {
-    id: 'a5',
-    title: 'Kvar na vodomjeru',
-    message: 'Detektovan mogući kvar na vodomjeru SJV-56789.',
-    type: 'meter_fault',
-    severity: 'critical',
-    meterId: 'm5',
-    meterName: 'SJV-56789',
-    locationName: 'Koševo 5, Sarajevo',
-    companyId: 'c1',
-    companyName: 'Vodovod Sarajevo',
-    value: undefined,
-    threshold: undefined,
-    unit: undefined,
-    createdAt: Date.now(),
-    isResolved: true
-  }
-];
+const formatDate = (timestamp: number): string => {
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return '—';
+  return (
+    date.toLocaleDateString('bs-BA') +
+    ' ' +
+    date.toLocaleTimeString('bs-BA', { hour: '2-digit', minute: '2-digit' })
+  );
+};
 
 export default function AlertsScreen() {
   const router = useRouter();
   const { user } = useAuthStore();
-  
+
   // Alerts data
-  const [alerts, setAlerts] = useState<WaterAlert[]>(mockAlerts);
-  const [filteredAlerts, setFilteredAlerts] = useState<WaterAlert[]>(mockAlerts);
+  const [alerts, setAlerts] = useState<WaterAlert[]>([]);
+  const [filteredAlerts, setFilteredAlerts] = useState<WaterAlert[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [resolvingId, setResolvingId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const [filterSeverity, setFilterSeverity] = useState('all');
   const [filterResolved, setFilterResolved] = useState('all');
-  
-  // Check if user has permission to access this screen
+
+  const loadAlerts = useCallback(async () => {
+    if (!user) return;
+    try {
+      let data: WaterAlert[];
+      if (user.role === 'citizen') {
+        data = await getAlertsByUser(user.id);
+      } else if (user.role === 'admin' && user.companyId) {
+        data = await getAlertsByCompany(user.companyId);
+      } else {
+        data = await getAlerts();
+      }
+      setAlerts(data);
+    } catch (error) {
+      console.error('Greška pri učitavanju alarma:', error);
+      Alert.alert('Greška', 'Nije moguće učitati alarme. Pokušajte ponovo.');
+    }
+  }, [user]);
+
+  // Redirect unauthenticated users and load alerts
   useEffect(() => {
     if (!user) {
       router.replace('/login');
+      return;
     }
-  }, [user, router]);
-  
-  // Load alerts based on user role
-  useEffect(() => {
-    loadAlerts();
-  }, [user]);
-  
-  const loadAlerts = () => {
-    let filteredData = [...mockAlerts];
-    
-    // Filter by user role
-    if (user && user.role === 'citizen') {
-      // Citizens can only see alerts for their meters
-      // In a real app, this would filter by user's meter IDs
-      filteredData = filteredData.filter(alert => alert.meterId === 'm1');
-    } else if (user && user.role === 'admin') {
-      // Admins can only see alerts for their company
-      filteredData = filteredData.filter(alert => alert.companyId === user.companyId);
-    }
-    
-    setAlerts(filteredData);
-    setFilteredAlerts(filteredData);
-  };
-  
-  const onRefresh = () => {
-    setRefreshing(true);
-    loadAlerts();
-    setRefreshing(false);
-  };
-  
-  const applyFilters = () => {
+
+    let isMounted = true;
+    setIsLoading(true);
+    loadAlerts().finally(() => {
+      if (isMounted) setIsLoading(false);
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [user, router, loadAlerts]);
+
+  const applyFilters = useCallback(() => {
     let filtered = [...alerts];
-    
-    // Apply search query
+
     if (searchQuery) {
-      filtered = filtered.filter(alert => 
-        (alert.title || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-        alert.message.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (alert.meterName || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (alert.locationName || '').toLowerCase().includes(searchQuery.toLowerCase())
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(
+        (alert) =>
+          (alert.title || '').toLowerCase().includes(query) ||
+          alert.message.toLowerCase().includes(query) ||
+          (alert.meterName || '').toLowerCase().includes(query) ||
+          (alert.locationName || '').toLowerCase().includes(query),
       );
     }
-    
-    // Apply severity filter
+
     if (filterSeverity !== 'all') {
-      filtered = filtered.filter(alert => alert.severity === filterSeverity);
+      filtered = filtered.filter((alert) => alert.severity === filterSeverity);
     }
-    
-    // Apply resolved filter
+
     if (filterResolved !== 'all') {
-      const isResolved = filterResolved === 'resolved';
-      filtered = filtered.filter(alert => alert.isResolved === isResolved);
+      const wantResolved = filterResolved === 'resolved';
+      filtered = filtered.filter((alert) => alert.isResolved === wantResolved);
     }
-    
+
     setFilteredAlerts(filtered);
-  };
-  
+  }, [alerts, searchQuery, filterSeverity, filterResolved]);
+
   useEffect(() => {
     applyFilters();
-  }, [searchQuery, filterSeverity, filterResolved]);
-  
-  const handleSearch = (text: string) => {
-    setSearchQuery(text);
+  }, [applyFilters]);
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await loadAlerts();
+    setRefreshing(false);
   };
-  
-  const handleFilterSeverityChange = (severity: string) => {
-    setFilterSeverity(severity);
-  };
-  
-  const handleFilterResolvedChange = (resolved: string) => {
-    setFilterResolved(resolved);
-  };
-  
-  const handleViewAlert = (id: string) => {
-    router.push(`/alerts/${id}` as any);
-  };
-  
+
   const handleResolveAlert = (id: string) => {
     Alert.alert(
-      "Rješavanje alarma",
-      "Da li ste sigurni da želite označiti ovaj alarm kao riješen?",
+      'Rješavanje alarma',
+      'Da li ste sigurni da želite označiti ovaj alarm kao riješen?',
       [
+        { text: 'Odustani', style: 'cancel' },
         {
-          text: "Odustani",
-          style: "cancel"
+          text: 'Riješi',
+          onPress: async () => {
+            setResolvingId(id);
+            try {
+              const updated = await resolveAlert(id);
+              setAlerts((prev) =>
+                prev.map((alert) => (alert.id === updated.id ? updated : alert)),
+              );
+              Alert.alert('Uspjeh', 'Alarm je označen kao riješen.');
+            } catch (error) {
+              console.error('Greška pri rješavanju alarma:', error);
+              Alert.alert(
+                'Greška',
+                'Nije moguće označiti alarm kao riješen. Pokušajte ponovo.',
+              );
+            } finally {
+              setResolvingId(null);
+            }
+          },
         },
-        { 
-          text: "Riješi", 
-          onPress: () => {
-            // Update alert status
-            const updatedAlerts = alerts.map(alert => 
-              alert.id === id 
-                ? { ...alert, isResolved: true } 
-                : alert
-            );
-            setAlerts(updatedAlerts);
-            applyFilters();
-            
-            Alert.alert("Uspjeh", "Alarm je označen kao riješen.");
-          }
-        }
-      ]
+      ],
     );
   };
-  
-  const renderAlertIcon = (type: WaterAlert['type'], severity: WaterAlert['severity']) => {
-    const color = severity === 'critical' ? Colors.error : 
-                 severity === 'warning' ? Colors.warning : 
-                 Colors.info;
-    
+
+  const renderAlertIcon = (
+    type: WaterAlert['type'],
+    severity: WaterAlert['severity'],
+  ) => {
+    const color =
+      severity === 'critical' || severity === 'high'
+        ? Colors.error
+        : severity === 'warning' || severity === 'medium'
+          ? Colors.warning
+          : Colors.info;
+
     switch (type) {
       case 'high_consumption':
         return <ArrowUpRight size={24} color={color} />;
@@ -258,90 +186,96 @@ export default function AlertsScreen() {
         return <AlertTriangle size={24} color={color} />;
     }
   };
-  
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('bs-BA') + ' ' + date.toLocaleTimeString('bs-BA', { hour: '2-digit', minute: '2-digit' });
-  };
-  
+
+  const canResolve =
+    user?.role === 'superadmin' ||
+    user?.role === 'admin' ||
+    user?.role === 'worker';
+
   const renderAlertCard = ({ item }: { item: WaterAlert }) => {
     const isResolved = item.isResolved;
-    
+    const hasValue =
+      item.value != null && item.threshold != null && item.unit != null;
+
     return (
       <Card style={[styles.alertCard, isResolved && styles.resolvedCard]}>
-        <TouchableOpacity 
-          style={styles.cardContent}
-          onPress={() => handleViewAlert(item.id)}
-          activeOpacity={0.7}
-        >
+        <View style={styles.cardContent}>
           <View style={styles.alertHeader}>
             {renderAlertIcon(item.type, item.severity)}
             <View style={styles.alertInfo}>
               <Text style={styles.alertTitle}>{item.title}</Text>
-              <Text style={styles.alertDate}>{formatDate(String(item.createdAt))}</Text>
+              <Text style={styles.alertDate}>{formatDate(item.createdAt)}</Text>
             </View>
-            {isResolved ? (
+            {isResolved && (
               <View style={styles.resolvedBadge}>
                 <Text style={styles.resolvedText}>Riješeno</Text>
               </View>
-            ) : (
-              <ChevronRight size={20} color={Colors.textLight} />
             )}
           </View>
-          
+
           <Text style={styles.alertMessage}>{item.message}</Text>
-          
+
           <View style={styles.alertDetails}>
-            <Text style={styles.alertLocation}>
-              <Text style={styles.alertDetailLabel}>Lokacija: </Text>
-              {item.locationName}
-            </Text>
-            <Text style={styles.alertMeter}>
-              <Text style={styles.alertDetailLabel}>Vodomjer: </Text>
-              {item.meterName}
-            </Text>
-            {item.value !== null && item.threshold !== null && item.unit !== null && (
+            {!!item.locationName && (
+              <Text style={styles.alertLocation}>
+                <Text style={styles.alertDetailLabel}>Lokacija: </Text>
+                {item.locationName}
+              </Text>
+            )}
+            {!!item.meterName && (
+              <Text style={styles.alertMeter}>
+                <Text style={styles.alertDetailLabel}>Vodomjer: </Text>
+                {item.meterName}
+              </Text>
+            )}
+            {hasValue && (
               <Text style={styles.alertValue}>
                 <Text style={styles.alertDetailLabel}>Vrijednost: </Text>
                 {item.value} {item.unit} (prag: {item.threshold} {item.unit})
               </Text>
             )}
           </View>
-        </TouchableOpacity>
-        
-        {!isResolved && (user?.role === 'superadmin' || user?.role === 'admin' || user?.role === 'worker') && (
+        </View>
+
+        {!isResolved && canResolve && (
           <View style={styles.cardActions}>
             <TouchableOpacity
-              style={styles.resolveButton}
+              style={[
+                styles.resolveButton,
+                resolvingId === item.id && styles.resolveButtonDisabled,
+              ]}
               onPress={() => handleResolveAlert(item.id)}
+              disabled={resolvingId === item.id}
             >
-              <Text style={styles.resolveButtonText}>Označi kao riješeno</Text>
+              {resolvingId === item.id ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={styles.resolveButtonText}>Označi kao riješeno</Text>
+              )}
             </TouchableOpacity>
           </View>
         )}
       </Card>
     );
   };
-  
-  const renderEmptyState = () => {
-    return (
-      <EmptyState
-        title="Nema alarma"
-        message="Trenutno nema alarma koji odgovaraju vašoj pretrazi."
-        icon={<AlertTriangle size={48} color={Colors.textLight} />}
-      />
-    );
-  };
-  
+
+  const renderEmptyState = () => (
+    <EmptyState
+      title="Nema alarma"
+      message="Trenutno nema alarma koji odgovaraju vašoj pretrazi."
+      icon={<AlertTriangle size={48} color={Colors.textLight} />}
+    />
+  );
+
   return (
     <View style={styles.container}>
-      <Header 
+      <Header
         title="Alarmi"
         showBack
         leftIcon={<Menu size={24} color={Colors.text} />}
         onLeftPress={() => router.push('/(tabs)' as any)}
       />
-      
+
       <View style={styles.searchContainer}>
         <View style={styles.searchInputContainer}>
           <Search size={20} color={Colors.textLight} style={styles.searchIcon} />
@@ -349,10 +283,10 @@ export default function AlertsScreen() {
             style={styles.searchInput}
             placeholder="Pretraži alarme..."
             value={searchQuery}
-            onChangeText={handleSearch}
+            onChangeText={setSearchQuery}
           />
         </View>
-        
+
         <TouchableOpacity
           style={styles.filterButton}
           onPress={() => setShowFilters(!showFilters)}
@@ -360,7 +294,7 @@ export default function AlertsScreen() {
           <Filter size={20} color={Colors.primary} />
         </TouchableOpacity>
       </View>
-      
+
       {showFilters && (
         <View style={styles.filtersContainer}>
           <Text style={styles.filtersTitle}>Ozbiljnost:</Text>
@@ -368,113 +302,148 @@ export default function AlertsScreen() {
             <TouchableOpacity
               style={[
                 styles.filterOption,
-                filterSeverity === 'all' && styles.filterOptionActive
+                filterSeverity === 'all' && styles.filterOptionActive,
               ]}
-              onPress={() => handleFilterSeverityChange('all')}
+              onPress={() => setFilterSeverity('all')}
             >
-              <Text style={[
-                styles.filterOptionText,
-                filterSeverity === 'all' && styles.filterOptionTextActive
-              ]}>Svi</Text>
+              <Text
+                style={[
+                  styles.filterOptionText,
+                  filterSeverity === 'all' && styles.filterOptionTextActive,
+                ]}
+              >
+                Svi
+              </Text>
             </TouchableOpacity>
-            
+
             <TouchableOpacity
               style={[
                 styles.filterOption,
+                styles.criticalOption,
                 filterSeverity === 'critical' && styles.filterOptionActive,
-                styles.criticalOption
               ]}
-              onPress={() => handleFilterSeverityChange('critical')}
+              onPress={() => setFilterSeverity('critical')}
             >
-              <Text style={[
-                styles.filterOptionText,
-                filterSeverity === 'critical' && styles.filterOptionTextActive
-              ]}>Kritični</Text>
+              <Text
+                style={[
+                  styles.filterOptionText,
+                  filterSeverity === 'critical' && styles.filterOptionTextActive,
+                ]}
+              >
+                Kritični
+              </Text>
             </TouchableOpacity>
-            
+
             <TouchableOpacity
               style={[
                 styles.filterOption,
+                styles.warningOption,
                 filterSeverity === 'warning' && styles.filterOptionActive,
-                styles.warningOption
               ]}
-              onPress={() => handleFilterSeverityChange('warning')}
+              onPress={() => setFilterSeverity('warning')}
             >
-              <Text style={[
-                styles.filterOptionText,
-                filterSeverity === 'warning' && styles.filterOptionTextActive
-              ]}>Upozorenja</Text>
+              <Text
+                style={[
+                  styles.filterOptionText,
+                  filterSeverity === 'warning' && styles.filterOptionTextActive,
+                ]}
+              >
+                Upozorenja
+              </Text>
             </TouchableOpacity>
-            
+
             <TouchableOpacity
               style={[
                 styles.filterOption,
+                styles.infoOption,
                 filterSeverity === 'info' && styles.filterOptionActive,
-                styles.infoOption
               ]}
-              onPress={() => handleFilterSeverityChange('info')}
+              onPress={() => setFilterSeverity('info')}
             >
-              <Text style={[
-                styles.filterOptionText,
-                filterSeverity === 'info' && styles.filterOptionTextActive
-              ]}>Informacije</Text>
+              <Text
+                style={[
+                  styles.filterOptionText,
+                  filterSeverity === 'info' && styles.filterOptionTextActive,
+                ]}
+              >
+                Informacije
+              </Text>
             </TouchableOpacity>
           </View>
-          
+
           <Text style={styles.filtersTitle}>Status:</Text>
           <View style={styles.filterOptions}>
             <TouchableOpacity
               style={[
                 styles.filterOption,
-                filterResolved === 'all' && styles.filterOptionActive
+                filterResolved === 'all' && styles.filterOptionActive,
               ]}
-              onPress={() => handleFilterResolvedChange('all')}
+              onPress={() => setFilterResolved('all')}
             >
-              <Text style={[
-                styles.filterOptionText,
-                filterResolved === 'all' && styles.filterOptionTextActive
-              ]}>Svi</Text>
+              <Text
+                style={[
+                  styles.filterOptionText,
+                  filterResolved === 'all' && styles.filterOptionTextActive,
+                ]}
+              >
+                Svi
+              </Text>
             </TouchableOpacity>
-            
+
             <TouchableOpacity
               style={[
                 styles.filterOption,
-                filterResolved === 'active' && styles.filterOptionActive
+                filterResolved === 'active' && styles.filterOptionActive,
               ]}
-              onPress={() => handleFilterResolvedChange('active')}
+              onPress={() => setFilterResolved('active')}
             >
-              <Text style={[
-                styles.filterOptionText,
-                filterResolved === 'active' && styles.filterOptionTextActive
-              ]}>Aktivni</Text>
+              <Text
+                style={[
+                  styles.filterOptionText,
+                  filterResolved === 'active' && styles.filterOptionTextActive,
+                ]}
+              >
+                Aktivni
+              </Text>
             </TouchableOpacity>
-            
+
             <TouchableOpacity
               style={[
                 styles.filterOption,
-                filterResolved === 'resolved' && styles.filterOptionActive
+                filterResolved === 'resolved' && styles.filterOptionActive,
               ]}
-              onPress={() => handleFilterResolvedChange('resolved')}
+              onPress={() => setFilterResolved('resolved')}
             >
-              <Text style={[
-                styles.filterOptionText,
-                filterResolved === 'resolved' && styles.filterOptionTextActive
-              ]}>Riješeni</Text>
+              <Text
+                style={[
+                  styles.filterOptionText,
+                  filterResolved === 'resolved' && styles.filterOptionTextActive,
+                ]}
+              >
+                Riješeni
+              </Text>
             </TouchableOpacity>
           </View>
         </View>
       )}
-      
-      <FlatList
-        data={filteredAlerts}
-        renderItem={renderAlertCard}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.listContainer}
-        ListEmptyComponent={renderEmptyState}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-        }
-      />
+
+      {isLoading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={Colors.primary} />
+          <Text style={styles.loadingText}>Učitavanje alarma...</Text>
+        </View>
+      ) : (
+        <FlatList
+          data={filteredAlerts}
+          renderItem={renderAlertCard}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.listContainer}
+          ListEmptyComponent={renderEmptyState}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          }
+        />
+      )}
     </View>
   );
 }
@@ -561,6 +530,17 @@ const styles = StyleSheet.create({
   filterOptionTextActive: {
     color: '#fff',
   },
+  loadingContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: Colors.textLight,
+  },
   listContainer: {
     padding: 16,
     paddingBottom: 32,
@@ -642,6 +622,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     borderRadius: 8,
     alignItems: 'center',
+  },
+  resolveButtonDisabled: {
+    opacity: 0.6,
   },
   resolveButtonText: {
     color: '#fff',
