@@ -27,6 +27,24 @@ export const getReadings = async () => {
   return (data || []).map(mapReading);
 };
 
+export const getReadingById = async (id: string) => {
+  const { data, error } = await supabase
+    .from('meter_readings')
+    .select('*, water_meters(id, serial_number, user_id, locations(name, address)), profiles:read_by(name)')
+    .eq('id', id)
+    .single();
+
+  if (error) throw error;
+  const r = data as any;
+  return {
+    ...mapReading(r),
+    meterId: r.meter_id,
+    meterLocationName: r.water_meters?.locations?.name ?? '',
+    meterLocationAddress: r.water_meters?.locations?.address ?? '',
+    readByName: r.profiles?.name ?? '',
+  };
+};
+
 export const getReadingsByMeter = async (meterId: string) => {
   const { data, error } = await supabase
     .from('meter_readings')
