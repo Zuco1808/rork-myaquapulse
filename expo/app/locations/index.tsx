@@ -1,29 +1,28 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  FlatList, 
-  TouchableOpacity, 
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  FlatList,
+  TouchableOpacity,
   TextInput,
   RefreshControl,
   Alert,
   SafeAreaView,
-  Platform
+  Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { 
-  MapPin, 
-  Search, 
-  Plus, 
-  Filter, 
-  ChevronRight, 
-  Building, 
-  Droplet, 
+import {
+  MapPin,
+  Search,
+  Plus,
+  Filter,
+  Building,
+  Droplet,
   Users,
   Edit,
   Trash2,
-  Menu
 } from 'lucide-react-native';
 import { Header } from '@/components/layout/Header';
 import { Card } from '@/components/ui/Card';
@@ -32,177 +31,165 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { Badge } from '@/components/ui/Badge';
 import { Drawer } from '@/components/layout/Drawer';
 import { useAuthStore } from '@/store/auth-store';
+import { useCompanies } from '@/lib/hooks/useCompanies';
 import Colors from '@/constants/colors';
-import { Location } from '@/types/location';
-import { getLocations, deleteLocation } from '@/lib/api/locations';
+import {
+  getLocationsWithStats,
+  deleteLocation,
+  type LocationWithStats,
+} from '@/lib/api/locations';
 
 export default function LocationsScreen() {
   const router = useRouter();
   const { user } = useAuthStore();
-  
-  // Locations data
-  const [locations, setLocations] = useState<Location[]>([]);
-  const [filteredLocations, setFilteredLocations] = useState<Location[]>([]);
+  const { companies } = useCompanies();
+
+  const [locations, setLocations] = useState<LocationWithStats[]>([]);
+  const [filteredLocations, setFilteredLocations] = useState<LocationWithStats[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const [filterCompany, setFilterCompany] = useState('all');
-  
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchLocations = async () => {
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+
+  const fetchLocations = useCallback(async () => {
     try {
       setError(null);
-      const data = await getLocations();
+      const data = await getLocationsWithStats();
       setLocations(data);
-      setFilteredLocations(data);
     } catch (err) {
-      setError('Greska pri ucitavanju lokacija');
+      console.error('Greška pri učitavanju lokacija:', err);
+      setError('Greška pri učitavanju lokacija');
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
+    if (!user) {
+      router.replace('/login');
+      return;
+    }
     fetchLocations();
-  }, []);
+  }, [user, router, fetchLocations]);
 
   const onRefresh = async () => {
     setRefreshing(true);
     await fetchLocations();
   };
 
-  // Drawer state
-  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-  
-  // Check if user has permission to access this screen
-  useEffect(() => {
-    if (!user) {
-      router.replace('/login');
-    }
-  }, [user, router]);
-  
-  
-  const applyFilters = () => {
+  const applyFilters = useCallback(() => {
     let filtered = [...locations];
-    
-    // Apply search query
+
     if (searchQuery) {
-      filtered = filtered.filter(location => 
-        location.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (location.address && location.address.toLowerCase().includes(searchQuery.toLowerCase())) ||
-        (location.city && location.city.toLowerCase().includes(searchQuery.toLowerCase()))
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(
+        (location) =>
+          location.name.toLowerCase().includes(query) ||
+          (location.address && location.address.toLowerCase().includes(query)) ||
+          (location.city && location.city.toLowerCase().includes(query)),
       );
     }
-    
-    // Apply company filter
+
     if (filterCompany !== 'all') {
-      filtered = filtered.filter(location => location.companyId === filterCompany);
+      filtered = filtered.filter((location) => location.companyId === filterCompany);
     }
-    
+
     setFilteredLocations(filtered);
-  };
-  
+  }, [locations, searchQuery, filterCompany]);
+
   useEffect(() => {
     applyFilters();
-  }, [searchQuery, filterCompany]);
-  
-  const handleSearch = (text: string) => {
-    setSearchQuery(text);
-  };
-  
-  const handleFilterChange = (companyId: string) => {
-    setFilterCompany(companyId);
-  };
-  
+  }, [applyFilters]);
+
   const handleAddLocation = () => {
     router.push('/locations/add');
   };
-  
+
   const handleEditLocation = (id: string) => {
     router.push(`/locations/edit/${id}`);
   };
-  
+
   const handleDeleteLocation = (id: string) => {
     Alert.alert(
-      "Brisanje lokacije",
-      "Da li ste sigurni da želite obrisati ovu lokaciju?",
+      'Brisanje lokacije',
+      'Da li ste sigurni da želite obrisati ovu lokaciju?',
       [
+        { text: 'Otkaži', style: 'cancel' },
         {
-          text: "Otkaži",
-          style: "cancel"
+          text: 'Obriši',
+          style: 'destructive',
+          onPress: async () => {
+            setDeletingId(id);
+            try {
+              await deleteLocation(id);
+              setLocations((prev) => prev.filter((location) => location.id !== id));
+              Alert.alert('Uspjeh', 'Lokacija je uspješno obrisana.');
+            } catch (err) {
+              console.error('Greška pri brisanju lokacije:', err);
+              Alert.alert(
+                'Greška',
+                'Nije moguće obrisati lokaciju. Provjerite da nema povezanih vodomjera.',
+              );
+            } finally {
+              setDeletingId(null);
+            }
+          },
         },
-        { 
-          text: "Obriši", 
-          style: "destructive",
-          onPress: () => {
-            // In a real app, you would call an API to delete the location
-            const updatedLocations = locations.filter(location => location.id !== id);
-            setLocations(updatedLocations);
-            setFilteredLocations(updatedLocations);
-            
-            Alert.alert("Uspjeh", "Lokacija je uspješno obrisana.");
-          }
-        }
-      ]
+      ],
     );
   };
-  
-  const handleViewLocationDetails = (id: string) => {
-    // In a real app, you would navigate to location details
-    Alert.alert("Info", "Detalji lokacije će biti prikazani.");
-  };
-  
+
   const getCompanyName = (companyId: string) => {
-    return "Vodovod Sarajevo";
+    if (!companyId) return 'Bez kompanije';
+    return companies.find((c) => c.id === companyId)?.name || 'Nepoznata kompanija';
   };
-  
-  const renderLocationCard = ({ item }: { item: Location }) => {
-    return (
-      <Card style={styles.locationCard}>
-        <TouchableOpacity 
-          style={styles.cardContent}
-          onPress={() => handleViewLocationDetails(item.id)}
-          activeOpacity={0.7}
-        >
-          <View style={styles.locationHeader}>
-            <View style={styles.locationInfo}>
-              <Text style={styles.locationName}>{item.name}</Text>
-              <Badge 
-                label={getCompanyName(item.companyId)} 
-                color={Colors.primary} 
-              />
-            </View>
+
+  const canManageLocations = user?.role === 'superadmin' || user?.role === 'admin';
+
+  const renderLocationCard = ({ item }: { item: LocationWithStats }) => (
+    <Card style={styles.locationCard}>
+      <View style={styles.cardContent}>
+        <View style={styles.locationHeader}>
+          <View style={styles.locationInfo}>
+            <Text style={styles.locationName}>{item.name}</Text>
+            <Badge label={getCompanyName(item.companyId)} color={Colors.primary} />
           </View>
-          
-          <View style={styles.locationDetails}>
-            <View style={styles.detailItem}>
-              <MapPin size={16} color={Colors.textLight} />
-              <Text style={styles.detailText}>
-                {item.address || 'Adresa nije dostupna'}
-                {item.city ? `, ${item.city}` : ''}
-              </Text>
-            </View>
-            
-            <View style={styles.detailItem}>
-              <Building size={16} color={Colors.textLight} />
-              <Text style={styles.detailText}>{item.buildingCount || 0} zgrada</Text>
-            </View>
-            
-            <View style={styles.detailItem}>
-              <Droplet size={16} color={Colors.textLight} />
-              <Text style={styles.detailText}>{item.meterCount || 0} vodomjera</Text>
-            </View>
-            
-            <View style={styles.detailItem}>
-              <Users size={16} color={Colors.textLight} />
-              <Text style={styles.detailText}>{item.userCount || 0} korisnika</Text>
-            </View>
+        </View>
+
+        <View style={styles.locationDetails}>
+          <View style={styles.detailItem}>
+            <MapPin size={16} color={Colors.textLight} />
+            <Text style={styles.detailText}>
+              {item.address || 'Adresa nije dostupna'}
+              {item.city ? `, ${item.city}` : ''}
+            </Text>
           </View>
-        </TouchableOpacity>
-        
+
+          <View style={styles.detailItem}>
+            <Building size={16} color={Colors.textLight} />
+            <Text style={styles.detailText}>{item.buildingCount} podlokacija</Text>
+          </View>
+
+          <View style={styles.detailItem}>
+            <Droplet size={16} color={Colors.textLight} />
+            <Text style={styles.detailText}>{item.meterCount} vodomjera</Text>
+          </View>
+
+          <View style={styles.detailItem}>
+            <Users size={16} color={Colors.textLight} />
+            <Text style={styles.detailText}>{item.userCount} korisnika</Text>
+          </View>
+        </View>
+      </View>
+
+      {canManageLocations && (
         <View style={styles.cardActions}>
           <Button
             title="Uredi"
@@ -211,8 +198,9 @@ export default function LocationsScreen() {
             leftIcon={<Edit size={16} color={Colors.primary} />}
             onPress={() => handleEditLocation(item.id)}
             style={styles.actionButton}
+            disabled={deletingId === item.id}
           />
-          
+
           <Button
             title="Obriši"
             variant="outline"
@@ -220,48 +208,49 @@ export default function LocationsScreen() {
             leftIcon={<Trash2 size={16} color={Colors.error} />}
             onPress={() => handleDeleteLocation(item.id)}
             style={[styles.actionButton, styles.deleteButton]}
+            isLoading={deletingId === item.id}
+            disabled={deletingId === item.id}
           />
-          
-          <TouchableOpacity
-            style={styles.detailsButton}
-            onPress={() => handleViewLocationDetails(item.id)}
-          >
-            <ChevronRight size={20} color={Colors.primary} />
-          </TouchableOpacity>
         </View>
-      </Card>
-    );
-  };
-  
+      )}
+    </Card>
+  );
+
   const renderEmptyState = () => {
+    if (error) {
+      return (
+        <EmptyState
+          title="Greška"
+          message={error}
+          icon={<MapPin size={48} color={Colors.error} />}
+          actionLabel="Pokušaj ponovo"
+          onAction={fetchLocations}
+        />
+      );
+    }
     return (
       <EmptyState
         title="Nema lokacija"
         message="Trenutno nema lokacija koje odgovaraju vašoj pretrazi."
         icon={<MapPin size={48} color={Colors.textLight} />}
-        actionLabel="Dodaj novu lokaciju"
-        onAction={handleAddLocation}
+        actionLabel={canManageLocations ? 'Dodaj novu lokaciju' : undefined}
+        onAction={canManageLocations ? handleAddLocation : undefined}
       />
     );
   };
-  
-  const canManageLocations = user?.role === 'superadmin' || user?.role === 'admin';
-  
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
-        <Header 
+        <Header
           title="Lokacije"
           showBack
           showMenu
           onLeftPress={() => setIsDrawerOpen(true)}
         />
-        
-        <Drawer
-          isOpen={isDrawerOpen}
-          onClose={() => setIsDrawerOpen(false)}
-        />
-        
+
+        <Drawer isOpen={isDrawerOpen} onClose={() => setIsDrawerOpen(false)} />
+
         <View style={styles.searchContainer}>
           <View style={styles.searchInputContainer}>
             <Search size={20} color={Colors.textLight} style={styles.searchIcon} />
@@ -269,10 +258,10 @@ export default function LocationsScreen() {
               style={styles.searchInput}
               placeholder="Pretraži lokacije..."
               value={searchQuery}
-              onChangeText={handleSearch}
+              onChangeText={setSearchQuery}
             />
           </View>
-          
+
           <TouchableOpacity
             style={styles.filterButton}
             onPress={() => setShowFilters(!showFilters)}
@@ -280,7 +269,7 @@ export default function LocationsScreen() {
             <Filter size={20} color={Colors.primary} />
           </TouchableOpacity>
         </View>
-        
+
         {showFilters && (
           <View style={styles.filtersContainer}>
             <Text style={styles.filtersTitle}>Kompanija:</Text>
@@ -288,31 +277,61 @@ export default function LocationsScreen() {
               <TouchableOpacity
                 style={[
                   styles.filterOption,
-                  filterCompany === 'all' && styles.filterOptionActive
+                  filterCompany === 'all' && styles.filterOptionActive,
                 ]}
-                onPress={() => handleFilterChange('all')}
+                onPress={() => setFilterCompany('all')}
               >
-                <Text style={[
-                  styles.filterOptionText,
-                  filterCompany === 'all' && styles.filterOptionTextActive
-                ]}>Sve</Text>
+                <Text
+                  style={[
+                    styles.filterOptionText,
+                    filterCompany === 'all' && styles.filterOptionTextActive,
+                  ]}
+                >
+                  Sve
+                </Text>
               </TouchableOpacity>
-              
+
+              {companies.map((company) => (
+                <TouchableOpacity
+                  key={company.id}
+                  style={[
+                    styles.filterOption,
+                    filterCompany === company.id && styles.filterOptionActive,
+                  ]}
+                  onPress={() => setFilterCompany(company.id)}
+                >
+                  <Text
+                    style={[
+                      styles.filterOptionText,
+                      filterCompany === company.id && styles.filterOptionTextActive,
+                    ]}
+                  >
+                    {company.name}
+                  </Text>
+                </TouchableOpacity>
+              ))}
             </View>
           </View>
         )}
-        
-        <FlatList
-          data={filteredLocations}
-          renderItem={renderLocationCard}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.listContainer}
-          ListEmptyComponent={renderEmptyState}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-          }
-        />
-        
+
+        {loading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={Colors.primary} />
+            <Text style={styles.loadingText}>Učitavanje lokacija...</Text>
+          </View>
+        ) : (
+          <FlatList
+            data={filteredLocations}
+            renderItem={renderLocationCard}
+            keyExtractor={(item) => item.id}
+            contentContainerStyle={styles.listContainer}
+            ListEmptyComponent={renderEmptyState}
+            refreshControl={
+              <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+            }
+          />
+        )}
+
         {canManageLocations && (
           <TouchableOpacity
             style={styles.fab}
@@ -400,9 +419,20 @@ const styles = StyleSheet.create({
   filterOptionTextActive: {
     color: '#fff',
   },
+  loadingContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: Colors.textLight,
+  },
   listContainer: {
     padding: 16,
-    paddingBottom: Platform.OS === 'android' ? 100 : 80, // Extra padding for Android
+    paddingBottom: Platform.OS === 'android' ? 100 : 80,
   },
   locationCard: {
     marginBottom: 16,
@@ -451,17 +481,9 @@ const styles = StyleSheet.create({
   deleteButton: {
     borderColor: Colors.error,
   },
-  detailsButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 8,
-    backgroundColor: Colors.highlight,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   fab: {
     position: 'absolute',
-    bottom: Platform.OS === 'android' ? 40 : 24, // Higher position for Android
+    bottom: Platform.OS === 'android' ? 40 : 24,
     right: 24,
     width: 56,
     height: 56,
@@ -476,7 +498,3 @@ const styles = StyleSheet.create({
     shadowRadius: 3.84,
   },
 });
-
-
-
-
