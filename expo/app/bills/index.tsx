@@ -43,8 +43,10 @@ import {
   getInvoicesByUser,
   createBill,
   updateBillStatus,
+  calculateInvoice,
 } from '@/lib/api/bills';
 import { getMeters } from '@/lib/api/meters';
+import { getReadingsByConnection } from '@/lib/api/readings';
 import Colors from '@/constants/colors';
 
 type InvoiceStatus =
@@ -191,6 +193,15 @@ export default function BillsScreen() {
   const [showPeriodToPicker,   setShowPeriodToPicker]   = useState(false);
   const [showDueDatePicker,    setShowDueDatePicker]    = useState(false);
 
+  /* ── Create modal: auto-kalkulacija state ────────── */
+  const [createMode,        setCreateMode]        = useState<'auto' | 'manual'>('auto');
+  const [connReadings,      setConnReadings]      = useState<any[]>([]);
+  const [loadingReadings,   setLoadingReadings]   = useState(false);
+  const [fromReadingId,     setFromReadingId]     = useState('');
+  const [toReadingId,       setToReadingId]       = useState('');
+  const [showFromRdPicker,  setShowFromRdPicker]  = useState(false);
+  const [showToRdPicker,    setShowToRdPicker]    = useState(false);
+
   const { canManageBilling: canManage, isEndUser } = usePermissions();
 
   /* ── Fetch ─────────────────────────────────────── */
@@ -250,9 +261,63 @@ export default function BillsScreen() {
     setShowPeriodFromPicker(false);
     setShowPeriodToPicker(false);
     setShowDueDatePicker(false);
+    setCreateMode('auto');
+    setConnReadings([]);
+    setFromReadingId('');
+    setToReadingId('');
+    setShowFromRdPicker(false);
+    setShowToRdPicker(false);
   };
 
-  /* ── Create invoice ────────────────────────────── */
+  /* ── Connection select: load readings in auto mode ── */
+  const handleConnectionSelect = async (connId: string) => {
+    setNewConnId(connId);
+    setShowConnPicker(false);
+    setFromReadingId('');
+    setToReadingId('');
+    if (createMode === 'auto' && connId) {
+      setLoadingReadings(true);
+      try {
+        const data = await getReadingsByConnection(connId);
+        setConnReadings(data);
+      } catch {
+        setConnReadings([]);
+      } finally {
+        setLoadingReadings(false);
+      }
+    }
+  };
+
+  /* ── Auto-calculate via Edge Function ─────────────── */
+  const handleAutoCalculate = async () => {
+    if (!newConnId || !fromReadingId || !toReadingId) {
+      Alert.alert('Greška', 'Odaberite priključak, početno i završno očitanje.');
+      return;
+    }
+    if (fromReadingId === toReadingId) {
+      Alert.alert('Greška', 'Početno i završno očitanje moraju biti različita.');
+      return;
+    }
+    setCreating(true);
+    try {
+      await calculateInvoice({
+        connection_id:   newConnId,
+        reading_from_id: fromReadingId,
+        reading_to_id:   toReadingId,
+        due_date:        newDueDate || undefined,
+      });
+      await fetchData();
+      setCreateVisible(false);
+      resetCreateForm();
+      Alert.alert('Uspjeh', 'Faktura kreirana automatski prema cjenovnom paketu.');
+    } catch (e: any) {
+      Alert.alert('Greška', e?.message || 'Kalkulacija nije uspjela.');
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  /* ── Create invoice (manual) ───────────────────────── */
   const handleCreateInvoice = async () => {
     if (!newConnId || !newPeriodFrom || !newPeriodTo || !newAmount) {
       Alert.alert('Greška', 'Priključak, period i iznos su obavezni.');
@@ -475,44 +540,70 @@ export default function BillsScreen() {
 
   /* ── Create modal ──────────────────────────────── */
   const renderCreate = () => {
-    const selectedConn = connList.find((c) => c.id === newConnId);
+    const selectedConn  = connList.find((c) => c.id === newConnId);
+    const fromRd        = connReadings.find((r) => r.id === fromReadingId);
+    const toRd          = connReadings.find((r) => r.id === toReadingId);
+    const previewConsumption =
+      fromRd && toRd ? Number(toRd.value) - Number(fromRd.value) : null;
+
+    const fmtReading = (r: any) => {
+      const d   = new Date(r.readingDate).toLocaleDateString('de-DE');
+      const val = Number(r.value).toFixed(3);
+      const ind = r.status === 'verified' ? ' ✓' : r.status === 'rejected' ? ' ✗' : ' …';
+      return `${d}  ·  ${val} m³${ind}`;
+    };
+    const rdStatusColor = (r: any) =>
+      r.status === 'verified' ? '#4CAF50' : r.status === 'rejected' ? Colors.error : '#FF9800';
+
+    const closeModal = () => { setCreateVisible(false); resetCreateForm(); };
 
     return (
       <Modal
         visible={createVisible}
         transparent
         animationType="slide"
-        onRequestClose={() => {
-          setCreateVisible(false);
-          resetCreateForm();
-        }}
+        onRequestClose={closeModal}
       >
         <KeyboardAvoidingView
           style={{ flex: 1 }}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         >
           <View style={styles.modalOverlay}>
-            <View style={[styles.modalBox, { maxHeight: '90%' }]}>
+            <View style={[styles.modalBox, { maxHeight: '92%' }]}>
+
+              {/* Header */}
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>Novi račun</Text>
-                <TouchableOpacity
-                  onPress={() => {
-                    setCreateVisible(false);
-                    resetCreateForm();
-                  }}
-                >
+                <TouchableOpacity onPress={closeModal}>
                   <X size={22} color={Colors.text} />
                 </TouchableOpacity>
               </View>
 
-              <ScrollView
-                style={styles.modalBody}
-                keyboardShouldPersistTaps="handled"
-              >
-                {/* Connection picker */}
+              {/* Mode tabs */}
+              <View style={styles.modeTabs}>
+                {(['auto', 'manual'] as const).map((m) => (
+                  <TouchableOpacity
+                    key={m}
+                    style={[styles.modeTab, createMode === m && styles.modeTabActive]}
+                    onPress={() => {
+                      setCreateMode(m);
+                      setFromReadingId('');
+                      setToReadingId('');
+                    }}
+                  >
+                    <Text style={[styles.modeTabText, createMode === m && styles.modeTabTextActive]}>
+                      {m === 'auto' ? 'Auto-kalkulacija' : 'Ručni unos'}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <ScrollView style={styles.modalBody} keyboardShouldPersistTaps="handled">
+
+                {/* ── Shared: Connection picker ── */}
                 <Text style={styles.fieldLabel}>Priključak *</Text>
                 {loadingConns ? (
-                  <ActivityIndicator size="small" color={Colors.primary} />
+                  <ActivityIndicator size="small" color={Colors.primary} style={{ marginBottom: 12 }} />
                 ) : (
                   <>
                     <TouchableOpacity
@@ -522,10 +613,7 @@ export default function BillsScreen() {
                       <View style={styles.pickerLeft}>
                         <MapPin size={15} color={Colors.primary} />
                         <Text
-                          style={[
-                            styles.pickerText,
-                            !newConnId && styles.pickerPlaceholder,
-                          ]}
+                          style={[styles.pickerText, !newConnId && styles.pickerPlaceholder]}
                           numberOfLines={1}
                         >
                           {selectedConn
@@ -535,162 +623,280 @@ export default function BillsScreen() {
                       </View>
                       <ChevronDown size={16} color={Colors.textLight} />
                     </TouchableOpacity>
-
                     {showConnPicker && (
                       <View style={styles.pickerDropdown}>
                         <ScrollView style={{ maxHeight: 200 }}>
-                          {connList
-                            .filter((c) => c.is_active)
-                            .map((c) => (
-                              <TouchableOpacity
-                                key={c.id}
-                                style={[
-                                  styles.pickerItem,
-                                  newConnId === c.id && styles.pickerItemActive,
-                                ]}
-                                onPress={() => {
-                                  setNewConnId(c.id);
-                                  setShowConnPicker(false);
-                                }}
-                              >
-                                <Text
-                                  style={[
-                                    styles.pickerItemText,
-                                    newConnId === c.id && {
-                                      color: Colors.primary,
-                                      fontWeight: '600',
-                                    },
-                                  ]}
-                                >
-                                  {c.serialNumber} – {c.address}
-                                </Text>
-                                {c.userName ? (
-                                  <Text style={styles.pickerItemSub}>
-                                    {c.userName}
-                                  </Text>
-                                ) : null}
-                              </TouchableOpacity>
-                            ))}
+                          {connList.filter((c) => c.is_active).map((c) => (
+                            <TouchableOpacity
+                              key={c.id}
+                              style={[styles.pickerItem, newConnId === c.id && styles.pickerItemActive]}
+                              onPress={() => handleConnectionSelect(c.id)}
+                            >
+                              <Text style={[styles.pickerItemText, newConnId === c.id && { color: Colors.primary, fontWeight: '600' }]}>
+                                {c.serialNumber} – {c.address}
+                              </Text>
+                              {c.userName ? <Text style={styles.pickerItemSub}>{c.userName}</Text> : null}
+                            </TouchableOpacity>
+                          ))}
                         </ScrollView>
                       </View>
                     )}
                   </>
                 )}
 
-                {/* Period */}
-                <View style={styles.row2}>
-                  <View style={{ flex: 1, marginRight: 8 }}>
-                    <Text style={styles.datePickerLabel}>Period od *</Text>
-                    <TouchableOpacity style={styles.datePickerBtn} onPress={() => setShowPeriodFromPicker(true)} activeOpacity={0.7}>
-                      <Calendar size={14} color={newPeriodFrom ? Colors.primary : Colors.textLight} />
-                      <Text style={newPeriodFrom ? styles.datePickerVal : styles.datePickerPh} numberOfLines={1}>
-                        {newPeriodFrom || 'YYYY-MM-DD'}
+                {/* ════ AUTO MODE ════ */}
+                {createMode === 'auto' && (
+                  <>
+                    {newConnId && (
+                      loadingReadings ? (
+                        <ActivityIndicator size="small" color={Colors.primary} style={{ marginVertical: 12 }} />
+                      ) : connReadings.length === 0 ? (
+                        <View style={styles.autoInfoBox}>
+                          <Text style={styles.autoInfoText}>Nema očitanja za odabrani priključak.</Text>
+                        </View>
+                      ) : (
+                        <>
+                          {/* From reading */}
+                          <Text style={styles.fieldLabel}>Početno očitanje *</Text>
+                          <TouchableOpacity
+                            style={styles.picker}
+                            onPress={() => { setShowFromRdPicker(!showFromRdPicker); setShowToRdPicker(false); }}
+                          >
+                            <View style={styles.pickerLeft}>
+                              <Calendar size={15} color={fromRd ? rdStatusColor(fromRd) : Colors.textLight} />
+                              <Text style={[styles.pickerText, !fromReadingId && styles.pickerPlaceholder]} numberOfLines={1}>
+                                {fromRd ? fmtReading(fromRd) : 'Odaberite početno očitanje'}
+                              </Text>
+                            </View>
+                            <ChevronDown size={16} color={Colors.textLight} />
+                          </TouchableOpacity>
+                          {showFromRdPicker && (
+                            <View style={styles.pickerDropdown}>
+                              <ScrollView style={{ maxHeight: 180 }}>
+                                {connReadings.map((r) => (
+                                  <TouchableOpacity
+                                    key={r.id}
+                                    style={[styles.pickerItem, fromReadingId === r.id && styles.pickerItemActive]}
+                                    onPress={() => { setFromReadingId(r.id); setShowFromRdPicker(false); }}
+                                  >
+                                    <Text style={[styles.pickerItemText, { color: rdStatusColor(r) }]}>
+                                      {fmtReading(r)}
+                                    </Text>
+                                  </TouchableOpacity>
+                                ))}
+                              </ScrollView>
+                            </View>
+                          )}
+
+                          {/* To reading */}
+                          <Text style={styles.fieldLabel}>Završno očitanje *</Text>
+                          <TouchableOpacity
+                            style={styles.picker}
+                            onPress={() => { setShowToRdPicker(!showToRdPicker); setShowFromRdPicker(false); }}
+                          >
+                            <View style={styles.pickerLeft}>
+                              <Calendar size={15} color={toRd ? rdStatusColor(toRd) : Colors.textLight} />
+                              <Text style={[styles.pickerText, !toReadingId && styles.pickerPlaceholder]} numberOfLines={1}>
+                                {toRd ? fmtReading(toRd) : 'Odaberite završno očitanje'}
+                              </Text>
+                            </View>
+                            <ChevronDown size={16} color={Colors.textLight} />
+                          </TouchableOpacity>
+                          {showToRdPicker && (
+                            <View style={styles.pickerDropdown}>
+                              <ScrollView style={{ maxHeight: 180 }}>
+                                {connReadings.map((r) => (
+                                  <TouchableOpacity
+                                    key={r.id}
+                                    style={[styles.pickerItem, toReadingId === r.id && styles.pickerItemActive]}
+                                    onPress={() => { setToReadingId(r.id); setShowToRdPicker(false); }}
+                                  >
+                                    <Text style={[styles.pickerItemText, { color: rdStatusColor(r) }]}>
+                                      {fmtReading(r)}
+                                    </Text>
+                                  </TouchableOpacity>
+                                ))}
+                              </ScrollView>
+                            </View>
+                          )}
+
+                          {/* Consumption preview */}
+                          {previewConsumption !== null && (
+                            <View style={[
+                              styles.autoInfoBox,
+                              { backgroundColor: previewConsumption >= 0 ? '#E8F5E9' : '#FFEBEE' }
+                            ]}>
+                              <Text style={[
+                                styles.autoInfoText,
+                                { color: previewConsumption >= 0 ? '#2E7D32' : Colors.error, fontWeight: '600' }
+                              ]}>
+                                {previewConsumption >= 0
+                                  ? `Potrošnja: ${previewConsumption.toFixed(3)} m³`
+                                  : `Negativna potrošnja — provjeri redoslijed očitanja`}
+                              </Text>
+                            </View>
+                          )}
+                        </>
+                      )
+                    )}
+
+                    {/* Due date (auto mode) */}
+                    <Text style={styles.datePickerLabel}>Rok plaćanja</Text>
+                    <TouchableOpacity style={styles.datePickerBtn} onPress={() => setShowDueDatePicker(true)} activeOpacity={0.7}>
+                      <Calendar size={14} color={newDueDate ? Colors.primary : Colors.textLight} />
+                      <Text style={newDueDate ? styles.datePickerVal : styles.datePickerPh}>
+                        {newDueDate || 'Odaberi rok plaćanja'}
                       </Text>
+                      {newDueDate ? (
+                        <TouchableOpacity hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} onPress={(e) => { e.stopPropagation(); setNewDueDate(''); }}>
+                          <X size={14} color={Colors.textLight} />
+                        </TouchableOpacity>
+                      ) : null}
                     </TouchableOpacity>
-                    {showPeriodFromPicker && (
+                    {showDueDatePicker && (
                       <DateTimePicker
-                        value={newPeriodFrom ? new Date(newPeriodFrom) : new Date()}
+                        value={newDueDate ? new Date(newDueDate) : new Date()}
                         mode="date"
                         display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                        onChange={(_, d) => { if (Platform.OS === 'android') setShowPeriodFromPicker(false); if (d) setNewPeriodFrom(toDateStr(d)); }}
+                        minimumDate={new Date()}
+                        onChange={(_, d) => { if (Platform.OS === 'android') setShowDueDatePicker(false); if (d) setNewDueDate(toDateStr(d)); }}
                       />
                     )}
-                    {showPeriodFromPicker && Platform.OS === 'ios' && (
-                      <TouchableOpacity style={styles.datePickerDone} onPress={() => setShowPeriodFromPicker(false)}>
+                    {showDueDatePicker && Platform.OS === 'ios' && (
+                      <TouchableOpacity style={styles.datePickerDone} onPress={() => setShowDueDatePicker(false)}>
                         <Text style={styles.datePickerDoneText}>Gotovo</Text>
                       </TouchableOpacity>
                     )}
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.datePickerLabel}>Period do *</Text>
-                    <TouchableOpacity style={styles.datePickerBtn} onPress={() => setShowPeriodToPicker(true)} activeOpacity={0.7}>
-                      <Calendar size={14} color={newPeriodTo ? Colors.primary : Colors.textLight} />
-                      <Text style={newPeriodTo ? styles.datePickerVal : styles.datePickerPh} numberOfLines={1}>
-                        {newPeriodTo || 'YYYY-MM-DD'}
-                      </Text>
-                    </TouchableOpacity>
-                    {showPeriodToPicker && (
-                      <DateTimePicker
-                        value={newPeriodTo ? new Date(newPeriodTo) : new Date()}
-                        mode="date"
-                        display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                        onChange={(_, d) => { if (Platform.OS === 'android') setShowPeriodToPicker(false); if (d) setNewPeriodTo(toDateStr(d)); }}
-                      />
-                    )}
-                    {showPeriodToPicker && Platform.OS === 'ios' && (
-                      <TouchableOpacity style={styles.datePickerDone} onPress={() => setShowPeriodToPicker(false)}>
-                        <Text style={styles.datePickerDoneText}>Gotovo</Text>
-                      </TouchableOpacity>
-                    )}
-                  </View>
-                </View>
-
-                {/* Amount + consumption */}
-                <View style={styles.row2}>
-                  <View style={{ flex: 1, marginRight: 8 }}>
-                    <Input
-                      label="Iznos (KM) *"
-                      placeholder="0.00"
-                      value={newAmount}
-                      onChangeText={setNewAmount}
-                      keyboardType="decimal-pad"
-                    />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Input
-                      label="Potrošnja (m³)"
-                      placeholder="0"
-                      value={newConsumption}
-                      onChangeText={setNewConsumption}
-                      keyboardType="decimal-pad"
-                    />
-                  </View>
-                </View>
-
-                {/* Due date */}
-                <Text style={styles.datePickerLabel}>Rok plaćanja</Text>
-                <TouchableOpacity style={styles.datePickerBtn} onPress={() => setShowDueDatePicker(true)} activeOpacity={0.7}>
-                  <Calendar size={14} color={newDueDate ? Colors.primary : Colors.textLight} />
-                  <Text style={newDueDate ? styles.datePickerVal : styles.datePickerPh}>
-                    {newDueDate || 'Odaberi rok plaćanja'}
-                  </Text>
-                  {newDueDate ? (
-                    <TouchableOpacity hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} onPress={(e) => { e.stopPropagation(); setNewDueDate(''); }}>
-                      <X size={14} color={Colors.textLight} />
-                    </TouchableOpacity>
-                  ) : null}
-                </TouchableOpacity>
-                {showDueDatePicker && (
-                  <DateTimePicker
-                    value={newDueDate ? new Date(newDueDate) : new Date()}
-                    mode="date"
-                    display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                    minimumDate={new Date()}
-                    onChange={(_, d) => { if (Platform.OS === 'android') setShowDueDatePicker(false); if (d) setNewDueDate(toDateStr(d)); }}
-                  />
+                  </>
                 )}
-                {showDueDatePicker && Platform.OS === 'ios' && (
-                  <TouchableOpacity style={styles.datePickerDone} onPress={() => setShowDueDatePicker(false)}>
-                    <Text style={styles.datePickerDoneText}>Gotovo</Text>
-                  </TouchableOpacity>
+
+                {/* ════ MANUAL MODE ════ */}
+                {createMode === 'manual' && (
+                  <>
+                    {/* Period */}
+                    <View style={styles.row2}>
+                      <View style={{ flex: 1, marginRight: 8 }}>
+                        <Text style={styles.datePickerLabel}>Period od *</Text>
+                        <TouchableOpacity style={styles.datePickerBtn} onPress={() => setShowPeriodFromPicker(true)} activeOpacity={0.7}>
+                          <Calendar size={14} color={newPeriodFrom ? Colors.primary : Colors.textLight} />
+                          <Text style={newPeriodFrom ? styles.datePickerVal : styles.datePickerPh} numberOfLines={1}>
+                            {newPeriodFrom || 'YYYY-MM-DD'}
+                          </Text>
+                        </TouchableOpacity>
+                        {showPeriodFromPicker && (
+                          <DateTimePicker
+                            value={newPeriodFrom ? new Date(newPeriodFrom) : new Date()}
+                            mode="date"
+                            display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                            onChange={(_, d) => { if (Platform.OS === 'android') setShowPeriodFromPicker(false); if (d) setNewPeriodFrom(toDateStr(d)); }}
+                          />
+                        )}
+                        {showPeriodFromPicker && Platform.OS === 'ios' && (
+                          <TouchableOpacity style={styles.datePickerDone} onPress={() => setShowPeriodFromPicker(false)}>
+                            <Text style={styles.datePickerDoneText}>Gotovo</Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.datePickerLabel}>Period do *</Text>
+                        <TouchableOpacity style={styles.datePickerBtn} onPress={() => setShowPeriodToPicker(true)} activeOpacity={0.7}>
+                          <Calendar size={14} color={newPeriodTo ? Colors.primary : Colors.textLight} />
+                          <Text style={newPeriodTo ? styles.datePickerVal : styles.datePickerPh} numberOfLines={1}>
+                            {newPeriodTo || 'YYYY-MM-DD'}
+                          </Text>
+                        </TouchableOpacity>
+                        {showPeriodToPicker && (
+                          <DateTimePicker
+                            value={newPeriodTo ? new Date(newPeriodTo) : new Date()}
+                            mode="date"
+                            display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                            onChange={(_, d) => { if (Platform.OS === 'android') setShowPeriodToPicker(false); if (d) setNewPeriodTo(toDateStr(d)); }}
+                          />
+                        )}
+                        {showPeriodToPicker && Platform.OS === 'ios' && (
+                          <TouchableOpacity style={styles.datePickerDone} onPress={() => setShowPeriodToPicker(false)}>
+                            <Text style={styles.datePickerDoneText}>Gotovo</Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                    </View>
+
+                    {/* Amount + consumption */}
+                    <View style={styles.row2}>
+                      <View style={{ flex: 1, marginRight: 8 }}>
+                        <Input
+                          label="Iznos (KM) *"
+                          placeholder="0.00"
+                          value={newAmount}
+                          onChangeText={setNewAmount}
+                          keyboardType="decimal-pad"
+                        />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Input
+                          label="Potrošnja (m³)"
+                          placeholder="0"
+                          value={newConsumption}
+                          onChangeText={setNewConsumption}
+                          keyboardType="decimal-pad"
+                        />
+                      </View>
+                    </View>
+
+                    {/* Due date (manual mode) */}
+                    <Text style={styles.datePickerLabel}>Rok plaćanja</Text>
+                    <TouchableOpacity style={styles.datePickerBtn} onPress={() => setShowDueDatePicker(true)} activeOpacity={0.7}>
+                      <Calendar size={14} color={newDueDate ? Colors.primary : Colors.textLight} />
+                      <Text style={newDueDate ? styles.datePickerVal : styles.datePickerPh}>
+                        {newDueDate || 'Odaberi rok plaćanja'}
+                      </Text>
+                      {newDueDate ? (
+                        <TouchableOpacity hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} onPress={(e) => { e.stopPropagation(); setNewDueDate(''); }}>
+                          <X size={14} color={Colors.textLight} />
+                        </TouchableOpacity>
+                      ) : null}
+                    </TouchableOpacity>
+                    {showDueDatePicker && (
+                      <DateTimePicker
+                        value={newDueDate ? new Date(newDueDate) : new Date()}
+                        mode="date"
+                        display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                        minimumDate={new Date()}
+                        onChange={(_, d) => { if (Platform.OS === 'android') setShowDueDatePicker(false); if (d) setNewDueDate(toDateStr(d)); }}
+                      />
+                    )}
+                    {showDueDatePicker && Platform.OS === 'ios' && (
+                      <TouchableOpacity style={styles.datePickerDone} onPress={() => setShowDueDatePicker(false)}>
+                        <Text style={styles.datePickerDoneText}>Gotovo</Text>
+                      </TouchableOpacity>
+                    )}
+                  </>
                 )}
               </ScrollView>
 
+              {/* Footer buttons */}
               <View style={styles.modalFooter}>
-                <Button
-                  title="Kreiraj račun"
-                  leftIcon={<Plus size={18} color="#fff" />}
-                  isLoading={creating}
-                  onPress={handleCreateInvoice}
-                  style={{ flex: 1, marginRight: 8 }}
-                />
+                {createMode === 'auto' ? (
+                  <Button
+                    title="Kalkuliraj i kreiraj"
+                    leftIcon={<Plus size={18} color="#fff" />}
+                    isLoading={creating}
+                    onPress={handleAutoCalculate}
+                    style={{ flex: 1, marginRight: 8 }}
+                  />
+                ) : (
+                  <Button
+                    title="Kreiraj račun"
+                    leftIcon={<Plus size={18} color="#fff" />}
+                    isLoading={creating}
+                    onPress={handleCreateInvoice}
+                    style={{ flex: 1, marginRight: 8 }}
+                  />
+                )}
                 <Button
                   title="Odustani"
                   variant="outline"
-                  onPress={() => {
-                    setCreateVisible(false);
-                    resetCreateForm();
-                  }}
+                  onPress={closeModal}
                   style={{ flex: 1 }}
                 />
               </View>
@@ -997,4 +1203,41 @@ const styles = StyleSheet.create({
     borderRadius: 8, backgroundColor: Colors.highlight,
   },
   datePickerDoneText: { fontSize: 14, fontWeight: '600', color: Colors.primary },
+
+  /* Mode tabs (auto / manual) */
+  modeTabs: {
+    flexDirection: 'row',
+    marginHorizontal: 16,
+    marginTop: 12,
+    marginBottom: 4,
+    borderRadius: 10,
+    backgroundColor: Colors.highlight,
+    padding: 3,
+  },
+  modeTab: {
+    flex: 1,
+    paddingVertical: 8,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  modeTabActive: {
+    backgroundColor: '#fff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  modeTabText: { fontSize: 13, fontWeight: '500', color: Colors.textLight },
+  modeTabTextActive: { color: Colors.primary, fontWeight: '700' },
+
+  /* Auto mode info/empty box */
+  autoInfoBox: {
+    borderRadius: 8,
+    backgroundColor: Colors.highlight,
+    padding: 12,
+    marginBottom: 12,
+    marginTop: 4,
+  },
+  autoInfoText: { fontSize: 13, color: Colors.textLight, textAlign: 'center' },
 });
