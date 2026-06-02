@@ -1,8 +1,17 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Modal } from 'react-native';
-import { Stack, useRouter } from 'expo-router';
-import { Plus, Package, Calendar, X, Users, Menu } from 'lucide-react-native';
-import { PackageCard, PricingPackage } from '@/components/pricing/PackageCard';
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  Alert,
+  Modal,
+  ActivityIndicator,
+} from 'react-native';
+import { useRouter } from 'expo-router';
+import { Package, Calendar, X, Users } from 'lucide-react-native';
+import { PackageCard, type PricingPackage } from '@/components/pricing/PackageCard';
 import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
@@ -10,304 +19,208 @@ import { Header } from '@/components/layout/Header';
 import { Drawer } from '@/components/layout/Drawer';
 import Colors from '@/constants/colors';
 import { useAuthStore } from '@/store/auth-store';
-import { UserGroup } from '@/types/user';
-
-// Mock data for pricing packages
-const mockPackages: PricingPackage[] = [
-  {
-    id: '1',
-    name: 'Standardni paket',
-    description: 'Osnovni paket za domaćinstva',
-    isDefault: true,
-    periodIds: ['1', '2'],
-    userGroupIds: ['1'],
-  },
-  {
-    id: '2',
-    name: 'Poslovni paket',
-    description: 'Paket za poslovne korisnike',
-    isDefault: false,
-    periodIds: ['1', '2'],
-    userGroupIds: ['2'],
-  },
-  {
-    id: '3',
-    name: 'Ljetni paket',
-    description: 'Poseban paket za ljetni period sa progresivnim cijenama',
-    isDefault: false,
-    periodIds: ['2'],
-    userGroupIds: ['1', '2'],
-  },
-];
-
-// Mock data for periods
-const mockPeriods = [
-  {
-    id: '1',
-    name: 'Standardni period',
-    startDate: '01.01.2023',
-    endDate: '31.05.2023',
-    description: 'Redovni period bez ograničenja potrošnje',
-    isActive: false,
-  },
-  {
-    id: '2',
-    name: 'Ljetni period',
-    startDate: '01.06.2023',
-    endDate: '30.09.2023',
-    description: 'Period sa mogućim redukcijama i povećanim cijenama za prekomjernu potrošnju',
-    isActive: true,
-  },
-  {
-    id: '3',
-    name: 'Zimski period',
-    startDate: '01.10.2023',
-    endDate: '31.12.2023',
-    description: 'Period sa standardnim cijenama',
-    isActive: false,
-  },
-];
-
-// Mock data for user groups
-const mockUserGroups: UserGroup[] = [
-  {
-    id: '1',
-    name: 'Domaćinstva',
-    description: 'Privatna domaćinstva i stanovi',
-    isDefault: true,
-    type: 'household',
-  },
-  {
-    id: '2',
-    name: 'Poslovni korisnici',
-    description: 'Kompanije i poslovni objekti',
-    isDefault: false,
-    type: 'business',
-  },
-  {
-    id: '3',
-    name: 'Poljoprivrednici',
-    description: 'Korisnici koji koriste vodu za poljoprivredu',
-    isDefault: false,
-    type: 'agriculture',
-  },
-  {
-    id: '4',
-    name: 'Stočari',
-    description: 'Korisnici koji koriste vodu za stočarstvo',
-    isDefault: false,
-    type: 'livestock',
-  },
-];
+import {
+  getPackages,
+  getPeriods,
+  getUserGroups,
+  createPackage,
+  updatePackage,
+  deletePackage,
+  type PricingPackageDto,
+  type PricingPeriodDto,
+  type UserGroupDto,
+} from '@/lib/api/pricing';
 
 export default function PricingScreen() {
   const router = useRouter();
   const { user } = useAuthStore();
-  const [packages, setPackages] = useState<PricingPackage[]>(mockPackages);
+
+  const [packages, setPackages] = useState<PricingPackageDto[]>([]);
+  const [periods, setPeriods] = useState<PricingPeriodDto[]>([]);
+  const [userGroups, setUserGroups] = useState<UserGroupDto[]>([]);
+  const [loading, setLoading] = useState(true);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-  
-  // State for add/edit package modal
+
+  // Add/edit package modal
   const [modalVisible, setModalVisible] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [currentPackage, setCurrentPackage] = useState<PricingPackage | null>(null);
-  
+  const [isSaving, setIsSaving] = useState(false);
+
   // Form state
   const [packageName, setPackageName] = useState('');
   const [packageDescription, setPackageDescription] = useState('');
   const [isDefault, setIsDefault] = useState(false);
   const [selectedPeriodIds, setSelectedPeriodIds] = useState<string[]>([]);
   const [selectedUserGroupIds, setSelectedUserGroupIds] = useState<string[]>([]);
-  
+
   // Form errors
   const [nameError, setNameError] = useState('');
   const [periodsError, setPeriodsError] = useState('');
   const [userGroupsError, setUserGroupsError] = useState('');
-  
+
+  const canManagePricing =
+    user?.role === 'superadmin' || user?.role === 'admin' || user?.role === 'finance';
+
+  const loadData = useCallback(async () => {
+    try {
+      const [pkgs, prds, groups] = await Promise.all([
+        getPackages(),
+        getPeriods(),
+        getUserGroups(),
+      ]);
+      setPackages(pkgs);
+      setPeriods(prds);
+      setUserGroups(groups);
+    } catch (error) {
+      console.error('Greška pri učitavanju cjenovnika:', error);
+      Alert.alert('Greška', 'Nije moguće učitati podatke o cijenama.');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!canManagePricing) {
+      setLoading(false);
+      return;
+    }
+    loadData();
+  }, [canManagePricing, loadData]);
+
   const handleAddPackage = () => {
-    // Reset form
     setPackageName('');
     setPackageDescription('');
     setIsDefault(false);
     setSelectedPeriodIds([]);
     setSelectedUserGroupIds([]);
-    
-    // Reset errors
     setNameError('');
     setPeriodsError('');
     setUserGroupsError('');
-    
-    // Open modal in add mode
     setIsEditing(false);
     setCurrentPackage(null);
     setModalVisible(true);
   };
-  
+
   const handleEditPackage = (pkg: PricingPackage) => {
-    // Set form values
     setPackageName(pkg.name);
     setPackageDescription(pkg.description);
     setIsDefault(pkg.isDefault);
     setSelectedPeriodIds(pkg.periodIds || []);
     setSelectedUserGroupIds(pkg.userGroupIds || []);
-    
-    // Reset errors
     setNameError('');
     setPeriodsError('');
     setUserGroupsError('');
-    
-    // Open modal in edit mode
     setIsEditing(true);
     setCurrentPackage(pkg);
     setModalVisible(true);
   };
-  
+
   const handleDeletePackage = (packageId: string) => {
-    // Don't allow deleting default package
-    const pkg = packages.find(p => p.id === packageId);
+    const pkg = packages.find((p) => p.id === packageId);
     if (pkg && pkg.isDefault) {
-      Alert.alert(
-        'Greška',
-        'Ne možete obrisati osnovni paket.',
-        [{ text: 'OK' }]
-      );
+      Alert.alert('Greška', 'Ne možete obrisati osnovni paket.', [{ text: 'OK' }]);
       return;
     }
-    
+
     Alert.alert(
       'Brisanje paketa',
       'Da li ste sigurni da želite obrisati ovaj paket?',
       [
-        {
-          text: 'Otkaži',
-          style: 'cancel',
-        },
+        { text: 'Otkaži', style: 'cancel' },
         {
           text: 'Obriši',
           style: 'destructive',
-          onPress: () => {
-            setPackages(packages.filter(p => p.id !== packageId));
+          onPress: async () => {
+            try {
+              await deletePackage(packageId);
+              setPackages((prev) => prev.filter((p) => p.id !== packageId));
+              Alert.alert('Uspjeh', 'Paket je obrisan.');
+            } catch (error) {
+              console.error('Greška pri brisanju paketa:', error);
+              Alert.alert('Greška', 'Nije moguće obrisati paket.');
+            }
           },
         },
       ],
-      { cancelable: true }
+      { cancelable: true },
     );
   };
-  
+
   const handlePackagePress = (pkg: PricingPackage) => {
     router.push(`/pricing/packages/${pkg.id}`);
   };
-  
-  const navigateToPeriods = () => {
-    router.push('/pricing/periods');
-  };
-  
-  const navigateToUserGroups = () => {
-    router.push('/pricing/user-groups');
-  };
-  
+
   const togglePeriodSelection = (periodId: string) => {
-    if (selectedPeriodIds.includes(periodId)) {
-      setSelectedPeriodIds(selectedPeriodIds.filter(id => id !== periodId));
-    } else {
-      setSelectedPeriodIds([...selectedPeriodIds, periodId]);
-    }
-    
-    // Clear error if at least one period is selected
-    if (periodsError && selectedPeriodIds.length > 0) {
-      setPeriodsError('');
-    }
+    setSelectedPeriodIds((prev) =>
+      prev.includes(periodId) ? prev.filter((id) => id !== periodId) : [...prev, periodId],
+    );
+    setPeriodsError('');
   };
-  
+
   const toggleUserGroupSelection = (groupId: string) => {
-    if (selectedUserGroupIds.includes(groupId)) {
-      setSelectedUserGroupIds(selectedUserGroupIds.filter(id => id !== groupId));
-    } else {
-      setSelectedUserGroupIds([...selectedUserGroupIds, groupId]);
-    }
-    
-    // Clear error if at least one user group is selected
-    if (userGroupsError && selectedUserGroupIds.length > 0) {
-      setUserGroupsError('');
-    }
+    setSelectedUserGroupIds((prev) =>
+      prev.includes(groupId) ? prev.filter((id) => id !== groupId) : [...prev, groupId],
+    );
+    setUserGroupsError('');
   };
-  
+
   const validateForm = () => {
     let isValid = true;
-    
-    // Validate name
     if (!packageName.trim()) {
       setNameError('Naziv paketa je obavezan');
       isValid = false;
     } else {
       setNameError('');
     }
-    
-    // Validate periods
     if (selectedPeriodIds.length === 0) {
       setPeriodsError('Odaberite barem jedan period');
       isValid = false;
     } else {
       setPeriodsError('');
     }
-    
-    // Validate user groups
     if (selectedUserGroupIds.length === 0) {
       setUserGroupsError('Odaberite barem jednu grupu korisnika');
       isValid = false;
     } else {
       setUserGroupsError('');
     }
-    
     return isValid;
   };
-  
-  const handleSavePackage = () => {
-    if (!validateForm()) {
-      return;
+
+  const handleSavePackage = async () => {
+    if (!validateForm()) return;
+
+    setIsSaving(true);
+    try {
+      if (isEditing && currentPackage) {
+        await updatePackage(currentPackage.id, {
+          name: packageName,
+          description: packageDescription,
+          isDefault,
+          periodIds: selectedPeriodIds,
+          userGroupIds: selectedUserGroupIds,
+        });
+      } else {
+        await createPackage({
+          name: packageName,
+          description: packageDescription,
+          isDefault,
+          companyId: user?.companyId ?? null,
+          periodIds: selectedPeriodIds,
+          userGroupIds: selectedUserGroupIds,
+        });
+      }
+      await loadData();
+      setModalVisible(false);
+    } catch (error) {
+      console.error('Greška pri spremanju paketa:', error);
+      Alert.alert('Greška', 'Nije moguće sačuvati paket. Pokušajte ponovo.');
+    } finally {
+      setIsSaving(false);
     }
-    
-    // If setting this package as default, unset default for all other packages
-    let updatedPackages = [...packages];
-    if (isDefault) {
-      updatedPackages = updatedPackages.map(p => ({
-        ...p,
-        isDefault: false
-      }));
-    }
-    
-    if (isEditing && currentPackage) {
-      // Update existing package
-      updatedPackages = updatedPackages.map(p => 
-        p.id === currentPackage.id 
-          ? {
-              ...p,
-              name: packageName,
-              description: packageDescription,
-              isDefault,
-              periodIds: selectedPeriodIds,
-              userGroupIds: selectedUserGroupIds
-            }
-          : p
-      );
-    } else {
-      // Add new package
-      const newPackage: PricingPackage = {
-        id: Date.now().toString(),
-        name: packageName,
-        description: packageDescription,
-        isDefault,
-        periodIds: selectedPeriodIds,
-        userGroupIds: selectedUserGroupIds
-      };
-      updatedPackages.push(newPackage);
-    }
-    
-    setPackages(updatedPackages);
-    setModalVisible(false);
   };
-  
-  const canManagePricing = user?.role === 'superadmin' || user?.role === 'admin' || user?.role === 'finance';
-  
+
   if (!canManagePricing) {
     return (
       <View style={styles.container}>
@@ -315,38 +228,31 @@ export default function PricingScreen() {
       </View>
     );
   }
-  
+
   return (
     <>
-      <Header 
+      <Header
         title="Upravljanje cijenama"
         showBack={true}
         showMenu={true}
         onLeftPress={() => router.back()}
         onMenuPress={() => setIsDrawerOpen(true)}
       />
-      
-      <Drawer
-        isOpen={isDrawerOpen}
-        onClose={() => setIsDrawerOpen(false)}
-      />
-      
+
+      <Drawer isOpen={isDrawerOpen} onClose={() => setIsDrawerOpen(false)} />
+
       <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
         <View style={styles.quickActions}>
-          <TouchableOpacity 
-            style={styles.actionCard}
-            onPress={handleAddPackage}
-            activeOpacity={0.7}
-          >
+          <TouchableOpacity style={styles.actionCard} onPress={handleAddPackage} activeOpacity={0.7}>
             <View style={[styles.actionIcon, { backgroundColor: Colors.primary }]}>
               <Package size={24} color="#fff" />
             </View>
             <Text style={styles.actionText}>Dodaj novi paket</Text>
           </TouchableOpacity>
-          
-          <TouchableOpacity 
+
+          <TouchableOpacity
             style={styles.actionCard}
-            onPress={navigateToPeriods}
+            onPress={() => router.push('/pricing/periods')}
             activeOpacity={0.7}
           >
             <View style={[styles.actionIcon, { backgroundColor: Colors.secondary }]}>
@@ -354,10 +260,10 @@ export default function PricingScreen() {
             </View>
             <Text style={styles.actionText}>Upravljaj periodima</Text>
           </TouchableOpacity>
-          
-          <TouchableOpacity 
+
+          <TouchableOpacity
             style={styles.actionCard}
-            onPress={navigateToUserGroups}
+            onPress={() => router.push('/pricing/user-groups' as any)}
             activeOpacity={0.7}
           >
             <View style={[styles.actionIcon, { backgroundColor: Colors.info }]}>
@@ -366,32 +272,45 @@ export default function PricingScreen() {
             <Text style={styles.actionText}>Grupe korisnika</Text>
           </TouchableOpacity>
         </View>
-        
+
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Paketi cijena</Text>
         </View>
-        
-        {packages.map((pkg) => (
-          <PackageCard
-            key={pkg.id}
-            package={pkg}
-            onEdit={handleEditPackage}
-            onDelete={handleDeletePackage}
-            onPress={handlePackagePress}
-          />
-        ))}
-        
+
+        {loading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={Colors.primary} />
+            <Text style={styles.loadingText}>Učitavanje paketa...</Text>
+          </View>
+        ) : packages.length === 0 ? (
+          <Card style={styles.emptyCard}>
+            <Text style={styles.emptyText}>
+              Nema definisanih paketa. Dodajte prvi paket cijena.
+            </Text>
+          </Card>
+        ) : (
+          packages.map((pkg) => (
+            <PackageCard
+              key={pkg.id}
+              package={pkg}
+              onEdit={handleEditPackage}
+              onDelete={handleDeletePackage}
+              onPress={handlePackagePress}
+            />
+          ))
+        )}
+
         <View style={styles.infoCard}>
           <Card style={styles.infoCardContent}>
             <Text style={styles.infoTitle}>Kako funkcionišu paketi cijena?</Text>
             <Text style={styles.infoText}>
-              Paketi cijena omogućavaju definisanje različitih cijena za različite količine potrošnje vode.
-              Možete kreirati posebne pakete za različite periode godine, kao što je ljetni period kada
-              su moguće redukcije vode.
+              Paketi cijena omogućavaju definisanje različitih cijena za različite količine
+              potrošnje vode. Možete kreirati posebne pakete za različite periode godine, kao što
+              je ljetni period kada su moguće redukcije vode.
             </Text>
           </Card>
         </View>
-        
+
         {/* Add/Edit Package Modal */}
         <Modal
           animationType="slide"
@@ -405,14 +324,11 @@ export default function PricingScreen() {
                 <Text style={styles.modalTitle}>
                   {isEditing ? 'Uredi paket' : 'Dodaj novi paket'}
                 </Text>
-                <TouchableOpacity
-                  onPress={() => setModalVisible(false)}
-                  style={styles.closeButton}
-                >
+                <TouchableOpacity onPress={() => setModalVisible(false)} style={styles.closeButton}>
                   <X size={24} color={Colors.text} />
                 </TouchableOpacity>
               </View>
-              
+
               <ScrollView style={styles.modalBody}>
                 <Input
                   label="Naziv paketa"
@@ -422,7 +338,7 @@ export default function PricingScreen() {
                   error={nameError}
                   leftIcon={<Package size={20} color={Colors.textLight} />}
                 />
-                
+
                 <Input
                   label="Opis"
                   placeholder="Unesite opis paketa"
@@ -431,13 +347,13 @@ export default function PricingScreen() {
                   multiline
                   numberOfLines={3}
                 />
-                
+
                 <View style={styles.switchContainer}>
                   <Text style={styles.switchLabel}>Osnovni paket:</Text>
                   <TouchableOpacity
                     style={[
                       styles.switchButton,
-                      isDefault ? styles.switchButtonActive : styles.switchButtonInactive
+                      isDefault ? styles.switchButtonActive : styles.switchButtonInactive,
                     ]}
                     onPress={() => setIsDefault(!isDefault)}
                   >
@@ -446,67 +362,83 @@ export default function PricingScreen() {
                     </Text>
                   </TouchableOpacity>
                 </View>
-                
+
                 <Text style={styles.selectorLabel}>Odaberite periode:</Text>
                 {periodsError ? <Text style={styles.errorText}>{periodsError}</Text> : null}
                 <View style={styles.selectorContainer}>
-                  {mockPeriods.map(period => (
-                    <TouchableOpacity
-                      key={period.id}
-                      style={[
-                        styles.selectorItem,
-                        selectedPeriodIds.includes(period.id) && styles.selectorItemActive
-                      ]}
-                      onPress={() => togglePeriodSelection(period.id)}
-                    >
-                      <Text
+                  {periods.length === 0 ? (
+                    <Text style={styles.selectorEmpty}>
+                      Nema definisanih perioda. Dodajte ih u &quot;Upravljaj periodima&quot;.
+                    </Text>
+                  ) : (
+                    periods.map((period) => (
+                      <TouchableOpacity
+                        key={period.id}
                         style={[
-                          styles.selectorItemText,
-                          selectedPeriodIds.includes(period.id) && styles.selectorItemTextActive
+                          styles.selectorItem,
+                          selectedPeriodIds.includes(period.id) && styles.selectorItemActive,
                         ]}
+                        onPress={() => togglePeriodSelection(period.id)}
                       >
-                        {period.name}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
+                        <Text
+                          style={[
+                            styles.selectorItemText,
+                            selectedPeriodIds.includes(period.id) && styles.selectorItemTextActive,
+                          ]}
+                        >
+                          {period.name}
+                        </Text>
+                      </TouchableOpacity>
+                    ))
+                  )}
                 </View>
-                
+
                 <Text style={styles.selectorLabel}>Odaberite grupe korisnika:</Text>
                 {userGroupsError ? <Text style={styles.errorText}>{userGroupsError}</Text> : null}
                 <View style={styles.selectorContainer}>
-                  {mockUserGroups.map(group => (
-                    <TouchableOpacity
-                      key={group.id}
-                      style={[
-                        styles.selectorItem,
-                        selectedUserGroupIds.includes(group.id) && styles.selectorItemActive
-                      ]}
-                      onPress={() => toggleUserGroupSelection(group.id)}
-                    >
-                      <Text
+                  {userGroups.length === 0 ? (
+                    <Text style={styles.selectorEmpty}>
+                      Nema definisanih grupa korisnika. Dodajte ih u &quot;Grupe korisnika&quot;.
+                    </Text>
+                  ) : (
+                    userGroups.map((group) => (
+                      <TouchableOpacity
+                        key={group.id}
                         style={[
-                          styles.selectorItemText,
-                          selectedUserGroupIds.includes(group.id) && styles.selectorItemTextActive
+                          styles.selectorItem,
+                          selectedUserGroupIds.includes(group.id) && styles.selectorItemActive,
                         ]}
+                        onPress={() => toggleUserGroupSelection(group.id)}
                       >
-                        {group.name}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
+                        <Text
+                          style={[
+                            styles.selectorItemText,
+                            selectedUserGroupIds.includes(group.id) &&
+                              styles.selectorItemTextActive,
+                          ]}
+                        >
+                          {group.name}
+                        </Text>
+                      </TouchableOpacity>
+                    ))
+                  )}
                 </View>
-                
+
                 <View style={styles.modalActions}>
                   <Button
                     title="Otkaži"
                     variant="outline"
                     onPress={() => setModalVisible(false)}
                     style={styles.modalButton}
+                    disabled={isSaving}
                   />
-                  
+
                   <Button
                     title="Sačuvaj"
                     onPress={handleSavePackage}
                     style={styles.modalButton}
+                    isLoading={isSaving}
+                    disabled={isSaving}
                   />
                 </View>
               </ScrollView>
@@ -563,6 +495,23 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: Colors.text,
   },
+  loadingContainer: {
+    padding: 32,
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: Colors.textLight,
+  },
+  emptyCard: {
+    padding: 24,
+  },
+  emptyText: {
+    fontSize: 14,
+    color: Colors.textLight,
+    textAlign: 'center',
+  },
   infoCard: {
     marginTop: 24,
   },
@@ -581,7 +530,6 @@ const styles = StyleSheet.create({
     color: Colors.text,
     lineHeight: 20,
   },
-  // Modal styles
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
@@ -654,6 +602,11 @@ const styles = StyleSheet.create({
   },
   selectorContainer: {
     marginBottom: 24,
+  },
+  selectorEmpty: {
+    fontSize: 13,
+    color: Colors.textLight,
+    fontStyle: 'italic',
   },
   selectorItem: {
     padding: 12,
