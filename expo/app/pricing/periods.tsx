@@ -1,8 +1,17 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Modal } from 'react-native';
-import { Stack, useRouter } from 'expo-router';
-import { Plus, X, Calendar, Edit2, Trash2, Menu } from 'lucide-react-native';
-import { PeriodCard, PricingPeriod } from '@/components/pricing/PeriodCard';
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  Alert,
+  Modal,
+  ActivityIndicator,
+} from 'react-native';
+import { useRouter } from 'expo-router';
+import { Plus, X, Calendar } from 'lucide-react-native';
+import { PeriodCard, type PricingPeriod } from '@/components/pricing/PeriodCard';
 import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
@@ -10,134 +19,122 @@ import { Header } from '@/components/layout/Header';
 import { Drawer } from '@/components/layout/Drawer';
 import Colors from '@/constants/colors';
 import { useAuthStore } from '@/store/auth-store';
-
-// Mock data for pricing periods
-const mockPeriods: PricingPeriod[] = [
-  {
-    id: '1',
-    name: 'Standardni period',
-    startDate: '01.01.2023',
-    endDate: '31.05.2023',
-    description: 'Redovni period bez ograničenja potrošnje',
-    isActive: false,
-  },
-  {
-    id: '2',
-    name: 'Ljetni period',
-    startDate: '01.06.2023',
-    endDate: '30.09.2023',
-    description: 'Period sa mogućim redukcijama i povećanim cijenama za prekomjernu potrošnju',
-    isActive: true,
-  },
-  {
-    id: '3',
-    name: 'Zimski period',
-    startDate: '01.10.2023',
-    endDate: '31.12.2023',
-    description: 'Period sa standardnim cijenama',
-    isActive: false,
-  },
-];
+import {
+  getPeriods,
+  createPeriod,
+  updatePeriod,
+  deletePeriod,
+  type PricingPeriodDto,
+} from '@/lib/api/pricing';
 
 export default function PeriodsScreen() {
   const router = useRouter();
   const { user } = useAuthStore();
-  const [periods, setPeriods] = useState<PricingPeriod[]>(mockPeriods);
+  const [periods, setPeriods] = useState<PricingPeriodDto[]>([]);
+  const [loading, setLoading] = useState(true);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-  
-  // State for add/edit period modal
+
   const [modalVisible, setModalVisible] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [currentPeriod, setCurrentPeriod] = useState<PricingPeriod | null>(null);
-  
-  // Form state
+  const [isSaving, setIsSaving] = useState(false);
+
   const [periodName, setPeriodName] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [description, setDescription] = useState('');
   const [isActive, setIsActive] = useState(false);
-  
-  // Form errors
+
   const [nameError, setNameError] = useState('');
   const [startDateError, setStartDateError] = useState('');
   const [endDateError, setEndDateError] = useState('');
-  
+
+  const canManagePricing =
+    user?.role === 'superadmin' || user?.role === 'admin' || user?.role === 'finance';
+
+  const loadPeriods = useCallback(async () => {
+    try {
+      const data = await getPeriods();
+      setPeriods(data);
+    } catch (error) {
+      console.error('Greška pri učitavanju perioda:', error);
+      Alert.alert('Greška', 'Nije moguće učitati periode.');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!canManagePricing) {
+      setLoading(false);
+      return;
+    }
+    loadPeriods();
+  }, [canManagePricing, loadPeriods]);
+
   const handleAddPeriod = () => {
-    // Reset form
     setPeriodName('');
     setStartDate('');
     setEndDate('');
     setDescription('');
     setIsActive(false);
-    
-    // Reset errors
     setNameError('');
     setStartDateError('');
     setEndDateError('');
-    
-    // Open modal in add mode
     setIsEditing(false);
     setCurrentPeriod(null);
     setModalVisible(true);
   };
-  
+
   const handleEditPeriod = (period: PricingPeriod) => {
-    // Set form values
     setPeriodName(period.name);
     setStartDate(period.startDate);
     setEndDate(period.endDate);
     setDescription(period.description || '');
     setIsActive(period.isActive);
-    
-    // Reset errors
     setNameError('');
     setStartDateError('');
     setEndDateError('');
-    
-    // Open modal in edit mode
     setIsEditing(true);
     setCurrentPeriod(period);
     setModalVisible(true);
   };
-  
+
   const handleDeletePeriod = (periodId: string) => {
     Alert.alert(
       'Brisanje perioda',
       'Da li ste sigurni da želite obrisati ovaj period?',
       [
-        {
-          text: 'Otkaži',
-          style: 'cancel',
-        },
+        { text: 'Otkaži', style: 'cancel' },
         {
           text: 'Obriši',
           style: 'destructive',
-          onPress: () => {
-            setPeriods(periods.filter(p => p.id !== periodId));
+          onPress: async () => {
+            try {
+              await deletePeriod(periodId);
+              setPeriods((prev) => prev.filter((p) => p.id !== periodId));
+            } catch (error) {
+              console.error('Greška pri brisanju perioda:', error);
+              Alert.alert('Greška', 'Nije moguće obrisati period.');
+            }
           },
         },
       ],
-      { cancelable: true }
+      { cancelable: true },
     );
   };
-  
-  const handlePeriodPress = (period: PricingPeriod) => {
-    router.push(`/pricing/periods/${period.id}` as any);
-  };
-  
+
   const validateForm = () => {
     let isValid = true;
-    
-    // Validate name
+    const dateRegex = /^\d{2}\.\d{2}\.\d{4}$/;
+
     if (!periodName.trim()) {
       setNameError('Naziv perioda je obavezan');
       isValid = false;
     } else {
       setNameError('');
     }
-    
-    // Validate start date
-    const dateRegex = /^\d{2}\.\d{2}\.\d{4}$/;
+
     if (!startDate) {
       setStartDateError('Datum početka je obavezan');
       isValid = false;
@@ -147,8 +144,7 @@ export default function PeriodsScreen() {
     } else {
       setStartDateError('');
     }
-    
-    // Validate end date
+
     if (!endDate) {
       setEndDateError('Datum završetka je obavezan');
       isValid = false;
@@ -158,49 +154,43 @@ export default function PeriodsScreen() {
     } else {
       setEndDateError('');
     }
-    
+
     return isValid;
   };
-  
-  const handleSavePeriod = () => {
-    if (!validateForm()) {
-      return;
+
+  const handleSavePeriod = async () => {
+    if (!validateForm()) return;
+
+    setIsSaving(true);
+    try {
+      if (isEditing && currentPeriod) {
+        await updatePeriod(currentPeriod.id, {
+          name: periodName,
+          startDate,
+          endDate,
+          description,
+          isActive,
+        });
+      } else {
+        await createPeriod({
+          name: periodName,
+          startDate,
+          endDate,
+          description,
+          isActive,
+          companyId: user?.companyId ?? null,
+        });
+      }
+      await loadPeriods();
+      setModalVisible(false);
+    } catch (error) {
+      console.error('Greška pri spremanju perioda:', error);
+      Alert.alert('Greška', 'Nije moguće sačuvati period. Pokušajte ponovo.');
+    } finally {
+      setIsSaving(false);
     }
-    
-    if (isEditing && currentPeriod) {
-      // Update existing period
-      const updatedPeriods = periods.map(p => 
-        p.id === currentPeriod.id 
-          ? {
-              ...p,
-              name: periodName,
-              startDate,
-              endDate,
-              description,
-              isActive
-            }
-          : p
-      );
-      setPeriods(updatedPeriods);
-    } else {
-      // Add new period
-      const newPeriod: PricingPeriod = {
-        id: Date.now().toString(),
-        name: periodName,
-        startDate,
-        endDate,
-        description,
-        isActive
-      };
-      setPeriods([...periods, newPeriod]);
-    }
-    
-    // Close modal
-    setModalVisible(false);
   };
-  
-  const canManagePricing = user?.role === 'superadmin' || user?.role === 'admin' || user?.role === 'finance';
-  
+
   if (!canManagePricing) {
     return (
       <View style={styles.container}>
@@ -208,68 +198,77 @@ export default function PeriodsScreen() {
       </View>
     );
   }
-  
+
+  const activePeriods = periods.filter((p) => p.isActive);
+  const upcomingPeriods = periods.filter((p) => !p.isActive);
+
   return (
     <>
-      <Header 
+      <Header
         title="Periodi cijena"
         showBack={true}
         showMenu={true}
         onLeftPress={() => router.back()}
         onMenuPress={() => setIsDrawerOpen(true)}
       />
-      
-      <Drawer
-        isOpen={isDrawerOpen}
-        onClose={() => setIsDrawerOpen(false)}
-      />
-      
+
+      <Drawer isOpen={isDrawerOpen} onClose={() => setIsDrawerOpen(false)} />
+
       <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
         <View style={styles.header}>
           <Text style={styles.headerTitle}>Upravljanje periodima</Text>
-          <TouchableOpacity 
-            style={styles.addButton}
-            onPress={handleAddPeriod}
-            activeOpacity={0.7}
-          >
+          <TouchableOpacity style={styles.addButton} onPress={handleAddPeriod} activeOpacity={0.7}>
             <Plus size={20} color="#fff" />
             <Text style={styles.addButtonText}>Dodaj period</Text>
           </TouchableOpacity>
         </View>
-        
+
         <Text style={styles.description}>
-          Periodi omogućavaju definisanje različitih cijena za različite dijelove godine.
-          Na primjer, možete definisati ljetni period sa višim cijenama za prekomjernu potrošnju.
+          Periodi omogućavaju definisanje različitih cijena za različite dijelove godine. Na
+          primjer, možete definisati ljetni period sa višim cijenama za prekomjernu potrošnju.
         </Text>
-        
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Aktivni periodi</Text>
-        </View>
-        
-        {periods.filter(p => p.isActive).map((period) => (
-          <PeriodCard
-            key={period.id}
-            period={period}
-            onEdit={handleEditPeriod}
-            onDelete={handleDeletePeriod}
-            onPress={handlePeriodPress}
-          />
-        ))}
-        
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Nadolazeći periodi</Text>
-        </View>
-        
-        {periods.filter(p => !p.isActive).map((period) => (
-          <PeriodCard
-            key={period.id}
-            period={period}
-            onEdit={handleEditPeriod}
-            onDelete={handleDeletePeriod}
-            onPress={handlePeriodPress}
-          />
-        ))}
-        
+
+        {loading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={Colors.primary} />
+            <Text style={styles.loadingText}>Učitavanje perioda...</Text>
+          </View>
+        ) : (
+          <>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Aktivni periodi</Text>
+            </View>
+            {activePeriods.length === 0 ? (
+              <Text style={styles.emptyText}>Nema aktivnih perioda.</Text>
+            ) : (
+              activePeriods.map((period) => (
+                <PeriodCard
+                  key={period.id}
+                  period={period}
+                  onEdit={handleEditPeriod}
+                  onDelete={handleDeletePeriod}
+                />
+              ))
+            )}
+
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Nadolazeći periodi</Text>
+            </View>
+            {upcomingPeriods.length === 0 ? (
+              <Text style={styles.emptyText}>Nema nadolazećih perioda.</Text>
+            ) : (
+              upcomingPeriods.map((period) => (
+                <PeriodCard
+                  key={period.id}
+                  period={period}
+                  onEdit={handleEditPeriod}
+                  onDelete={handleDeletePeriod}
+                />
+              ))
+            )}
+          </>
+        )}
+
         <View style={styles.infoCard}>
           <Card style={styles.infoCardContent}>
             <Text style={styles.infoTitle}>Napomena</Text>
@@ -279,7 +278,7 @@ export default function PeriodsScreen() {
             </Text>
           </Card>
         </View>
-        
+
         {/* Add/Edit Period Modal */}
         <Modal
           animationType="slide"
@@ -293,14 +292,11 @@ export default function PeriodsScreen() {
                 <Text style={styles.modalTitle}>
                   {isEditing ? 'Uredi period' : 'Dodaj novi period'}
                 </Text>
-                <TouchableOpacity
-                  onPress={() => setModalVisible(false)}
-                  style={styles.closeButton}
-                >
+                <TouchableOpacity onPress={() => setModalVisible(false)} style={styles.closeButton}>
                   <X size={24} color={Colors.text} />
                 </TouchableOpacity>
               </View>
-              
+
               <ScrollView style={styles.modalBody}>
                 <Input
                   label="Naziv perioda"
@@ -310,7 +306,7 @@ export default function PeriodsScreen() {
                   error={nameError}
                   leftIcon={<Calendar size={20} color={Colors.textLight} />}
                 />
-                
+
                 <Input
                   label="Datum početka"
                   placeholder="DD.MM.YYYY"
@@ -318,7 +314,7 @@ export default function PeriodsScreen() {
                   onChangeText={setStartDate}
                   error={startDateError}
                 />
-                
+
                 <Input
                   label="Datum završetka"
                   placeholder="DD.MM.YYYY"
@@ -326,7 +322,7 @@ export default function PeriodsScreen() {
                   onChangeText={setEndDate}
                   error={endDateError}
                 />
-                
+
                 <Input
                   label="Opis"
                   placeholder="Unesite opis perioda"
@@ -335,13 +331,13 @@ export default function PeriodsScreen() {
                   multiline
                   numberOfLines={3}
                 />
-                
+
                 <View style={styles.switchContainer}>
                   <Text style={styles.switchLabel}>Aktivan period:</Text>
                   <TouchableOpacity
                     style={[
                       styles.switchButton,
-                      isActive ? styles.switchButtonActive : styles.switchButtonInactive
+                      isActive ? styles.switchButtonActive : styles.switchButtonInactive,
                     ]}
                     onPress={() => setIsActive(!isActive)}
                   >
@@ -350,19 +346,22 @@ export default function PeriodsScreen() {
                     </Text>
                   </TouchableOpacity>
                 </View>
-                
+
                 <View style={styles.modalActions}>
                   <Button
                     title="Otkaži"
                     variant="outline"
                     onPress={() => setModalVisible(false)}
                     style={styles.modalButton}
+                    disabled={isSaving}
                   />
-                  
+
                   <Button
                     title="Sačuvaj"
                     onPress={handleSavePeriod}
                     style={styles.modalButton}
+                    isLoading={isSaving}
+                    disabled={isSaving}
                   />
                 </View>
               </ScrollView>
@@ -420,6 +419,15 @@ const styles = StyleSheet.create({
     marginBottom: 24,
     lineHeight: 20,
   },
+  loadingContainer: {
+    padding: 32,
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: Colors.textLight,
+  },
   sectionHeader: {
     marginBottom: 16,
     marginTop: 8,
@@ -428,6 +436,11 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
     color: Colors.text,
+  },
+  emptyText: {
+    fontSize: 14,
+    color: Colors.textLight,
+    marginBottom: 16,
   },
   infoCard: {
     marginTop: 24,
@@ -447,7 +460,6 @@ const styles = StyleSheet.create({
     color: Colors.text,
     lineHeight: 20,
   },
-  // Modal styles
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
