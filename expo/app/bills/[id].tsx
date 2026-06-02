@@ -107,9 +107,8 @@ export default function BillDetailsScreen() {
   const [actionLoading, setActionLoading] = useState(false);
   const [pdfVisible, setPdfVisible]   = useState(false);
 
-  const { canManageBilling: canManageStatus } = usePermissions();
-  const isEndUser = user?.role === 'end_user';
-  const canPay          = isEndUser && bill && ['pending', 'sent', 'overdue'].includes(bill.status);
+  const { canManageBilling: canManageStatus, isEndUser } = usePermissions();
+  const canPay = isEndUser && bill && ['pending', 'sent', 'overdue'].includes(bill.status);
 
   /* ── fetch ───────────────────────────────────── */
   const fetchBill = async () => {

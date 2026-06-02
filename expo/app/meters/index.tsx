@@ -37,8 +37,7 @@ export default function MetersScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  const isEndUser = user?.role === 'end_user';
-  const { canManageMeters: canManage } = usePermissions();
+  const { canManageMeters: canManage, isEndUser } = usePermissions();
 
   const fetchData = async () => {
     if (!user) return;

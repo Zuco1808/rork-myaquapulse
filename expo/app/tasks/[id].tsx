@@ -26,6 +26,7 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Input } from '@/components/ui/Input';
 import { useAuthStore } from '@/store/auth-store';
+import { usePermissions } from '@/lib/use-permissions';
 import { getTaskById, updateTaskStatus } from '@/lib/api/tasks';
 import { Task } from '@/types/user';
 import Colors from '@/constants/colors';
@@ -61,8 +62,7 @@ export default function TaskDetailScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { user } = useAuthStore();
-
-  const isWorker = user?.role === 'worker';
+  const { isWorker } = usePermissions();
 
   const [task, setTask]                   = useState<Task | null>(null);
   const [loading, setLoading]             = useState(true);

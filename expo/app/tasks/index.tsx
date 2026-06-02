@@ -17,6 +17,7 @@ import { Input } from '@/components/ui/Input';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Badge } from '@/components/ui/Badge';
 import { useAuthStore } from '@/store/auth-store';
+import { usePermissions } from '@/lib/use-permissions';
 import { getTasks, getMyTasks, updateTaskStatus, createTask } from '@/lib/api/tasks';
 import { getMeters } from '@/lib/api/meters';
 import { getUsersByUtility } from '@/lib/api/users';
@@ -82,8 +83,8 @@ const filterTasks = (
 export default function TasksScreen() {
   const router = useRouter();
   const { user } = useAuthStore();
+  const { isWorker } = usePermissions();
 
-  const isWorker       = user?.role === 'worker';
   // Task creation requires a utility_id scope — super_admin has global read but no utility
   // scope to assign a new task to, so they can view/update but not create.
   const canCreateTasks = (

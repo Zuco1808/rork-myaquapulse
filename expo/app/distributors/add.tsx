@@ -16,12 +16,14 @@ import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { useAuthStore } from '@/store/auth-store';
+import { usePermissions } from '@/lib/use-permissions';
 import { createDistributor } from '@/lib/api/distributors';
 import Colors from '@/constants/colors';
 
 export default function AddDistributorScreen() {
   const router = useRouter();
   const { user } = useAuthStore();
+  const { canAccessAllTenants } = usePermissions();
 
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -30,10 +32,7 @@ export default function AddDistributorScreen() {
   const [saving, setSaving] = useState(false);
   const [nameError, setNameError] = useState('');
 
-  /* Guard */
-  if (user?.role !== 'super_admin') {
-    return null;
-  }
+  if (!canAccessAllTenants) return null;
 
   const validate = () => {
     if (!name.trim()) {

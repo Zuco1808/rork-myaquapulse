@@ -52,8 +52,7 @@ export default function SendNotificationScreen() {
   const router  = useRouter();
   const { user } = useAuthStore();
 
-  const isSuperAdmin = user?.role === 'super_admin';
-  const { canSendNotifications } = usePermissions();
+  const { canSendNotifications, canAccessAllTenants } = usePermissions();
   const canAccess = canSendNotifications;
 
   const [title, setTitle]             = useState('');
@@ -96,7 +95,7 @@ export default function SendNotificationScreen() {
         type,
         targetAll,
         targetRoles:  targetAll ? undefined : selectedRoles,
-        utility_id:   isSuperAdmin ? undefined : (user?.utility_id ?? undefined),
+        utility_id:   canAccessAllTenants ? undefined : (user?.utility_id ?? undefined),
       });
       Alert.alert(
         'Uspjeh',
@@ -198,7 +197,7 @@ export default function SendNotificationScreen() {
           </Card>
 
           {/* Scope info */}
-          {!isSuperAdmin && user?.utility_id && (
+          {!canAccessAllTenants && user?.utility_id && (
             <View style={styles.scopeNote}>
               <Info size={14} color={Colors.textLight} />
               <Text style={styles.scopeNoteText}>

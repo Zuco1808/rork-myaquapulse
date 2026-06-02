@@ -13,6 +13,7 @@ import {
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { useAuthStore } from '@/store/auth-store';
+import { usePermissions } from '@/lib/use-permissions';
 import { supabase } from '@/lib/supabase';
 import Colors from '@/constants/colors';
 
@@ -29,6 +30,7 @@ interface StatCard {
 export default function HomeScreen() {
   const router = useRouter();
   const { user } = useAuthStore();
+  const { isEndUser } = usePermissions();
   const [stats, setStats] = useState<StatCard[]>([]);
   const [utilityName, setUtilityName] = useState('');
   const [statsLoading, setStatsLoading] = useState(false);
@@ -284,7 +286,7 @@ export default function HomeScreen() {
           ))}
         </View>
 
-        {user?.role === 'end_user' && (
+        {isEndUser && (
           <Card style={styles.quickActionsCard}>
             <Text style={styles.quickActionsTitle}>Brze akcije</Text>
             <View style={styles.quickActionsButtons}>

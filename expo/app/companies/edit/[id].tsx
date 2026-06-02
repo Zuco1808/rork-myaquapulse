@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { useAuthStore } from '@/store/auth-store';
+import { usePermissions } from '@/lib/use-permissions';
 import { supabase } from '@/lib/supabase';
 import Colors from '@/constants/colors';
 import { WaterUtility } from '@/types/user';
@@ -15,6 +16,7 @@ export default function EditCompanyScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { user } = useAuthStore();
+  const { canManageDistributor } = usePermissions();
 
   const [utility, setUtility] = useState<WaterUtility | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -29,12 +31,12 @@ export default function EditCompanyScreen() {
   const [cityError, setCityError] = useState('');
 
   useEffect(() => {
-    if (!user || !['super_admin', 'distributor_admin'].includes(user.role)) {
+    if (!user || !canManageDistributor) {
       router.replace('/(tabs)');
       return;
     }
     if (id) fetchUtility();
-  }, [id, user]);
+  }, [id, user, canManageDistributor]);
 
   const fetchUtility = async () => {
     try {

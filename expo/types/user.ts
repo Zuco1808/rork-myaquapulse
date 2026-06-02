@@ -20,6 +20,9 @@ export interface UserPermissions {
   canManageUtility: boolean;
   canManageDistributor: boolean;
   canAccessAllTenants: boolean;
+  // Role identity flags — for UI branching that depends on who the user is, not what they can do
+  isEndUser: boolean;
+  isWorker: boolean;
 }
 
 export const getPermissions = (role: UserRole): UserPermissions => {
@@ -36,6 +39,8 @@ export const getPermissions = (role: UserRole): UserPermissions => {
     canManageUtility:     false,
     canManageDistributor: false,
     canAccessAllTenants:  false,
+    isEndUser:            false,
+    isWorker:             false,
   };
 
   switch (role) {
@@ -53,6 +58,8 @@ export const getPermissions = (role: UserRole): UserPermissions => {
         canManageUtility:     true,
         canManageDistributor: true,
         canAccessAllTenants:  true,
+        isEndUser:            false,
+        isWorker:             false,
       };
     case 'distributor_admin':
       return { ...none,
@@ -86,10 +93,11 @@ export const getPermissions = (role: UserRole): UserPermissions => {
         canReadMeters:     true,
         canManageReadings: true,   // workers submit readings
         canManageTasks:    true,
+        isWorker:          true,
       };
     case 'end_user':
     default:
-      return { ...none };
+      return { ...none, isEndUser: true };
   }
 };
 

@@ -28,6 +28,7 @@ import { Header } from '@/components/layout/Header';
 import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { useAuthStore } from '@/store/auth-store';
+import { usePermissions } from '@/lib/use-permissions';
 import {
   getReadings,
   getReadingsByConnection,
@@ -74,6 +75,7 @@ const formatDateTime = (ts: number | undefined | null) => {
 export default function ConsumptionScreen() {
   const router = useRouter();
   const { user } = useAuthStore();
+  const { isEndUser } = usePermissions();
   const { connectionId } = useLocalSearchParams<{ connectionId?: string }>();
 
   const [readings, setReadings] = useState<any[]>([]);
@@ -81,8 +83,6 @@ export default function ConsumptionScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [selected, setSelected] = useState<any>(null);
   const [detailVisible, setDetailVisible] = useState(false);
-
-  const isEndUser = user?.role === 'end_user';
 
   const fetchData = async () => {
     if (!user) return;

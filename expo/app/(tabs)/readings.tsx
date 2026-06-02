@@ -79,9 +79,7 @@ export default function ReadingsScreen() {
   const [filterStatus, setFilterStatus] = useState('all');
   const [readingError, setReadingError] = useState('');
 
-  const { canVerifyReadings: isStaff, canManageReadings } = usePermissions();
-  const isWorker  = user?.role === 'worker';
-  const isEndUser = user?.role === 'end_user';
+  const { canVerifyReadings: isStaff, canManageReadings, isWorker, isEndUser } = usePermissions();
 
   /* ── Derived filtered list (never stale) ───────────────────────────────── */
   const filteredReadings = filterReadings(readings, searchQuery, filterStatus);

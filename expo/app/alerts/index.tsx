@@ -31,6 +31,7 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { useAuthStore } from '@/store/auth-store';
+import { usePermissions } from '@/lib/use-permissions';
 import { getTasks, getMyTasks, updateTaskStatus } from '@/lib/api/tasks';
 import { Task } from '@/types/user';
 import Colors from '@/constants/colors';
@@ -55,8 +56,7 @@ const STATUS_COLORS: Record<TaskStatus, string> = {
 export default function AlertsScreen() {
   const router  = useRouter();
   const { user } = useAuthStore();
-
-  const isWorker = user?.role === 'worker';
+  const { isWorker } = usePermissions();
 
   const [tasks, setTasks]       = useState<Task[]>([]);
   const [loading, setLoading]   = useState(true);

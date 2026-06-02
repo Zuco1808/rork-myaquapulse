@@ -23,6 +23,7 @@ import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { useAuthStore } from '@/store/auth-store';
+import { usePermissions } from '@/lib/use-permissions';
 import { getMetersByUser } from '@/lib/api/meters';
 import { createTask } from '@/lib/api/tasks';
 import Colors from '@/constants/colors';
@@ -30,6 +31,7 @@ import Colors from '@/constants/colors';
 export default function ReportIssueScreen() {
   const router = useRouter();
   const { user } = useAuthStore();
+  const { isEndUser } = usePermissions();
   const params = useLocalSearchParams<{
     connectionId?: string;
     utilityId?: string;
@@ -53,7 +55,7 @@ export default function ReportIssueScreen() {
 
   /* ── Load user connections ─────────────────────── */
   const fetchConnections = async () => {
-    if (!user || user.role !== 'end_user') return;
+    if (!user || !isEndUser) return;
     setLoadingConnections(true);
     try {
       const data = await getMetersByUser(user.id);
@@ -165,7 +167,7 @@ export default function ReportIssueScreen() {
           keyboardShouldPersistTaps="handled"
         >
           {/* Connection selector (end_user only & no pre-selected) */}
-          {user?.role === 'end_user' && connections.length > 0 && (
+          {isEndUser && connections.length > 0 && (
             <Card style={styles.section}>
               <Text style={styles.sectionTitle}>Priključak</Text>
 

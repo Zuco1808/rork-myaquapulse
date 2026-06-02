@@ -30,10 +30,10 @@ import {
 export default function PricingScreen() {
   const router  = useRouter();
   const { user } = useAuthStore();
+  const { canAccessAllTenants } = usePermissions();
 
-  const isSuperAdmin = user?.role === 'super_admin';
-  const utilityId    = user?.utility_id;
-  const canCreate    = !isSuperAdmin && !!utilityId;
+  const utilityId = user?.utility_id;
+  const canCreate = !canAccessAllTenants && !!utilityId;
 
   const [packages,   setPackages]   = useState<PricingPackage[]>([]);
   const [periods,    setPeriods]    = useState<PricingPeriod[]>([]);
@@ -199,7 +199,7 @@ export default function PricingScreen() {
 
       <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
         {/* Super admin note */}
-        {isSuperAdmin && (
+        {canAccessAllTenants && (
           <View style={styles.infoNote}>
             <Info size={14} color={Colors.info} />
             <Text style={styles.infoNoteText}>

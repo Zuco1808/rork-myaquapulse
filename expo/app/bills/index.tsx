@@ -191,8 +191,7 @@ export default function BillsScreen() {
   const [showPeriodToPicker,   setShowPeriodToPicker]   = useState(false);
   const [showDueDatePicker,    setShowDueDatePicker]    = useState(false);
 
-  const isEndUser = user?.role === 'end_user';
-  const { canManageBilling: canManage } = usePermissions();
+  const { canManageBilling: canManage, isEndUser } = usePermissions();
 
   /* ── Fetch ─────────────────────────────────────── */
   const fetchData = async () => {

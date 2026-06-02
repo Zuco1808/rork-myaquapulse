@@ -16,6 +16,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { Badge } from '@/components/ui/Badge';
 import { Avatar } from '@/components/ui/Avatar';
 import { useAuthStore } from '@/store/auth-store';
+import { usePermissions } from '@/lib/use-permissions';
 import Colors from '@/constants/colors';
 import { supabase } from '@/lib/supabase';
 import { Profile } from '@/types/user';
@@ -40,6 +41,7 @@ const filterUsers = (source: Profile[], q: string, role: string, status: string)
 export default function UsersScreen() {
   const router = useRouter();
   const { user } = useAuthStore();
+  const { canManageUsers } = usePermissions();
   const { utilityId } = useLocalSearchParams<{ utilityId?: string }>();
 
   const [users, setUsers]           = useState<Profile[]>([]);
@@ -54,10 +56,10 @@ export default function UsersScreen() {
   const filteredUsers = filterUsers(users, searchQuery, filterRole, filterStatus);
 
   useEffect(() => {
-    if (!user || !['super_admin', 'utility_admin', 'distributor_admin'].includes(user.role)) {
+    if (!user || !canManageUsers) {
       router.replace('/login');
     }
-  }, [user]);
+  }, [user, canManageUsers]);
 
   useFocusEffect(
     useCallback(() => {

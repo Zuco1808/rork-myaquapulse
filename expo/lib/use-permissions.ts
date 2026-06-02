@@ -25,6 +25,8 @@ const NONE: UserPermissions = {
   canManageUtility:     false,
   canManageDistributor: false,
   canAccessAllTenants:  false,
+  isEndUser:            false,
+  isWorker:             false,
 };
 
 export function usePermissions(): UserPermissions {
