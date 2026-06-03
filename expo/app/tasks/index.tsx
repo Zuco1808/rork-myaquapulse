@@ -543,7 +543,7 @@ export default function TasksScreen() {
                   <DateTimePicker
                     value={newDueDate ? new Date(newDueDate) : new Date()}
                     mode="date"
-                    display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                    display="spinner"
                     minimumDate={new Date()}
                     onChange={(_, date) => {
                       if (Platform.OS === 'android') setShowDatePicker(false);

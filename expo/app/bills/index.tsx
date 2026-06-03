@@ -757,7 +757,7 @@ export default function BillsScreen() {
                       <DateTimePicker
                         value={newDueDate ? new Date(newDueDate) : new Date()}
                         mode="date"
-                        display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                        display="spinner"
                         minimumDate={new Date()}
                         onChange={(_, d) => { if (Platform.OS === 'android') setShowDueDatePicker(false); if (d) setNewDueDate(toDateStr(d)); }}
                       />
@@ -787,7 +787,7 @@ export default function BillsScreen() {
                           <DateTimePicker
                             value={newPeriodFrom ? new Date(newPeriodFrom) : new Date()}
                             mode="date"
-                            display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                            display="spinner"
                             onChange={(_, d) => { if (Platform.OS === 'android') setShowPeriodFromPicker(false); if (d) setNewPeriodFrom(toDateStr(d)); }}
                           />
                         )}
@@ -809,7 +809,7 @@ export default function BillsScreen() {
                           <DateTimePicker
                             value={newPeriodTo ? new Date(newPeriodTo) : new Date()}
                             mode="date"
-                            display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                            display="spinner"
                             onChange={(_, d) => { if (Platform.OS === 'android') setShowPeriodToPicker(false); if (d) setNewPeriodTo(toDateStr(d)); }}
                           />
                         )}
@@ -860,7 +860,7 @@ export default function BillsScreen() {
                       <DateTimePicker
                         value={newDueDate ? new Date(newDueDate) : new Date()}
                         mode="date"
-                        display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                        display="spinner"
                         minimumDate={new Date()}
                         onChange={(_, d) => { if (Platform.OS === 'android') setShowDueDatePicker(false); if (d) setNewDueDate(toDateStr(d)); }}
                       />

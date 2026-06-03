@@ -305,7 +305,7 @@ export default function PeriodsScreen() {
                   <DateTimePicker
                     value={startDate ? parseDMY(startDate) : new Date()}
                     mode="date"
-                    display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                    display="spinner"
                     onChange={(_, date) => {
                       if (Platform.OS === 'android') setShowStartPicker(false);
                       if (date) setStartDate(toDMY(date));
@@ -335,7 +335,7 @@ export default function PeriodsScreen() {
                   <DateTimePicker
                     value={endDate ? parseDMY(endDate) : new Date()}
                     mode="date"
-                    display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                    display="spinner"
                     onChange={(_, date) => {
                       if (Platform.OS === 'android') setShowEndPicker(false);
                       if (date) setEndDate(toDMY(date));

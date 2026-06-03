@@ -96,10 +96,18 @@ export const sendNotification = async (params: {
   related_entity_id?:  string;
   related_entity_type?: NotifEntityType;
 }): Promise<number> => {
-  const { data, error } = await supabase.functions.invoke<{ sent: number }>('send-notification', {
+  const { data, error } = await supabase.functions.invoke<{ sent: number; error?: string }>('send-notification', {
     body: params,
   });
 
-  if (error) throw error;
+  if (error) {
+    // Extract the actual error message from the Edge Function response body
+    let detail: string = error.message;
+    try {
+      const body = await (error as any).context?.json?.();
+      if (body?.error) detail = body.error;
+    } catch {}
+    throw new Error(detail);
+  }
   return data?.sent ?? 0;
 };
