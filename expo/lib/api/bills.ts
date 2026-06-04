@@ -24,22 +24,28 @@ const mapInvoice = (b: any) => ({
   createdAt: new Date(b.created_at).getTime(),
 });
 
-export const getBills = async () => {
+export const getBills = async (opts?: { limit?: number; offset?: number }) => {
+  const limit  = opts?.limit  ?? 100;
+  const offset = opts?.offset ?? 0;
   const { data, error } = await supabase
     .from('invoices')
     .select('*, connections(meter_serial, address)')
-    .order('created_at', { ascending: false });
+    .order('created_at', { ascending: false })
+    .range(offset, offset + limit - 1);
 
   if (error) throw error;
   return (data || []).map(mapInvoice);
 };
 
-export const getBillsByConnection = async (connectionId: string) => {
+export const getBillsByConnection = async (connectionId: string, opts?: { limit?: number; offset?: number }) => {
+  const limit  = opts?.limit  ?? 100;
+  const offset = opts?.offset ?? 0;
   const { data, error } = await supabase
     .from('invoices')
     .select('*, connections(meter_serial, address)')
     .eq('connection_id', connectionId)
-    .order('created_at', { ascending: false });
+    .order('created_at', { ascending: false })
+    .range(offset, offset + limit - 1);
 
   if (error) throw error;
   return (data || []).map(mapInvoice);
@@ -119,7 +125,10 @@ export const calculateInvoice = async (params: {
   return mapInvoice(data.invoice);
 };
 
-export const getInvoicesByUser = async (userId: string) => {
+export const getInvoicesByUser = async (userId: string, opts?: { limit?: number; offset?: number }) => {
+  const limit  = opts?.limit  ?? 100;
+  const offset = opts?.offset ?? 0;
+
   const { data: conns, error: connsError } = await supabase
     .from('connections')
     .select('id')
@@ -134,7 +143,8 @@ export const getInvoicesByUser = async (userId: string) => {
     .from('invoices')
     .select('*, connections(meter_serial, address)')
     .in('connection_id', ids)
-    .order('created_at', { ascending: false });
+    .order('created_at', { ascending: false })
+    .range(offset, offset + limit - 1);
 
   if (error) throw error;
   return (data || []).map(mapInvoice);

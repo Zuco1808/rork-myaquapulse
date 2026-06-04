@@ -80,32 +80,62 @@ export default function ConsumptionScreen() {
   const { isEndUser } = usePermissions();
   const { connectionId } = useLocalSearchParams<{ connectionId?: string }>();
 
+  const PAGE_SIZE = 40;
   const [readings, setReadings] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [fetchError, setFetchError] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const [pageOffset, setPageOffset] = useState(0);
   const [selected, setSelected] = useState<any>(null);
   const [detailVisible, setDetailVisible] = useState(false);
 
   const fetchData = async () => {
     if (!user) return;
     setFetchError(false);
+    setPageOffset(0);
+    setHasMore(true);
     try {
       let data: any[];
       if (connectionId) {
-        data = await getReadingsByConnection(connectionId);
+        data = await getReadingsByConnection(connectionId, { limit: PAGE_SIZE, offset: 0 });
       } else if (isEndUser) {
-        data = await getReadingsByUser(user.id);
+        data = await getReadingsByUser(user.id, { limit: PAGE_SIZE, offset: 0 });
       } else {
-        data = await getReadings();
+        data = await getReadings({ limit: PAGE_SIZE, offset: 0 });
       }
       setReadings(data);
+      setHasMore(data.length === PAGE_SIZE);
+      setPageOffset(PAGE_SIZE);
     } catch (err) {
       captureError(err, { screen: 'consumption', action: 'fetchReadings' });
       setFetchError(true);
     } finally {
       setLoading(false);
       setRefreshing(false);
+    }
+  };
+
+  const loadMore = async () => {
+    if (loadingMore || !hasMore || !user) return;
+    setLoadingMore(true);
+    try {
+      let data: any[];
+      if (connectionId) {
+        data = await getReadingsByConnection(connectionId, { limit: PAGE_SIZE, offset: pageOffset });
+      } else if (isEndUser) {
+        data = await getReadingsByUser(user.id, { limit: PAGE_SIZE, offset: pageOffset });
+      } else {
+        data = await getReadings({ limit: PAGE_SIZE, offset: pageOffset });
+      }
+      setReadings(prev => [...prev, ...data]);
+      setHasMore(data.length === PAGE_SIZE);
+      setPageOffset(prev => prev + PAGE_SIZE);
+    } catch (err) {
+      captureError(err, { screen: 'consumption', action: 'loadMore' });
+    } finally {
+      setLoadingMore(false);
     }
   };
 
@@ -298,6 +328,9 @@ export default function ConsumptionScreen() {
         renderItem={renderCard}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.list}
+        onEndReached={loadMore}
+        onEndReachedThreshold={0.3}
+        ListFooterComponent={loadingMore ? <ActivityIndicator size="small" color={Colors.primary} style={{ marginVertical: 16 }} /> : null}
         ListEmptyComponent={
           fetchError
             ? <EmptyState

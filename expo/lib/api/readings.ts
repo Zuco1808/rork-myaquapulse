@@ -25,22 +25,28 @@ const mapReading = (r: any) => ({
   createdAt: new Date(r.created_at).getTime(),
 });
 
-export const getReadings = async () => {
+export const getReadings = async (opts?: { limit?: number; offset?: number }) => {
+  const limit  = opts?.limit  ?? 40;
+  const offset = opts?.offset ?? 0;
   const { data, error } = await supabase
     .from('meter_readings')
     .select('*, connections(meter_serial, address)')
-    .order('reading_date', { ascending: false });
+    .order('reading_date', { ascending: false })
+    .range(offset, offset + limit - 1);
 
   if (error) throw error;
   return (data || []).map(mapReading);
 };
 
-export const getReadingsByConnection = async (connectionId: string) => {
+export const getReadingsByConnection = async (connectionId: string, opts?: { limit?: number; offset?: number }) => {
+  const limit  = opts?.limit  ?? 40;
+  const offset = opts?.offset ?? 0;
   const { data, error } = await supabase
     .from('meter_readings')
     .select('*, connections(meter_serial, address)')
     .eq('connection_id', connectionId)
-    .order('reading_date', { ascending: false });
+    .order('reading_date', { ascending: false })
+    .range(offset, offset + limit - 1);
 
   if (error) throw error;
   return (data || []).map(mapReading);
@@ -69,7 +75,10 @@ export const createReading = async (reading: {
   return mapReading(data);
 };
 
-export const getReadingsByUser = async (userId: string) => {
+export const getReadingsByUser = async (userId: string, opts?: { limit?: number; offset?: number }) => {
+  const limit  = opts?.limit  ?? 40;
+  const offset = opts?.offset ?? 0;
+
   const { data: conns, error: connsError } = await supabase
     .from('connections')
     .select('id')
@@ -84,7 +93,8 @@ export const getReadingsByUser = async (userId: string) => {
     .from('meter_readings')
     .select('*, connections(meter_serial, address)')
     .in('connection_id', ids)
-    .order('reading_date', { ascending: false });
+    .order('reading_date', { ascending: false })
+    .range(offset, offset + limit - 1);
 
   if (error) throw error;
   return (data || []).map(mapReading);

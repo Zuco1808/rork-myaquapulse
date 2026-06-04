@@ -92,9 +92,13 @@ export default function TasksScreen() {
     ['utility_admin', 'finance'].includes(user?.role ?? '') && !!user?.utility_id
   );
 
+  const PAGE_SIZE = 40;
   const [tasks, setTasks]               = useState<Task[]>([]);
   const [loading, setLoading]           = useState(true);
   const [refreshing, setRefreshing]     = useState(false);
+  const [loadingMore, setLoadingMore]   = useState(false);
+  const [hasMore, setHasMore]           = useState(true);
+  const [pageOffset, setPageOffset]     = useState(0);
   const [searchQuery, setSearchQuery]   = useState('');
   const [showFilters, setShowFilters]   = useState(false);
   const [filterStatus, setFilterStatus] = useState<string>('all');
@@ -130,16 +134,37 @@ export default function TasksScreen() {
   /* ── fetch ─────────────────────────────────────── */
   const fetchTasks = async () => {
     if (!user) return;
+    setPageOffset(0);
+    setHasMore(true);
     try {
       const data = isWorker
         ? await getMyTasks(user.id, user.utility_id ?? '')
-        : await getTasks();
+        : await getTasks({ limit: PAGE_SIZE, offset: 0 });
       setTasks(data);
+      if (!isWorker) {
+        setHasMore(data.length === PAGE_SIZE);
+        setPageOffset(PAGE_SIZE);
+      }
     } catch (e: any) {
       captureError(e, { screen: 'tasks', action: 'fetchTasks' });
     } finally {
       setLoading(false);
       setRefreshing(false);
+    }
+  };
+
+  const loadMore = async () => {
+    if (loadingMore || !hasMore || !user || isWorker) return;
+    setLoadingMore(true);
+    try {
+      const data = await getTasks({ limit: PAGE_SIZE, offset: pageOffset });
+      setTasks(prev => [...prev, ...data]);
+      setHasMore(data.length === PAGE_SIZE);
+      setPageOffset(prev => prev + PAGE_SIZE);
+    } catch (e: any) {
+      captureError(e, { screen: 'tasks', action: 'loadMore' });
+    } finally {
+      setLoadingMore(false);
     }
   };
 
@@ -402,6 +427,9 @@ export default function TasksScreen() {
           keyExtractor={t => t.id}
           contentContainerStyle={styles.list}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+          onEndReached={loadMore}
+          onEndReachedThreshold={0.3}
+          ListFooterComponent={loadingMore ? <ActivityIndicator size="small" color={Colors.primary} style={{ marginVertical: 16 }} /> : null}
           ListEmptyComponent={
             <EmptyState
               title="Nema zadataka"

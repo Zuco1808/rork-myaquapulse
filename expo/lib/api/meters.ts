@@ -18,11 +18,14 @@ const mapConnection = (c: any) => ({
   updatedAt: new Date(c.updated_at).getTime(),
 });
 
-export const getMeters = async () => {
+export const getMeters = async (opts?: { limit?: number; offset?: number }) => {
+  const limit  = opts?.limit  ?? 50;
+  const offset = opts?.offset ?? 0;
   const { data, error } = await supabase
     .from('connections')
     .select('*, profiles(full_name, email)')
-    .order('created_at', { ascending: false });
+    .order('created_at', { ascending: false })
+    .range(offset, offset + limit - 1);
 
   if (error) throw error;
   return (data || []).map(mapConnection);
@@ -39,12 +42,15 @@ export const getMeterById = async (id: string) => {
   return mapConnection(data);
 };
 
-export const getMetersByUser = async (userId: string) => {
+export const getMetersByUser = async (userId: string, opts?: { limit?: number; offset?: number }) => {
+  const limit  = opts?.limit  ?? 50;
+  const offset = opts?.offset ?? 0;
   const { data, error } = await supabase
     .from('connections')
     .select('*, profiles(full_name, email)')
     .eq('user_id', userId)
-    .order('created_at', { ascending: false });
+    .order('created_at', { ascending: false })
+    .range(offset, offset + limit - 1);
 
   if (error) throw error;
   return (data || []).map(mapConnection);

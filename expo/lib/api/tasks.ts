@@ -28,7 +28,9 @@ const mapTask = (t: any): Task => ({
 
 /* ── Queries ─────────────────────────────────────── */
 
-export const getTasks = async (): Promise<Task[]> => {
+export const getTasks = async (opts?: { limit?: number; offset?: number }): Promise<Task[]> => {
+  const limit  = opts?.limit  ?? 40;
+  const offset = opts?.offset ?? 0;
   const { data, error } = await supabase
     .from('tasks')
     .select(`
@@ -36,7 +38,8 @@ export const getTasks = async (): Promise<Task[]> => {
       profiles:assigned_to ( full_name ),
       connections:connection_id ( address, meter_serial )
     `)
-    .order('created_at', { ascending: false });
+    .order('created_at', { ascending: false })
+    .range(offset, offset + limit - 1);
 
   if (error) throw error;
   return (data ?? []).map(mapTask);

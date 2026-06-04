@@ -34,28 +34,52 @@ import { captureError } from '@/lib/sentry';
 export default function MetersScreen() {
   const router = useRouter();
   const { user } = useAuthStore();
+  const PAGE_SIZE = 50;
   const [meters, setMeters] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [fetchError, setFetchError] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const [pageOffset, setPageOffset] = useState(0);
 
   const { canManageMeters: canManage, isEndUser } = usePermissions();
 
   const fetchData = async () => {
     if (!user) return;
     setFetchError(false);
+    setPageOffset(0);
+    setHasMore(true);
     try {
-      const data =
-        isEndUser
-          ? await getMetersByUser(user.id)
-          : await getMeters();
+      const data = isEndUser
+        ? await getMetersByUser(user.id, { limit: PAGE_SIZE, offset: 0 })
+        : await getMeters({ limit: PAGE_SIZE, offset: 0 });
       setMeters(data);
+      setHasMore(data.length === PAGE_SIZE);
+      setPageOffset(PAGE_SIZE);
     } catch (err) {
       captureError(err, { screen: 'meters', action: 'fetchMeters' });
       setFetchError(true);
     } finally {
       setLoading(false);
       setRefreshing(false);
+    }
+  };
+
+  const loadMore = async () => {
+    if (loadingMore || !hasMore || !user) return;
+    setLoadingMore(true);
+    try {
+      const data = isEndUser
+        ? await getMetersByUser(user.id, { limit: PAGE_SIZE, offset: pageOffset })
+        : await getMeters({ limit: PAGE_SIZE, offset: pageOffset });
+      setMeters(prev => [...prev, ...data]);
+      setHasMore(data.length === PAGE_SIZE);
+      setPageOffset(prev => prev + PAGE_SIZE);
+    } catch (err) {
+      captureError(err, { screen: 'meters', action: 'loadMore' });
+    } finally {
+      setLoadingMore(false);
     }
   };
 
@@ -216,6 +240,9 @@ export default function MetersScreen() {
         renderItem={renderCard}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.list}
+        onEndReached={loadMore}
+        onEndReachedThreshold={0.3}
+        ListFooterComponent={loadingMore ? <ActivityIndicator size="small" color={Colors.primary} style={{ marginVertical: 16 }} /> : null}
         ListEmptyComponent={
           fetchError
             ? <EmptyState

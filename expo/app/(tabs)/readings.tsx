@@ -97,13 +97,13 @@ export default function ReadingsScreen() {
       let readingsData: any[];
       if (isEndUser) {
         [metersData, readingsData] = await Promise.all([
-          getMetersByUser(user.id),
-          getReadingsByUser(user.id),
+          getMetersByUser(user.id, { limit: 50 }),
+          getReadingsByUser(user.id, { limit: 100 }),
         ]);
       } else {
         [metersData, readingsData] = await Promise.all([
-          getMeters(),
-          getReadings(),
+          getMeters({ limit: 200 }),
+          getReadings({ limit: 100 }),
         ]);
       }
       setAvailableMeters(metersData);
