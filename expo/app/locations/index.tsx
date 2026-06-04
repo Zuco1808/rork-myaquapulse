@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -10,14 +10,14 @@ import {
   Alert,
   SafeAreaView,
   Platform,
-  ActivityIndicator,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import {
   MapPin,
   Search,
   Plus,
   Filter,
+  ChevronRight,
   Building,
   Droplet,
   Users,
@@ -29,93 +29,63 @@ import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Badge } from '@/components/ui/Badge';
-import { Drawer } from '@/components/layout/Drawer';
 import { useAuthStore } from '@/store/auth-store';
-import { useCompanies } from '@/lib/hooks/useCompanies';
+import { usePermissions } from '@/lib/use-permissions';
 import Colors from '@/constants/colors';
-import {
-  getLocationsWithStats,
-  deleteLocation,
-  type LocationWithStats,
-} from '@/lib/api/locations';
+import { Location } from '@/types/user';
+import { getLocations, deleteLocation } from '@/lib/api/locations';
 
+/* ── pure filter helper ─────────────────────────────── */
+const filterData = (data: Location[], query: string, company: string) => {
+  let result = data;
+  if (query) {
+    const q = query.toLowerCase();
+    result = result.filter(
+      (l) =>
+        l.name.toLowerCase().includes(q) ||
+        (l.address && l.address.toLowerCase().includes(q)) ||
+        (l.city && l.city.toLowerCase().includes(q)),
+    );
+  }
+  if (company !== 'all') {
+    result = result.filter((l) => l.companyId === company);
+  }
+  return result;
+};
+
+/* ── component ─────────────────────────────────────── */
 export default function LocationsScreen() {
-  const router = useRouter();
+  const router  = useRouter();
   const { user } = useAuthStore();
-  const { companies } = useCompanies();
 
-  const [locations, setLocations] = useState<LocationWithStats[]>([]);
-  const [filteredLocations, setFilteredLocations] = useState<LocationWithStats[]>([]);
+  const [locations, setLocations]   = useState<Location[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [refreshing, setRefreshing] = useState(false);
+  const [refreshing, setRefreshing]   = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const [filterCompany, setFilterCompany] = useState('all');
-  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [loading, setLoading]         = useState(true);
 
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  /* derived filtered list — no separate filteredLocations state */
+  const filteredLocations = filterData(locations, searchQuery, filterCompany);
 
-  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-
-  const fetchLocations = useCallback(async () => {
+  /* ── fetch ──────────────────────────────────────── */
+  const fetchLocations = async () => {
     try {
-      setError(null);
-      const data = await getLocationsWithStats();
-      setLocations(data);
-    } catch (err) {
-      console.error('Greška pri učitavanju lokacija:', err);
-      setError('Greška pri učitavanju lokacija');
+      const data = await getLocations();
+      setLocations(data ?? []);
+    } catch {
+      Alert.alert('Greška', 'Greška pri učitavanju lokacija.');
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
-
-  useEffect(() => {
-    if (!user) {
-      router.replace('/login');
-      return;
-    }
-    fetchLocations();
-  }, [user, router, fetchLocations]);
-
-  const onRefresh = async () => {
-    setRefreshing(true);
-    await fetchLocations();
   };
 
-  const applyFilters = useCallback(() => {
-    let filtered = [...locations];
+  useFocusEffect(useCallback(() => { fetchLocations(); }, []));
 
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(
-        (location) =>
-          location.name.toLowerCase().includes(query) ||
-          (location.address && location.address.toLowerCase().includes(query)) ||
-          (location.city && location.city.toLowerCase().includes(query)),
-      );
-    }
+  const onRefresh = () => { setRefreshing(true); fetchLocations(); };
 
-    if (filterCompany !== 'all') {
-      filtered = filtered.filter((location) => location.companyId === filterCompany);
-    }
-
-    setFilteredLocations(filtered);
-  }, [locations, searchQuery, filterCompany]);
-
-  useEffect(() => {
-    applyFilters();
-  }, [applyFilters]);
-
-  const handleAddLocation = () => {
-    router.push('/locations/add');
-  };
-
-  const handleEditLocation = (id: string) => {
-    router.push(`/locations/edit/${id}`);
-  };
-
+  /* ── delete ─────────────────────────────────────── */
   const handleDeleteLocation = (id: string) => {
     Alert.alert(
       'Brisanje lokacije',
@@ -126,19 +96,12 @@ export default function LocationsScreen() {
           text: 'Obriši',
           style: 'destructive',
           onPress: async () => {
-            setDeletingId(id);
             try {
               await deleteLocation(id);
-              setLocations((prev) => prev.filter((location) => location.id !== id));
+              setLocations((prev) => prev.filter((l) => l.id !== id));
               Alert.alert('Uspjeh', 'Lokacija je uspješno obrisana.');
-            } catch (err) {
-              console.error('Greška pri brisanju lokacije:', err);
-              Alert.alert(
-                'Greška',
-                'Nije moguće obrisati lokaciju. Provjerite da nema povezanih vodomjera.',
-              );
-            } finally {
-              setDeletingId(null);
+            } catch (e: any) {
+              Alert.alert('Greška', e?.message || 'Brisanje nije uspjelo.');
             }
           },
         },
@@ -146,48 +109,61 @@ export default function LocationsScreen() {
     );
   };
 
-  const getCompanyName = (companyId: string) => {
-    if (!companyId) return 'Bez kompanije';
-    return companies.find((c) => c.id === companyId)?.name || 'Nepoznata kompanija';
+  /* ── handlers ───────────────────────────────────── */
+  const handleAddLocation      = () => router.push('/locations/add');
+  const handleEditLocation     = (id: string) => router.push(`/locations/edit/${id}` as any);
+  const handleViewLocationDetails = (locationId: string) => {
+    if (canManageLocations) router.push(`/locations/edit/${locationId}` as any);
   };
 
-  const canManageLocations = user?.role === 'superadmin' || user?.role === 'admin';
+  const { canManageUtility: canManageLocations } = usePermissions();
 
-  const renderLocationCard = ({ item }: { item: LocationWithStats }) => (
+  /* ── card ───────────────────────────────────────── */
+  const renderLocationCard = ({ item }: { item: Location }) => (
     <Card style={styles.locationCard}>
-      <View style={styles.cardContent}>
+      <TouchableOpacity
+        style={styles.cardContent}
+        onPress={() => handleViewLocationDetails(item.id)}
+        activeOpacity={0.7}
+      >
         <View style={styles.locationHeader}>
           <View style={styles.locationInfo}>
             <Text style={styles.locationName}>{item.name}</Text>
-            <Badge label={getCompanyName(item.companyId)} color={Colors.primary} />
+            {item.companyId ? (
+              <Badge label={item.companyId} color={Colors.primary} />
+            ) : null}
           </View>
         </View>
 
         <View style={styles.locationDetails}>
-          <View style={styles.detailItem}>
-            <MapPin size={16} color={Colors.textLight} />
-            <Text style={styles.detailText}>
-              {item.address || 'Adresa nije dostupna'}
-              {item.city ? `, ${item.city}` : ''}
-            </Text>
-          </View>
-
-          <View style={styles.detailItem}>
-            <Building size={16} color={Colors.textLight} />
-            <Text style={styles.detailText}>{item.buildingCount} podlokacija</Text>
-          </View>
-
-          <View style={styles.detailItem}>
-            <Droplet size={16} color={Colors.textLight} />
-            <Text style={styles.detailText}>{item.meterCount} vodomjera</Text>
-          </View>
-
-          <View style={styles.detailItem}>
-            <Users size={16} color={Colors.textLight} />
-            <Text style={styles.detailText}>{item.userCount} korisnika</Text>
-          </View>
+          {item.address ? (
+            <View style={styles.detailItem}>
+              <MapPin size={16} color={Colors.textLight} />
+              <Text style={styles.detailText}>
+                {item.address}{item.city ? `, ${item.city}` : ''}
+              </Text>
+            </View>
+          ) : null}
+          {item.buildingCount != null ? (
+            <View style={styles.detailItem}>
+              <Building size={16} color={Colors.textLight} />
+              <Text style={styles.detailText}>{item.buildingCount} zgrada</Text>
+            </View>
+          ) : null}
+          {item.meterCount != null ? (
+            <View style={styles.detailItem}>
+              <Droplet size={16} color={Colors.textLight} />
+              <Text style={styles.detailText}>{item.meterCount} vodomjera</Text>
+            </View>
+          ) : null}
+          {item.userCount != null ? (
+            <View style={styles.detailItem}>
+              <Users size={16} color={Colors.textLight} />
+              <Text style={styles.detailText}>{item.userCount} korisnika</Text>
+            </View>
+          ) : null}
         </View>
-      </View>
+      </TouchableOpacity>
 
       {canManageLocations && (
         <View style={styles.cardActions}>
@@ -198,9 +174,7 @@ export default function LocationsScreen() {
             leftIcon={<Edit size={16} color={Colors.primary} />}
             onPress={() => handleEditLocation(item.id)}
             style={styles.actionButton}
-            disabled={deletingId === item.id}
           />
-
           <Button
             title="Obriši"
             variant="outline"
@@ -208,49 +182,29 @@ export default function LocationsScreen() {
             leftIcon={<Trash2 size={16} color={Colors.error} />}
             onPress={() => handleDeleteLocation(item.id)}
             style={[styles.actionButton, styles.deleteButton]}
-            isLoading={deletingId === item.id}
-            disabled={deletingId === item.id}
           />
+          <TouchableOpacity
+            style={styles.detailsButton}
+            onPress={() => handleViewLocationDetails(item.id)}
+          >
+            <ChevronRight size={20} color={Colors.primary} />
+          </TouchableOpacity>
         </View>
       )}
     </Card>
   );
 
-  const renderEmptyState = () => {
-    if (error) {
-      return (
-        <EmptyState
-          title="Greška"
-          message={error}
-          icon={<MapPin size={48} color={Colors.error} />}
-          actionLabel="Pokušaj ponovo"
-          onAction={fetchLocations}
-        />
-      );
-    }
-    return (
-      <EmptyState
-        title="Nema lokacija"
-        message="Trenutno nema lokacija koje odgovaraju vašoj pretrazi."
-        icon={<MapPin size={48} color={Colors.textLight} />}
-        actionLabel={canManageLocations ? 'Dodaj novu lokaciju' : undefined}
-        onAction={canManageLocations ? handleAddLocation : undefined}
-      />
-    );
-  };
-
+  /* ── render ─────────────────────────────────────── */
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
         <Header
           title="Lokacije"
           showBack
-          showMenu
-          onLeftPress={() => setIsDrawerOpen(true)}
+          onLeftPress={() => router.back()}
         />
 
-        <Drawer isOpen={isDrawerOpen} onClose={() => setIsDrawerOpen(false)} />
-
+        {/* Search + Filter row */}
         <View style={styles.searchContainer}>
           <View style={styles.searchInputContainer}>
             <Search size={20} color={Colors.textLight} style={styles.searchIcon} />
@@ -261,7 +215,6 @@ export default function LocationsScreen() {
               onChangeText={setSearchQuery}
             />
           </View>
-
           <TouchableOpacity
             style={styles.filterButton}
             onPress={() => setShowFilters(!showFilters)}
@@ -272,65 +225,36 @@ export default function LocationsScreen() {
 
         {showFilters && (
           <View style={styles.filtersContainer}>
-            <Text style={styles.filtersTitle}>Kompanija:</Text>
+            <Text style={styles.filtersTitle}>Filter:</Text>
             <View style={styles.filterOptions}>
               <TouchableOpacity
-                style={[
-                  styles.filterOption,
-                  filterCompany === 'all' && styles.filterOptionActive,
-                ]}
+                style={[styles.filterOption, filterCompany === 'all' && styles.filterOptionActive]}
                 onPress={() => setFilterCompany('all')}
               >
-                <Text
-                  style={[
-                    styles.filterOptionText,
-                    filterCompany === 'all' && styles.filterOptionTextActive,
-                  ]}
-                >
+                <Text style={[styles.filterOptionText, filterCompany === 'all' && styles.filterOptionTextActive]}>
                   Sve
                 </Text>
               </TouchableOpacity>
-
-              {companies.map((company) => (
-                <TouchableOpacity
-                  key={company.id}
-                  style={[
-                    styles.filterOption,
-                    filterCompany === company.id && styles.filterOptionActive,
-                  ]}
-                  onPress={() => setFilterCompany(company.id)}
-                >
-                  <Text
-                    style={[
-                      styles.filterOptionText,
-                      filterCompany === company.id && styles.filterOptionTextActive,
-                    ]}
-                  >
-                    {company.name}
-                  </Text>
-                </TouchableOpacity>
-              ))}
             </View>
           </View>
         )}
 
-        {loading ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color={Colors.primary} />
-            <Text style={styles.loadingText}>Učitavanje lokacija...</Text>
-          </View>
-        ) : (
-          <FlatList
-            data={filteredLocations}
-            renderItem={renderLocationCard}
-            keyExtractor={(item) => item.id}
-            contentContainerStyle={styles.listContainer}
-            ListEmptyComponent={renderEmptyState}
-            refreshControl={
-              <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-            }
-          />
-        )}
+        <FlatList
+          data={filteredLocations}
+          renderItem={renderLocationCard}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.listContainer}
+          ListEmptyComponent={
+            <EmptyState
+              title="Nema lokacija"
+              message="Trenutno nema lokacija koje odgovaraju vašoj pretrazi."
+              icon={<MapPin size={48} color={Colors.textLight} />}
+              actionLabel={canManageLocations ? 'Dodaj novu lokaciju' : undefined}
+              onAction={canManageLocations ? handleAddLocation : undefined}
+            />
+          }
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        />
 
         {canManageLocations && (
           <TouchableOpacity
@@ -347,154 +271,77 @@ export default function LocationsScreen() {
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
+  safeArea:   { flex: 1, backgroundColor: '#fff' },
+  container:  { flex: 1, backgroundColor: '#fff' },
+
   searchContainer: {
     flexDirection: 'row',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
+    paddingHorizontal: 16, paddingVertical: 12,
+    borderBottomWidth: 1, borderBottomColor: Colors.border,
   },
   searchInputContainer: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.highlight,
-    borderRadius: 8,
-    paddingHorizontal: 12,
+    flex: 1, flexDirection: 'row', alignItems: 'center',
+    backgroundColor: Colors.highlight, borderRadius: 8, paddingHorizontal: 12,
   },
-  searchIcon: {
-    marginRight: 8,
-  },
-  searchInput: {
-    flex: 1,
-    height: 40,
-    color: Colors.text,
-  },
+  searchIcon:  { marginRight: 8 },
+  searchInput: { flex: 1, height: 40, color: Colors.text },
   filterButton: {
-    marginLeft: 12,
-    width: 40,
-    height: 40,
-    borderRadius: 8,
-    backgroundColor: Colors.highlight,
-    alignItems: 'center',
-    justifyContent: 'center',
+    marginLeft: 12, width: 40, height: 40, borderRadius: 8,
+    backgroundColor: Colors.highlight, alignItems: 'center', justifyContent: 'center',
   },
+
   filtersContainer: {
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
+    padding: 16, borderBottomWidth: 1, borderBottomColor: Colors.border,
   },
-  filtersTitle: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: Colors.text,
-    marginBottom: 8,
-  },
-  filterOptions: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
+  filtersTitle: { fontSize: 14, fontWeight: 'bold', color: Colors.text, marginBottom: 8 },
+  filterOptions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   filterOption: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    backgroundColor: Colors.highlight,
+    paddingHorizontal: 12, paddingVertical: 6,
+    borderRadius: 16, backgroundColor: Colors.highlight,
   },
-  filterOptionActive: {
-    backgroundColor: Colors.primary,
-  },
-  filterOptionText: {
-    fontSize: 12,
-    color: Colors.text,
-  },
-  filterOptionTextActive: {
-    color: '#fff',
-  },
-  loadingContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 24,
-  },
-  loadingText: {
-    marginTop: 12,
-    fontSize: 14,
-    color: Colors.textLight,
-  },
+  filterOptionActive:     { backgroundColor: Colors.primary },
+  filterOptionText:       { fontSize: 12, color: Colors.text },
+  filterOptionTextActive: { color: '#fff' },
+
   listContainer: {
     padding: 16,
     paddingBottom: Platform.OS === 'android' ? 100 : 80,
   },
-  locationCard: {
-    marginBottom: 16,
-  },
-  cardContent: {
-    padding: 16,
-  },
+  locationCard: { marginBottom: 16 },
+  cardContent:  { padding: 16 },
+
   locationHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 12,
+    flexDirection: 'row', justifyContent: 'space-between',
+    alignItems: 'flex-start', marginBottom: 12,
   },
-  locationInfo: {
-    flex: 1,
-  },
+  locationInfo: { flex: 1 },
   locationName: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: Colors.text,
-    marginBottom: 4,
+    fontSize: 16, fontWeight: 'bold', color: Colors.text, marginBottom: 4,
   },
-  locationDetails: {
-    marginBottom: 8,
-  },
-  detailItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  detailText: {
-    fontSize: 14,
-    color: Colors.text,
-    marginLeft: 8,
-  },
+
+  locationDetails: { marginBottom: 8 },
+  detailItem: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
+  detailText:  { fontSize: 14, color: Colors.text, marginLeft: 8 },
+
   cardActions: {
-    flexDirection: 'row',
-    borderTopWidth: 1,
-    borderTopColor: Colors.border,
-    padding: 12,
+    flexDirection: 'row', borderTopWidth: 1, borderTopColor: Colors.border, padding: 12,
   },
-  actionButton: {
-    flex: 1,
-    marginRight: 8,
+  actionButton:  { flex: 1, marginRight: 8 },
+  deleteButton:  { borderColor: Colors.error },
+  detailsButton: {
+    width: 40, height: 40, borderRadius: 8,
+    backgroundColor: Colors.highlight, alignItems: 'center', justifyContent: 'center',
   },
-  deleteButton: {
-    borderColor: Colors.error,
-  },
+
   fab: {
     position: 'absolute',
     bottom: Platform.OS === 'android' ? 40 : 24,
     right: 24,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: 56, height: 56, borderRadius: 28,
     backgroundColor: Colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: 'center', justifyContent: 'center',
     elevation: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25, shadowRadius: 3.84,
   },
 });

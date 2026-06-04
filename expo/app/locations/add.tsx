@@ -1,170 +1,144 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  ScrollView, 
-  TouchableOpacity, 
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
   Alert,
   SafeAreaView,
-  Platform
+  Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { 
-  MapPin, 
-  Building, 
-  Globe, 
-  Hash,
-  Menu
-} from 'lucide-react-native';
+import { MapPin, Building, Globe, Hash } from 'lucide-react-native';
 import { Header } from '@/components/layout/Header';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
-import { Drawer } from '@/components/layout/Drawer';
 import { useAuthStore } from '@/store/auth-store';
+import { supabase } from '@/lib/supabase';
+import { createLocation } from '@/lib/api/locations';
 import Colors from '@/constants/colors';
-import { useCompanies } from '@/lib/hooks/useCompanies';
 
 export default function AddLocationScreen() {
-  const router = useRouter();
+  const router  = useRouter();
   const { user } = useAuthStore();
-  const { companies } = useCompanies();
-  
-  // Form state
-  const [name, setName] = useState('');
-  const [address, setAddress] = useState('');
-  const [city, setCity] = useState('');
+
+  const isSuperAdmin = user?.role === 'super_admin';
+
+  const [name,       setName]       = useState('');
+  const [address,    setAddress]    = useState('');
+  const [city,       setCity]       = useState('');
   const [postalCode, setPostalCode] = useState('');
-  const [companyId, setCompanyId] = useState('');
-  const [latitude, setLatitude] = useState('');
-  const [longitude, setLongitude] = useState('');
-  
-  // Form errors
-  const [nameError, setNameError] = useState('');
-  const [addressError, setAddressError] = useState('');
-  const [cityError, setCityError] = useState('');
+  const [companyId,  setCompanyId]  = useState(user?.utility_id ?? '');
+  const [latitude,   setLatitude]   = useState('');
+  const [longitude,  setLongitude]  = useState('');
+
+  const [nameError,      setNameError]      = useState('');
+  const [addressError,   setAddressError]   = useState('');
+  const [cityError,      setCityError]      = useState('');
   const [companyIdError, setCompanyIdError] = useState('');
-  
-  // Drawer state
-  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-  
-  // Check if user has permission to access this screen
+
+  const [utilities,    setUtilities]    = useState<{ id: string; name: string }[]>([]);
+  const [loadingUtils, setLoadingUtils] = useState(false);
+  const [isSaving,     setIsSaving]     = useState(false);
+
+  /* ── guard ──────────────────────────────────────── */
   useEffect(() => {
-    if (!user || (user.role !== 'superadmin' && user.role !== 'admin')) {
+    if (!user || (user.role !== 'super_admin' && user.role !== 'utility_admin')) {
       router.replace('/login');
     }
-  }, [user, router]);
-  
-  const validateForm = () => {
-    let isValid = true;
-    
-    // Validate name
-    if (!name.trim()) {
-      setNameError('Naziv lokacije je obavezan');
-      isValid = false;
-    } else {
-      setNameError('');
-    }
-    
-    // Validate address
-    if (!address.trim()) {
-      setAddressError('Adresa je obavezna');
-      isValid = false;
-    } else {
-      setAddressError('');
-    }
-    
-    // Validate city
-    if (!city.trim()) {
-      setCityError('Grad je obavezan');
-      isValid = false;
-    } else {
-      setCityError('');
-    }
-    
-    // Validate company
-    if (!companyId) {
-      setCompanyIdError('Kompanija je obavezna');
-      isValid = false;
-    } else {
-      setCompanyIdError('');
-    }
-    
-    return isValid;
+  }, [user]);
+
+  /* ── load utilities (super_admin only) ──────────── */
+  useEffect(() => {
+    if (!isSuperAdmin) return;
+    setLoadingUtils(true);
+    supabase
+      .from('water_utilities')
+      .select('id, name')
+      .order('name')
+      .then(({ data }) => {
+        setUtilities(data ?? []);
+        setLoadingUtils(false);
+      });
+  }, [isSuperAdmin]);
+
+  /* ── validation ─────────────────────────────────── */
+  const validate = () => {
+    let ok = true;
+    if (!name.trim())    { setNameError('Naziv lokacije je obavezan');  ok = false; } else setNameError('');
+    if (!address.trim()) { setAddressError('Adresa je obavezna');        ok = false; } else setAddressError('');
+    if (!city.trim())    { setCityError('Grad je obavezan');             ok = false; } else setCityError('');
+    if (isSuperAdmin && !companyId) {
+      setCompanyIdError('Odaberite vodovod'); ok = false;
+    } else setCompanyIdError('');
+    return ok;
   };
-  
-  const handleSubmit = () => {
-    if (!validateForm()) {
-      return;
+
+  /* ── submit ─────────────────────────────────────── */
+  const handleSubmit = async () => {
+    if (!validate()) return;
+    setIsSaving(true);
+    try {
+      await createLocation({
+        name:        name.trim(),
+        address:     address.trim(),
+        city:        city.trim(),
+        postal_code: postalCode.trim(),
+        company_id:  companyId || undefined,
+        latitude:    latitude  ? Number(latitude)  : undefined,
+        longitude:   longitude ? Number(longitude) : undefined,
+      });
+      Alert.alert('Uspjeh', 'Lokacija je uspješno dodana.', [
+        { text: 'OK', onPress: () => router.back() },
+      ]);
+    } catch (e: any) {
+      Alert.alert('Greška', e?.message || 'Snimanje nije uspjelo.');
+    } finally {
+      setIsSaving(false);
     }
-    
-    // In a real app, you would call an API to add the location
-    Alert.alert(
-      "Uspjeh",
-      "Lokacija je uspješno dodana.",
-      [
-        { 
-          text: "OK", 
-          onPress: () => router.back() 
-        }
-      ]
-    );
   };
-  
-  const handleCompanyChange = (id: string) => {
-    setCompanyId(id);
-  };
-  
+
+  /* ── render ─────────────────────────────────────── */
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
-        <Header 
+        <Header
           title="Dodaj lokaciju"
           showBack
-          showMenu
-          onLeftPress={() => setIsDrawerOpen(true)}
+          onLeftPress={() => router.back()}
         />
-        
-        <Drawer
-          isOpen={isDrawerOpen}
-          onClose={() => setIsDrawerOpen(false)}
-        />
-        
-        <ScrollView 
-          style={styles.scrollView}
-          contentContainerStyle={styles.scrollContent}
-        >
+
+        <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
           <Card style={styles.formCard}>
             <Text style={styles.sectionTitle}>Osnovni podaci</Text>
-            
+
             <Input
               label="Naziv lokacije"
               placeholder="Unesite naziv lokacije"
               value={name}
-              onChangeText={setName}
+              onChangeText={(t) => { setName(t); if (nameError) setNameError(''); }}
               error={nameError}
               leftIcon={<MapPin size={20} color={Colors.textLight} />}
             />
-            
             <Input
               label="Adresa"
               placeholder="Unesite adresu"
               value={address}
-              onChangeText={setAddress}
+              onChangeText={(t) => { setAddress(t); if (addressError) setAddressError(''); }}
               error={addressError}
               leftIcon={<Building size={20} color={Colors.textLight} />}
             />
-            
             <Input
               label="Grad"
               placeholder="Unesite grad"
               value={city}
-              onChangeText={setCity}
+              onChangeText={(t) => { setCity(t); if (cityError) setCityError(''); }}
               error={cityError}
               leftIcon={<Globe size={20} color={Colors.textLight} />}
             />
-            
             <Input
               label="Poštanski broj"
               placeholder="Unesite poštanski broj"
@@ -173,29 +147,34 @@ export default function AddLocationScreen() {
               keyboardType="numeric"
               leftIcon={<Hash size={20} color={Colors.textLight} />}
             />
-            
-            <Text style={styles.label}>Kompanija:</Text>
-            {companyIdError ? <Text style={styles.errorText}>{companyIdError}</Text> : null}
-            <View style={styles.optionsContainer}>
-              {companies.map(company => (
-                <TouchableOpacity
-                  key={company.id}
-                  style={[
-                    styles.option,
-                    companyId === company.id && styles.optionActive
-                  ]}
-                  onPress={() => handleCompanyChange(company.id)}
-                >
-                  <Text style={[
-                    styles.optionText,
-                    companyId === company.id && styles.optionTextActive
-                  ]}>{company.name}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-            
+
+            {/* Vodovod — only shown to super_admin */}
+            {isSuperAdmin && (
+              <>
+                <Text style={styles.label}>Vodovod:</Text>
+                {companyIdError ? <Text style={styles.errorText}>{companyIdError}</Text> : null}
+                {loadingUtils ? (
+                  <ActivityIndicator color={Colors.primary} style={{ marginBottom: 16 }} />
+                ) : (
+                  <View style={styles.optionsContainer}>
+                    {utilities.map((u) => (
+                      <TouchableOpacity
+                        key={u.id}
+                        style={[styles.option, companyId === u.id && styles.optionActive]}
+                        onPress={() => { setCompanyId(u.id); setCompanyIdError(''); }}
+                      >
+                        <Text style={[styles.optionText, companyId === u.id && styles.optionTextActive]}>
+                          {u.name}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
+              </>
+            )}
+
             <Text style={styles.sectionTitle}>Geografske koordinate (opcionalno)</Text>
-            
+
             <Input
               label="Geografska širina"
               placeholder="Unesite geografsku širinu"
@@ -204,7 +183,6 @@ export default function AddLocationScreen() {
               keyboardType="numeric"
               leftIcon={<MapPin size={20} color={Colors.textLight} />}
             />
-            
             <Input
               label="Geografska dužina"
               placeholder="Unesite geografsku dužinu"
@@ -214,20 +192,10 @@ export default function AddLocationScreen() {
               leftIcon={<MapPin size={20} color={Colors.textLight} />}
             />
           </Card>
-          
+
           <View style={styles.actions}>
-            <Button
-              title="Otkaži"
-              variant="outline"
-              onPress={() => router.back()}
-              style={styles.cancelButton}
-            />
-            
-            <Button
-              title="Sačuvaj"
-              onPress={handleSubmit}
-              style={styles.submitButton}
-            />
+            <Button title="Otkaži" variant="outline" onPress={() => router.back()} style={styles.cancelButton} />
+            <Button title="Sačuvaj" onPress={handleSubmit} isLoading={isSaving} style={styles.submitButton} />
           </View>
         </ScrollView>
       </View>
@@ -236,77 +204,23 @@ export default function AddLocationScreen() {
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    padding: 16,
-    paddingBottom: Platform.OS === 'android' ? 100 : 80, // Extra padding for Android
-  },
-  formCard: {
-    padding: 16,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: Colors.text,
-    marginBottom: 16,
-    marginTop: 8,
-  },
-  label: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: Colors.text,
-    marginBottom: 8,
-  },
-  errorText: {
-    fontSize: 14,
-    color: Colors.error,
-    marginBottom: 8,
-  },
-  optionsContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginBottom: 16,
-    gap: 8,
-  },
-  option: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: Colors.highlight,
-    marginRight: 8,
-    marginBottom: 8,
-  },
-  optionActive: {
-    backgroundColor: Colors.primary,
-  },
-  optionText: {
-    fontSize: 14,
-    color: Colors.text,
-  },
-  optionTextActive: {
-    color: '#fff',
-  },
-  actions: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 24,
-  },
-  cancelButton: {
-    flex: 1,
-    marginRight: 8,
-  },
-  submitButton: {
-    flex: 1,
-    marginLeft: 8,
-  },
+  safeArea:      { flex: 1, backgroundColor: '#fff' },
+  container:     { flex: 1, backgroundColor: '#fff' },
+  scrollView:    { flex: 1 },
+  scrollContent: { padding: 16, paddingBottom: Platform.OS === 'android' ? 100 : 80 },
+  formCard:      { padding: 16 },
+
+  sectionTitle: { fontSize: 18, fontWeight: 'bold', color: Colors.text, marginBottom: 16, marginTop: 8 },
+  label:        { fontSize: 14, fontWeight: '500', color: Colors.text, marginBottom: 8 },
+  errorText:    { fontSize: 14, color: Colors.error, marginBottom: 8 },
+
+  optionsContainer: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: 16, gap: 8 },
+  option:           { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, backgroundColor: Colors.highlight },
+  optionActive:     { backgroundColor: Colors.primary },
+  optionText:       { fontSize: 14, color: Colors.text },
+  optionTextActive: { color: '#fff' },
+
+  actions:       { flexDirection: 'row', justifyContent: 'space-between', marginTop: 24 },
+  cancelButton:  { flex: 1, marginRight: 8 },
+  submitButton:  { flex: 1, marginLeft: 8 },
 });

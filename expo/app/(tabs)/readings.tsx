@@ -1,23 +1,24 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  ScrollView, 
+import React, { useState, useCallback } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
   TouchableOpacity,
   RefreshControl,
   Modal,
   Alert,
-  Platform
+  Platform,
+  ActivityIndicator,
 } from 'react-native';
-import { useRouter } from 'expo-router';
-import { 
-  Plus, 
-  Camera, 
+import { useRouter, useFocusEffect } from 'expo-router';
+import {
+  Plus,
+  Camera,
   Edit3,
   Filter,
   Search,
-  ChevronLeft
+  ChevronLeft,
 } from 'lucide-react-native';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
@@ -25,340 +26,239 @@ import { ReadingCard } from '@/components/readings/ReadingCard';
 import { OCRCameraView } from '@/components/ocr/CameraView';
 import { OCRResult } from '@/components/ocr/OCRResult';
 import { useAuthStore } from '@/store/auth-store';
-import { getReadings, createReading, updateReadingStatus, updateReading } from '@/lib/api/readings';
-import { getMeters } from '@/lib/api/meters';
+import { usePermissions } from '@/lib/use-permissions';
+import { getReadings, getReadingsByUser, createReading, verifyReading } from '@/lib/api/readings';
+import { getMeters, getMetersByUser } from '@/lib/api/meters';
 import Colors from '@/constants/colors';
-import { MeterReading } from '@/types/location';
+import { ReadingDisplay } from '@/types/user';
+import { captureError } from '@/lib/sentry';
 
-// Extended reading type with meter info
-interface ExtendedReading extends MeterReading {
+interface ExtendedReading extends ReadingDisplay {
   meterSerialNumber?: string;
-  meterId: string; // Added to fix TypeScript error
+  meterId: string;
 }
 
+/* ── Pure filter helper (no stale-closure risk) ─────────────────────────── */
+const filterReadings = (
+  source: ExtendedReading[],
+  query: string,
+  status: string,
+): ExtendedReading[] => {
+  let result = source;
+  if (query) {
+    const q = query.toLowerCase();
+    result = result.filter(
+      (r) =>
+        r.meterSerialNumber?.toLowerCase().includes(q) ||
+        r.value.toString().includes(q),
+    );
+  }
+  if (status !== 'all') {
+    result = result.filter((r) => r.status === status);
+  }
+  return result;
+};
+
+/* ════════════════════════════════════════════════════════════════════════ */
 export default function ReadingsScreen() {
-  const router = useRouter();
+  const router  = useRouter();
   const { user } = useAuthStore();
-  
+
+  const [loading, setLoading]   = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [showCamera, setShowCamera] = useState(false);
   const [showOCRResult, setShowOCRResult] = useState(false);
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
-  const [capturedImageBase64, setCapturedImageBase64] = useState<string>("");
+  const [capturedImageBase64, setCapturedImageBase64] = useState<string>('');
   const [showAddReadingModal, setShowAddReadingModal] = useState(false);
   const [manualReading, setManualReading] = useState('');
   const [selectedMeterId, setSelectedMeterId] = useState('');
   const [availableMeters, setAvailableMeters] = useState<any[]>([]);
   const [readings, setReadings] = useState<ExtendedReading[]>([]);
-  const [filteredReadings, setFilteredReadings] = useState<ExtendedReading[]>([]);
   const [showFilters, setShowFilters] = useState(false);
   const [filterStatus, setFilterStatus] = useState('all');
   const [readingError, setReadingError] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [showRejectModal, setShowRejectModal] = useState(false);
-  const [rejectingReadingId, setRejectingReadingId] = useState<string | null>(null);
-  const [rejectReason, setRejectReason] = useState('');
-  const [showEditModal, setShowEditModal] = useState(false);
-  const [editingReading, setEditingReading] = useState<ExtendedReading | null>(null);
-  const [editValue, setEditValue] = useState('');
-  const [editNotes, setEditNotes] = useState('');
-  const [editError, setEditError] = useState('');
-  
+
+  const { canVerifyReadings: isStaff, canManageReadings, isWorker, isEndUser } = usePermissions();
+
+  /* ── Derived filtered list (never stale) ───────────────────────────────── */
+  const filteredReadings = filterReadings(readings, searchQuery, filterStatus);
+
+  /* ── Fetch ─────────────────────────────────────────────────────────────── */
   const fetchData = async () => {
     if (!user) {
       router.replace('/login' as any);
       return;
     }
+    setLoading(true);
     try {
-      const [metersData, readingsData] = await Promise.all([
-        getMeters(),
-        getReadings(),
-      ]);
-      const userMeters = user.role === 'citizen'
-        ? metersData.filter((m: any) => m.userId === user.id)
-        : metersData;
-      const userReadings = user.role === 'citizen'
-        ? readingsData.filter((r: any) => userMeters.some((m: any) => m.id === r.meter_id))
-        : readingsData;
-      setAvailableMeters(userMeters);
-      setReadings(userReadings);
-      setFilteredReadings(userReadings);
-      if (userMeters.length > 0) setSelectedMeterId(userMeters[0].id);
+      let metersData: any[];
+      let readingsData: any[];
+      if (isEndUser) {
+        [metersData, readingsData] = await Promise.all([
+          getMetersByUser(user.id, { limit: 50 }),
+          getReadingsByUser(user.id, { limit: 100 }),
+        ]);
+      } else {
+        [metersData, readingsData] = await Promise.all([
+          getMeters({ limit: 200 }),
+          getReadings({ limit: 100 }),
+        ]);
+      }
+      setAvailableMeters(metersData);
+      setReadings(readingsData);
+      if (metersData.length > 0 && !selectedMeterId) {
+        setSelectedMeterId(metersData[0].id);
+      }
     } catch (err) {
-      console.error('Greska pri ucitavanju:', err);
+      captureError(err, { screen: 'readings', action: 'fetchData' });
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
     }
   };
 
-  useEffect(() => {
-    fetchData();
-  }, [user]);
-  
-  const onRefresh = async () => {
+  useFocusEffect(
+    useCallback(() => {
+      fetchData();
+    }, [user?.id, user?.role]),
+  );
+
+  const onRefresh = () => {
     setRefreshing(true);
-    await fetchData();
+    fetchData();
   };
-  
-  const handleAddReading = () => {
-    // Check if user has permission to read meters
-    if (user?.role === 'citizen' && !user.permissions?.canReadMeters) {
-      Alert.alert(
-        "Nemate dozvolu",
-        "Nemate dozvolu za unos očitanja. Kontaktirajte administratora."
-      );
-      return;
-    }
-    
-    setShowAddReadingModal(true);
-  };
-  
+
+  /* ── Manual submit ──────────────────────────────────────────────────────── */
   const validateReading = (value: number): boolean => {
-    // Find the selected meter
-    const meter = availableMeters.find(m => m.id === selectedMeterId);
+    const meter = availableMeters.find((m) => m.id === selectedMeterId);
     if (!meter) {
-      setReadingError("Odabrani vodomjer nije pronađen");
+      setReadingError('Odabrani vodomjer nije pronađen');
       return false;
     }
-    
-    // Find the last reading for this meter
     const lastReading = readings
-      .filter(r => r.meterId === selectedMeterId)
+      .filter((r) => r.meterId === selectedMeterId)
       .sort((a, b) => b.readingDate - a.readingDate)[0];
-    
-    // If there's a previous reading, ensure the new value is greater or equal
     if (lastReading && value < lastReading.value) {
-      setReadingError(`Nova vrijednost mora biti veća ili jednaka posljednjoj (${lastReading.value} m³)`);
+      setReadingError(
+        `Nova vrijednost mora biti veća ili jednaka posljednjoj (${lastReading.value} m³)`,
+      );
       return false;
     }
-    
-    setReadingError("");
+    setReadingError('');
     return true;
   };
-  
+
   const handleManualSubmit = async () => {
     const value = parseFloat(manualReading);
-    if (isNaN(value)) { setReadingError("Unesite validnu numeričku vrijednost"); return; }
+    if (isNaN(value)) {
+      setReadingError('Unesite validnu numeričku vrijednost');
+      return;
+    }
     if (!validateReading(value)) return;
 
-    setIsSubmitting(true);
+    const meter = availableMeters.find((m) => m.id === selectedMeterId);
+    if (!meter) return;
+
     try {
-      const newReading = await createReading({
-        meter_id: selectedMeterId,
-        value,
-        read_by: user?.id || '',
-        read_method: user?.role === 'citizen' ? 'citizen' : 'manual',
+      await createReading({
+        connection_id: selectedMeterId,
+        utility_id:    meter.utility_id,
+        reading_value: value,
+        reading_type:  'manual',
       });
-      const extended: ExtendedReading = {
-        ...newReading,
-        meterSerialNumber: availableMeters.find(m => m.id === selectedMeterId)?.serialNumber,
-      };
-      const updatedReadings = [extended, ...readings];
-      setReadings(updatedReadings);
-      applyFilters(searchQuery, filterStatus, updatedReadings);
       setShowAddReadingModal(false);
       setManualReading('');
       setReadingError('');
-      Alert.alert("Uspjeh", "Očitanje je uspješno dodano.", [{ text: "OK" }]);
-    } catch {
-      Alert.alert("Greška", "Nije moguće dodati očitanje. Pokušajte ponovo.");
-    } finally {
-      setIsSubmitting(false);
+      Alert.alert('Uspjeh', 'Očitanje je uspješno dodano.');
+      fetchData();
+    } catch (err: any) {
+      Alert.alert('Greška', err.message || 'Greška pri unosu očitanja.');
     }
   };
-  
-  const handleOpenCamera = () => {
-    setShowAddReadingModal(false);
-    setShowCamera(true);
-  };
-  
+
+  /* ── OCR ────────────────────────────────────────────────────────────────── */
+  const handleOpenCamera   = () => { setShowAddReadingModal(false); setShowCamera(true); };
+  const handleOCRRetry     = () => { setShowOCRResult(false); setShowCamera(true); };
+  const handleOCRCancel    = () => { setShowOCRResult(false); setCapturedImage(null); };
+
   const handleCameraCapture = (imageUri: string, imageBase64: string) => {
     setCapturedImage(imageUri);
     setCapturedImageBase64(imageBase64);
     setShowCamera(false);
     setShowOCRResult(true);
   };
+
   const handleOCRConfirm = async (value: number) => {
     if (!validateReading(value)) {
-      Alert.alert("Greška", readingError, [
-        { text: "Pokušaj ponovo", onPress: () => { setShowOCRResult(false); setShowCamera(true); } },
-        { text: "Otkaži", style: "cancel", onPress: () => { setShowOCRResult(false); setCapturedImage(null); setReadingError(''); } },
-      ]);
+      Alert.alert(
+        'Greška',
+        readingError,
+        [
+          { text: 'Pokušaj ponovo', onPress: () => { setShowOCRResult(false); setShowCamera(true); } },
+          { text: 'Otkaži', style: 'cancel', onPress: () => { setShowOCRResult(false); setCapturedImage(null); setReadingError(''); } },
+        ],
+      );
       return;
     }
-
-    setIsSubmitting(true);
+    const meter = availableMeters.find((m) => m.id === selectedMeterId);
+    if (!meter) return;
     try {
-      const newReading = await createReading({
-        meter_id: selectedMeterId,
-        value,
-        read_by: user?.id || '',
-        read_method: 'ocr',
+      await createReading({
+        connection_id: selectedMeterId,
+        utility_id:    meter.utility_id,
+        reading_value: value,
+        reading_type:  'ocr',
       });
-      const extended: ExtendedReading = {
-        ...newReading,
-        meterSerialNumber: availableMeters.find(m => m.id === selectedMeterId)?.serialNumber,
-      };
-      const updatedReadings = [extended, ...readings];
-      setReadings(updatedReadings);
-      applyFilters(searchQuery, filterStatus, updatedReadings);
       setShowOCRResult(false);
       setCapturedImage(null);
-      Alert.alert("Uspjeh", "Očitanje je uspješno dodano.", [{ text: "OK" }]);
-    } catch {
-      Alert.alert("Greška", "Nije moguće dodati očitanje. Pokušajte ponovo.");
-    } finally {
-      setIsSubmitting(false);
+      Alert.alert('Uspjeh', 'OCR očitanje je uspješno dodano.');
+      fetchData();
+    } catch (err: any) {
+      Alert.alert('Greška', err.message || 'Greška pri unosu OCR očitanja.');
     }
-  };
-  
-  const handleOCRRetry = () => {
-    setShowOCRResult(false);
-    setShowCamera(true);
-  };
-  
-  const handleOCRCancel = () => {
-    setShowOCRResult(false);
-    setCapturedImage(null);
-  };
-  
-  const handleEditReading = (readingId: string) => {
-    if (user?.role !== 'admin' && user?.role !== 'finance' && user?.role !== 'superadmin') {
-      Alert.alert('Nemate dozvolu', 'Samo administratori i finansije mogu uređivati očitanja.');
-      return;
-    }
-
-    const reading = readings.find((r) => r.id === readingId);
-    if (!reading) return;
-    setEditingReading(reading);
-    setEditValue(String(reading.value ?? ''));
-    setEditNotes((reading as { notes?: string }).notes ?? '');
-    setEditError('');
-    setShowEditModal(true);
   };
 
-  const handleConfirmEdit = async () => {
-    if (!editingReading) return;
-
-    const value = parseFloat(editValue);
-    if (isNaN(value) || value < 0) {
-      setEditError('Unesite validnu numeričku vrijednost (>= 0)');
-      return;
-    }
-    if (
-      editingReading.previousValue !== undefined &&
-      editingReading.previousValue !== null &&
-      value < editingReading.previousValue
-    ) {
-      setEditError(
-        `Nova vrijednost mora biti veća ili jednaka prethodnoj (${editingReading.previousValue} m³)`,
-      );
-      return;
-    }
-
-    try {
-      const updated = await updateReading(editingReading.id, {
-        value,
-        notes: editNotes,
-      });
-      const newConsumption =
-        editingReading.previousValue !== undefined && editingReading.previousValue !== null
-          ? value - editingReading.previousValue
-          : editingReading.consumption;
-      const updatedReadings = readings.map((r) =>
-        r.id === editingReading.id
-          ? { ...r, value, consumption: newConsumption, ...(updated as object) }
-          : r,
-      );
-      setReadings(updatedReadings);
-      applyFilters(searchQuery, filterStatus, updatedReadings);
-      setShowEditModal(false);
-      setEditingReading(null);
-      Alert.alert('Uspjeh', 'Očitanje je ažurirano.');
-    } catch {
-      Alert.alert('Greška', 'Nije moguće sačuvati izmjene očitanja.');
-    }
-  };
-  
+  /* ── Verify / Reject ────────────────────────────────────────────────────── */
   const handleVerifyReading = async (readingId: string) => {
-    if (user?.role !== 'admin' && user?.role !== 'finance' && user?.role !== 'superadmin') return;
+    if (!isStaff) return;
     try {
-      await updateReadingStatus(readingId, 'verified');
-      const updated = readings.map(r => r.id === readingId ? { ...r, status: 'verified' as const } : r);
-      setReadings(updated);
-      applyFilters(searchQuery, filterStatus, updated);
-      Alert.alert("Uspjeh", "Očitanje je potvrđeno.");
-    } catch {
-      Alert.alert("Greška", "Nije moguće potvrditi očitanje.");
+      await verifyReading(readingId, true);
+      setReadings((prev) =>
+        prev.map((r) => r.id === readingId ? { ...r, status: 'verified' as const } : r),
+      );
+    } catch (err: any) {
+      Alert.alert('Greška', err.message || 'Greška pri potvrdi očitanja.');
     }
   };
 
-  const handleRejectReading = (readingId: string) => {
-    if (user?.role !== 'admin' && user?.role !== 'finance' && user?.role !== 'superadmin') return;
-    setRejectingReadingId(readingId);
-    setRejectReason('');
-    setShowRejectModal(true);
+  const handleRejectReading = async (readingId: string) => {
+    if (!isStaff) return;
+    try {
+      await verifyReading(readingId, false);
+      setReadings((prev) =>
+        prev.map((r) => r.id === readingId ? { ...r, status: 'rejected' as const } : r),
+      );
+    } catch (err: any) {
+      Alert.alert('Greška', err.message || 'Greška pri odbijanju očitanja.');
+    }
   };
 
-  const handleConfirmReject = async () => {
-    if (!rejectingReadingId) return;
-    try {
-      await updateReadingStatus(rejectingReadingId, 'rejected', rejectReason || undefined);
-      const updated = readings.map(r =>
-        r.id === rejectingReadingId ? { ...r, status: 'rejected' as const } : r
-      );
-      setReadings(updated);
-      applyFilters(searchQuery, filterStatus, updated);
-      setShowRejectModal(false);
-      setRejectingReadingId(null);
-      Alert.alert("Uspjeh", "Očitanje je odbijeno.");
-    } catch {
-      Alert.alert("Greška", "Nije moguće odbiti očitanje.");
-    }
-  };
-  
-  const handleSearch = (text: string) => {
-    setSearchQuery(text);
-    applyFilters(text, filterStatus);
-  };
-  
-  const handleFilterChange = (status: string) => {
-    setFilterStatus(status);
-    applyFilters(searchQuery, status);
-  };
-  
-  const applyFilters = (query: string, status: string, list?: ExtendedReading[]) => {
-    let filtered = [...(list ?? readings)];
-    if (query) {
-      filtered = filtered.filter(reading =>
-        reading.meterSerialNumber?.toLowerCase().includes(query.toLowerCase()) ||
-        reading.value.toString().includes(query)
-      );
-    }
-    if (status !== 'all') {
-      filtered = filtered.filter(reading => reading.status === status);
-    }
-    setFilteredReadings(filtered);
-  };
-  
-  const canAddReadings = 
-    user?.role === 'admin' || 
-    user?.role === 'finance' || 
-    user?.role === 'worker' || 
-    user?.role === 'superadmin' || 
-    (user?.role === 'citizen' && user.permissions?.canReadMeters);
-  
+  const canAddReadings = isStaff || isWorker || isEndUser;
+
+  /* ── Render ─────────────────────────────────────────────────────────────── */
   return (
     <View style={styles.container}>
       <View style={styles.searchContainer}>
         <Input
           placeholder="Pretraži očitanja..."
           value={searchQuery}
-          onChangeText={handleSearch}
+          onChangeText={setSearchQuery}
           containerStyle={styles.searchInput}
           leftIcon={<Search size={20} color={Colors.textLight} />}
         />
-        
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.filterButton}
           onPress={() => setShowFilters(!showFilters)}
           activeOpacity={0.7}
@@ -366,91 +266,48 @@ export default function ReadingsScreen() {
           <Filter size={20} color={Colors.text} />
         </TouchableOpacity>
       </View>
-      
+
       {showFilters && (
         <View style={styles.filtersContainer}>
           <Text style={styles.filtersTitle}>Status:</Text>
           <View style={styles.filterOptions}>
-            <TouchableOpacity
-              style={[
-                styles.filterOption,
-                filterStatus === 'all' && styles.filterOptionActive
-              ]}
-              onPress={() => handleFilterChange('all')}
-            >
-              <Text style={[
-                styles.filterOptionText,
-                filterStatus === 'all' && styles.filterOptionTextActive
-              ]}>Svi</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity
-              style={[
-                styles.filterOption,
-                filterStatus === 'pending' && styles.filterOptionActive
-              ]}
-              onPress={() => handleFilterChange('pending')}
-            >
-              <Text style={[
-                styles.filterOptionText,
-                filterStatus === 'pending' && styles.filterOptionTextActive
-              ]}>Na čekanju</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity
-              style={[
-                styles.filterOption,
-                filterStatus === 'verified' && styles.filterOptionActive
-              ]}
-              onPress={() => handleFilterChange('verified')}
-            >
-              <Text style={[
-                styles.filterOptionText,
-                filterStatus === 'verified' && styles.filterOptionTextActive
-              ]}>Potvrđeni</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity
-              style={[
-                styles.filterOption,
-                filterStatus === 'rejected' && styles.filterOptionActive
-              ]}
-              onPress={() => handleFilterChange('rejected')}
-            >
-              <Text style={[
-                styles.filterOptionText,
-                filterStatus === 'rejected' && styles.filterOptionTextActive
-              ]}>Odbijeni</Text>
-            </TouchableOpacity>
+            {['all', 'pending', 'verified', 'rejected'].map((status) => (
+              <TouchableOpacity
+                key={status}
+                style={[styles.filterOption, filterStatus === status && styles.filterOptionActive]}
+                onPress={() => setFilterStatus(status)}
+              >
+                <Text style={[styles.filterOptionText, filterStatus === status && styles.filterOptionTextActive]}>
+                  {status === 'all' ? 'Svi' : status === 'pending' ? 'Na čekanju' : status === 'verified' ? 'Potvrđeni' : 'Odbijeni'}
+                </Text>
+              </TouchableOpacity>
+            ))}
           </View>
         </View>
       )}
-      
+
       <ScrollView
         contentContainerStyle={styles.scrollContent}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-        }
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
-        {filteredReadings.length > 0 ? (
-          filteredReadings.map(reading => (
-            <ReadingCard 
-              key={reading.id} 
-              reading={reading} 
+        {loading ? (
+          <View style={styles.emptyContainer}>
+            <ActivityIndicator size="large" color={Colors.primary} />
+          </View>
+        ) : filteredReadings.length > 0 ? (
+          filteredReadings.map((reading) => (
+            <ReadingCard
+              key={reading.id}
+              reading={reading}
               showMeterInfo={true}
               meterSerialNumber={reading.meterSerialNumber}
-              onEdit={
-                user?.role === 'admin' || user?.role === 'finance' || user?.role === 'superadmin'
-                  ? () => handleEditReading(reading.id)
-                  : undefined
-              }
               onVerify={
-                (user?.role === 'admin' || user?.role === 'finance' || user?.role === 'superadmin') && reading.status === 'pending'
+                isStaff && reading.status === 'pending'
                   ? () => handleVerifyReading(reading.id)
                   : undefined
               }
               onReject={
-                (user?.role === 'admin' || user?.role === 'finance' || user?.role === 'superadmin') && reading.status === 'pending'
+                isStaff && reading.status === 'pending'
                   ? () => handleRejectReading(reading.id)
                   : undefined
               }
@@ -458,24 +315,22 @@ export default function ReadingsScreen() {
           ))
         ) : (
           <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>
-              Nema pronađenih očitanja
-            </Text>
+            <Text style={styles.emptyText}>Nema pronađenih očitanja</Text>
           </View>
         )}
       </ScrollView>
-      
+
       {canAddReadings && (
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.fab}
-          onPress={handleAddReading}
+          onPress={() => setShowAddReadingModal(true)}
           activeOpacity={0.8}
         >
           <Plus size={24} color="#fff" />
         </TouchableOpacity>
       )}
-      
-      {/* Add Reading Modal */}
+
+      {/* ── Add reading modal ── */}
       <Modal
         visible={showAddReadingModal}
         animationType="slide"
@@ -485,7 +340,7 @@ export default function ReadingsScreen() {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <TouchableOpacity 
+              <TouchableOpacity
                 onPress={() => setShowAddReadingModal(false)}
                 style={styles.backButton}
               >
@@ -494,32 +349,34 @@ export default function ReadingsScreen() {
               <Text style={styles.modalTitle}>Novo očitanje</Text>
               <View style={styles.placeholder} />
             </View>
-            
-            <Text style={styles.modalSubtitle}>
-              Odaberite vodomjer i unesite očitanje
-            </Text>
-            
+
+            <Text style={styles.modalSubtitle}>Odaberite vodomjer i unesite očitanje</Text>
+
             {availableMeters.length > 0 ? (
               <>
                 <Text style={styles.inputLabel}>Vodomjer:</Text>
                 <View style={styles.meterOptions}>
-                  {availableMeters.map(meter => (
+                  {availableMeters.map((meter) => (
                     <TouchableOpacity
                       key={meter.id}
                       style={[
                         styles.meterOption,
-                        selectedMeterId === meter.id && styles.meterOptionActive
+                        selectedMeterId === meter.id && styles.meterOptionActive,
                       ]}
                       onPress={() => setSelectedMeterId(meter.id)}
                     >
-                      <Text style={[
-                        styles.meterOptionText,
-                        selectedMeterId === meter.id && styles.meterOptionTextActive
-                      ]}>{meter.serialNumber}</Text>
+                      <Text
+                        style={[
+                          styles.meterOptionText,
+                          selectedMeterId === meter.id && styles.meterOptionTextActive,
+                        ]}
+                      >
+                        {meter.serialNumber}
+                      </Text>
                     </TouchableOpacity>
                   ))}
                 </View>
-                
+
                 <View style={styles.inputContainer}>
                   <Input
                     label="Ručni unos očitanja (m³)"
@@ -531,18 +388,14 @@ export default function ReadingsScreen() {
                     error={readingError}
                   />
                 </View>
-                
+
                 <View style={styles.modalButtons}>
                   <Button
                     title="Otkaži"
-                    onPress={() => {
-                      setShowAddReadingModal(false);
-                      setReadingError('');
-                    }}
+                    onPress={() => { setShowAddReadingModal(false); setReadingError(''); }}
                     variant="outline"
                     style={styles.modalButton}
                   />
-                  
                   <Button
                     title="Potvrdi"
                     onPress={handleManualSubmit}
@@ -550,13 +403,13 @@ export default function ReadingsScreen() {
                     disabled={!manualReading}
                   />
                 </View>
-                
+
                 <View style={styles.orContainer}>
                   <View style={styles.orLine} />
                   <Text style={styles.orText}>ILI</Text>
                   <View style={styles.orLine} />
                 </View>
-                
+
                 <Button
                   title="Skeniraj vodomjer"
                   onPress={handleOpenCamera}
@@ -579,96 +432,27 @@ export default function ReadingsScreen() {
           </View>
         </View>
       </Modal>
-      {/* Edit reading modal */}
-      <Modal
-        visible={showEditModal}
-        animationType="fade"
-        transparent
-        onRequestClose={() => setShowEditModal(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.rejectModalContent}>
-            <Text style={styles.modalTitle}>Uredi očitanje</Text>
-            {editingReading?.meterSerialNumber ? (
-              <Text style={styles.modalSubtitle}>
-                Vodomjer: {editingReading.meterSerialNumber}
-              </Text>
-            ) : null}
-            <Input
-              label="Stanje vodomjera (m³)"
-              placeholder="0"
-              value={editValue}
-              onChangeText={setEditValue}
-              keyboardType="numeric"
-              error={editError}
-            />
-            <Input
-              label="Napomena"
-              placeholder="Opcionalno"
-              value={editNotes}
-              onChangeText={setEditNotes}
-              containerStyle={{ marginBottom: 16 }}
-            />
-            <View style={styles.modalButtons}>
-              <Button
-                title="Otkaži"
-                variant="outline"
-                onPress={() => { setShowEditModal(false); setEditingReading(null); }}
-                style={styles.modalButton}
-              />
-              <Button
-                title="Sačuvaj"
-                onPress={handleConfirmEdit}
-                style={styles.modalButton}
-              />
-            </View>
-          </View>
-        </View>
-      </Modal>
 
-      {/* Reject reason modal */}
       <Modal
-        visible={showRejectModal}
-        animationType="fade"
-        transparent={true}
-        onRequestClose={() => setShowRejectModal(false)}
+        visible={showCamera}
+        animationType="slide"
+        statusBarTranslucent={true}
+        onRequestClose={() => setShowCamera(false)}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.rejectModalContent}>
-            <Text style={styles.modalTitle}>Odbijanje očitanja</Text>
-            <Text style={styles.modalSubtitle}>Unesite razlog odbijanja (opcionalno)</Text>
-            <Input
-              placeholder="Razlog odbijanja..."
-              value={rejectReason}
-              onChangeText={setRejectReason}
-              containerStyle={{ marginBottom: 16 }}
-            />
-            <View style={styles.modalButtons}>
-              <Button
-                title="Otkaži"
-                variant="outline"
-                onPress={() => { setShowRejectModal(false); setRejectingReadingId(null); }}
-                style={styles.modalButton}
-              />
-              <Button
-                title="Odbij"
-                onPress={handleConfirmReject}
-                style={[styles.modalButton, { backgroundColor: Colors.error }]}
-              />
-            </View>
-          </View>
-        </View>
-      </Modal>
-
-      <Modal visible={showCamera} animationType="slide" statusBarTranslucent={true} onRequestClose={() => setShowCamera(false)}>
         <OCRCameraView
           onCapture={handleCameraCapture}
           onClose={() => setShowCamera(false)}
         />
       </Modal>
-      <Modal visible={showOCRResult && !!capturedImage} animationType="slide" statusBarTranslucent={true} onRequestClose={handleOCRCancel}>
+
+      <Modal
+        visible={showOCRResult && !!capturedImage}
+        animationType="slide"
+        statusBarTranslucent={true}
+        onRequestClose={handleOCRCancel}
+      >
         <OCRResult
-          imageUri={capturedImage || ""}
+          imageUri={capturedImage || ''}
           imageBase64={capturedImageBase64}
           onConfirm={handleOCRConfirm}
           onRetry={handleOCRRetry}
@@ -680,10 +464,7 @@ export default function ReadingsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
+  container: { flex: 1, backgroundColor: '#fff' },
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -692,60 +473,27 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: Colors.border,
   },
-  searchInput: {
-    flex: 1,
-    marginBottom: 0,
-  },
-  filterButton: {
-    padding: 12,
-    marginLeft: 8,
-  },
+  searchInput: { flex: 1, marginBottom: 0 },
+  filterButton: { padding: 12, marginLeft: 8 },
   filtersContainer: {
     padding: 16,
     borderBottomWidth: 1,
     borderBottomColor: Colors.border,
   },
-  filtersTitle: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: Colors.text,
-    marginBottom: 8,
-  },
-  filterOptions: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
+  filtersTitle: { fontSize: 14, fontWeight: 'bold', color: Colors.text, marginBottom: 8 },
+  filterOptions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   filterOption: {
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 16,
     backgroundColor: Colors.highlight,
   },
-  filterOptionActive: {
-    backgroundColor: Colors.primary,
-  },
-  filterOptionText: {
-    fontSize: 12,
-    color: Colors.text,
-  },
-  filterOptionTextActive: {
-    color: '#fff',
-  },
-  scrollContent: {
-    padding: 16,
-    paddingBottom: 80,
-  },
-  emptyContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 32,
-  },
-  emptyText: {
-    fontSize: 16,
-    color: Colors.textLight,
-    textAlign: 'center',
-  },
+  filterOptionActive: { backgroundColor: Colors.primary },
+  filterOptionText: { fontSize: 12, color: Colors.text },
+  filterOptionTextActive: { color: '#fff' },
+  scrollContent: { padding: 16, paddingBottom: 80 },
+  emptyContainer: { alignItems: 'center', justifyContent: 'center', padding: 32 },
+  emptyText: { fontSize: 16, color: Colors.textLight, textAlign: 'center' },
   fab: {
     position: 'absolute',
     bottom: Platform.OS === 'android' ? 40 : 24,
@@ -764,7 +512,7 @@ const styles = StyleSheet.create({
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'flex-end',
   },
   modalContent: {
@@ -780,100 +528,33 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: 16,
   },
-  backButton: {
-    padding: 4,
-  },
-  placeholder: {
-    width: 24,
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: Colors.text,
-  },
-  modalSubtitle: {
-    fontSize: 16,
-    color: Colors.textLight,
-    marginBottom: 16,
-  },
-  inputLabel: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: Colors.text,
-    marginBottom: 8,
-  },
-  meterOptions: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginBottom: 16,
-    gap: 8,
-  },
+  backButton: { padding: 4 },
+  placeholder: { width: 24 },
+  modalTitle: { fontSize: 20, fontWeight: 'bold', color: Colors.text },
+  modalSubtitle: { fontSize: 16, color: Colors.textLight, marginBottom: 16 },
+  inputLabel: { fontSize: 14, fontWeight: '500', color: Colors.text, marginBottom: 8 },
+  meterOptions: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: 16, gap: 8 },
   meterOption: {
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 16,
     backgroundColor: Colors.highlight,
-    marginRight: 8,
-    marginBottom: 8,
   },
-  meterOptionActive: {
-    backgroundColor: Colors.primary,
-  },
-  meterOptionText: {
-    fontSize: 14,
-    color: Colors.text,
-  },
-  meterOptionTextActive: {
-    color: '#fff',
-  },
-  inputContainer: {
-    marginBottom: 16,
-  },
-  modalButtons: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  modalButton: {
-    flex: 1,
-    marginHorizontal: 8,
-  },
-  orContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginVertical: 24,
-  },
-  orLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: Colors.border,
-  },
-  orText: {
-    marginHorizontal: 16,
-    color: Colors.textLight,
-    fontSize: 14,
-  },
-  noMetersContainer: {
-    alignItems: 'center',
-    padding: 16,
-  },
+  meterOptionActive: { backgroundColor: Colors.primary },
+  meterOptionText: { fontSize: 14, color: Colors.text },
+  meterOptionTextActive: { color: '#fff' },
+  inputContainer: { marginBottom: 16 },
+  modalButtons: { flexDirection: 'row', justifyContent: 'space-between' },
+  modalButton: { flex: 1, marginHorizontal: 8 },
+  orContainer: { flexDirection: 'row', alignItems: 'center', marginVertical: 24 },
+  orLine: { flex: 1, height: 1, backgroundColor: Colors.border },
+  orText: { marginHorizontal: 16, color: Colors.textLight, fontSize: 14 },
+  noMetersContainer: { alignItems: 'center', padding: 16 },
   noMetersText: {
     fontSize: 16,
     color: Colors.textLight,
     textAlign: 'center',
     marginBottom: 16,
   },
-  closeButton: {
-    width: '100%',
-  },
-  rejectModalContent: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 24,
-    margin: 24,
-  },
+  closeButton: { width: '100%' },
 });
-
-
-
-
-

@@ -2,52 +2,33 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@/lib/supabase';
-
-interface Profile {
-  id: string;
-  name: string;
-  email: string;
-  role: string;
-  is_active: boolean;
-  phone?: string;
-  address?: string;
-  avatar?: string;
-  company_id?: string;
-  can_read_meters: boolean;
-  can_report_issues: boolean;
-  can_manage_tasks: boolean;
-  can_edit_readings: boolean;
-  can_send_notifications: boolean;
-  can_view_all_data: boolean;
-  can_manage_users: boolean;
-  can_manage_companies: boolean;
-  can_manage_billing: boolean;
-  can_backup_data: boolean;
-  // Compatibility aliases
-  companyId?: string;
-  locationIds?: string[];
-  permissions?: {
-    canReadMeters: boolean;
-    canReportIssues: boolean;
-    canManageTasks: boolean;
-    canEditReadings: boolean;
-    canSendNotifications: boolean;
-    canViewAllData: boolean;
-    canManageUsers: boolean;
-    canManageCompanies: boolean;
-    canManageBilling: boolean;
-    canBackupData: boolean;
-  };
-}
+import { Profile, UserRole, getPermissions } from '@/types/user';
+import { setSentryUser, clearSentryUser } from '@/lib/sentry';
 
 interface AuthState {
   user: Profile | null;
   isLoading: boolean;
   error: string | null;
+  /** Call once at app startup — verifies the Supabase session and refreshes profile. */
+  initialize: () => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   clearError: () => void;
-  updateUserProfile: (profile: Partial<Profile>) => Promise<void>;
+  updateUserProfile: (updates: Partial<Pick<Profile,
+    'full_name' | 'phone' | 'avatar_url' | 'push_token' | 'email_notifications_enabled'
+  >>) => Promise<void>;
+}
+
+function mapProfile(profile: Record<string, any>): Profile {
+  return {
+    ...profile,
+    permissions: getPermissions(profile.role as UserRole),
+    // Compatibility aliases za stari kod
+    name: profile.full_name,
+    avatar: profile.avatar_url,
+    companyId: profile.utility_id,
+    locationIds: [],
+  } as unknown as Profile;
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -57,7 +38,48 @@ export const useAuthStore = create<AuthState>()(
       isLoading: false,
       error: null,
 
-      login: async (email: string, password: string) => {
+      initialize: async () => {
+        set({ isLoading: true });
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+
+          if (!session) {
+            // No active session — clear any stale persisted user
+            set({ user: null, isLoading: false });
+            return;
+          }
+
+          // Session exists — refresh profile from DB to ensure it's current
+          const { data: profile, error: profileError } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', session.user.id)
+            .single();
+
+          if (profileError || !profile) {
+            // Profile fetch failed — keep cached user, don't wipe it
+            set({ isLoading: false });
+            return;
+          }
+
+          if (!profile.is_active) {
+            // Account deactivated — force logout
+            await supabase.auth.signOut();
+            clearSentryUser();
+            set({ user: null, isLoading: false });
+            return;
+          }
+
+          const mappedProfile = mapProfile(profile);
+          set({ user: mappedProfile, isLoading: false });
+          setSentryUser(mappedProfile.id, mappedProfile.email, mappedProfile.role);
+        } catch {
+          // Network error on startup — keep cached user so app stays usable offline
+          set({ isLoading: false });
+        }
+      },
+
+      login: async (email, password) => {
         set({ isLoading: true, error: null });
         try {
           const { data, error } = await supabase.auth.signInWithPassword({
@@ -65,73 +87,60 @@ export const useAuthStore = create<AuthState>()(
             password,
           });
 
-          if (error) {
-            set({ error: 'Netacna email adresa ili lozinka', isLoading: false });
+          if (error || !data.user) {
+            set({ error: 'Neispravni podaci za prijavu', isLoading: false });
             return;
           }
 
-          if (data.user) {
-            const { data: profile, error: profileError } = await supabase
-              .from('profiles')
-              .select('*')
-              .eq('id', data.user.id)
-              .single();
+          const { data: profile, error: profileError } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', data.user.id)
+            .single();
 
-            if (profileError || !profile) {
-              set({ error: 'Greska pri ucitavanju profila', isLoading: false });
-              return;
-            }
-
-            const mappedProfile = {
-              ...profile,
-              companyId: profile.company_id,
-              locationIds: [],
-              permissions: {
-                canReadMeters: profile.can_read_meters,
-                canReportIssues: profile.can_report_issues,
-                canManageTasks: profile.can_manage_tasks,
-                canEditReadings: profile.can_edit_readings,
-                canSendNotifications: profile.can_send_notifications,
-                canViewAllData: profile.can_view_all_data,
-                canManageUsers: profile.can_manage_users,
-                canManageCompanies: profile.can_manage_companies,
-                canManageBilling: profile.can_manage_billing,
-                canBackupData: profile.can_backup_data,
-              },
-            };
-            set({ user: mappedProfile, isLoading: false });
+          if (profileError || !profile) {
+            set({ error: 'Greška pri učitavanju profila', isLoading: false });
+            return;
           }
-        } catch (error) {
-          set({ error: 'Doslo je do greske prilikom prijave', isLoading: false });
+
+          if (!profile.is_active) {
+            await supabase.auth.signOut();
+            set({ error: 'Vaš nalog je deaktiviran', isLoading: false });
+            return;
+          }
+
+          const mappedProfile = mapProfile(profile);
+          set({ user: mappedProfile, isLoading: false });
+          setSentryUser(mappedProfile.id, mappedProfile.email, mappedProfile.role);
+        } catch {
+          set({ error: 'Greška prilikom prijave', isLoading: false });
         }
       },
 
       logout: async () => {
         await supabase.auth.signOut();
+        clearSentryUser();
         set({ user: null });
       },
 
       clearError: () => set({ error: null }),
 
-      updateUserProfile: async (profile) => {
+      updateUserProfile: async (updates) => {
         const { user } = get();
         if (!user) return;
 
         const { error } = await supabase
           .from('profiles')
-          .update(profile)
+          .update(updates)
           .eq('id', user.id);
 
-        if (!error) {
-          set({ user: { ...user, ...profile } });
-        }
+        if (error) throw error;
+        set({ user: { ...user, ...updates } });
       },
     }),
     {
-      name: 'auth-storage',
+      name: 'aquapulse-auth',
       storage: createJSONStorage(() => AsyncStorage),
     }
   )
 );
-
-

@@ -5,7 +5,7 @@ import { CreditCard, Clock, AlertTriangle, CheckCircle } from 'lucide-react-nati
 import { Card } from '../ui/Card';
 import { StatusIndicator } from '../ui/StatusIndicator';
 import Colors from '@/constants/colors';
-import { Bill } from '@/types/location';
+import { Bill } from '@/types/user';
 
 interface BillCardProps {
   bill: Bill;

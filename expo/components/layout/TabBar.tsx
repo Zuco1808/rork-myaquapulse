@@ -27,28 +27,28 @@ export const TabBar: React.FC = () => {
       label: 'Početna',
       icon: (color) => <Home size={24} color={color} />,
       path: '/(tabs)',
-      roles: ['superadmin', 'admin', 'finance', 'worker', 'citizen'],
+      roles: ['super_admin', 'utility_admin', 'finance', 'worker', 'end_user'],
     },
     {
       key: 'readings',
       label: 'Očitanja',
       icon: (color) => <FileText size={24} color={color} />,
       path: '/(tabs)/readings',
-      roles: ['superadmin', 'admin', 'worker', 'citizen'],
+      roles: ['super_admin', 'utility_admin', 'worker', 'end_user'],
     },
     {
       key: 'reports',
       label: 'Izvještaji',
       icon: (color) => <BarChart3 size={24} color={color} />,
       path: '/(tabs)/reports',
-      roles: ['superadmin', 'admin', 'finance'],
+      roles: ['super_admin', 'utility_admin', 'finance'],
     },
     {
       key: 'profile',
       label: 'Profil',
       icon: (color) => <User size={24} color={color} />,
       path: '/(tabs)/profile',
-      roles: ['superadmin', 'admin', 'finance', 'worker', 'citizen'],
+      roles: ['super_admin', 'utility_admin', 'finance', 'worker', 'end_user'],
     },
   ];
   

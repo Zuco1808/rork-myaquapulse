@@ -1,451 +1,494 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  ScrollView, 
-  TouchableOpacity, 
+import React, { useState, useCallback } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  FlatList,
   SafeAreaView,
-  Platform
+  RefreshControl,
+  Platform,
+  ActivityIndicator,
+  Modal,
+  ScrollView,
+  TouchableOpacity,
 } from 'react-native';
-import { useRouter } from 'expo-router';
-import { 
-  BarChart2, 
-  Calendar, 
-  ChevronLeft, 
-  ChevronRight, 
-  Download,
+import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
+import {
   Droplet,
-  Menu
+  Calendar,
+  CheckCircle,
+  Clock,
+  X,
+  Camera,
+  Wifi,
+  ClipboardList,
+  BarChart2,
+  AlertTriangle,
 } from 'lucide-react-native';
 import { Header } from '@/components/layout/Header';
 import { Card } from '@/components/ui/Card';
-import { Button } from '@/components/ui/Button';
-import { Drawer } from '@/components/layout/Drawer';
+import { EmptyState } from '@/components/ui/EmptyState';
 import { useAuthStore } from '@/store/auth-store';
+import { usePermissions } from '@/lib/use-permissions';
+import {
+  getReadings,
+  getReadingsByConnection,
+  getReadingsByUser,
+} from '@/lib/api/readings';
 import Colors from '@/constants/colors';
-import { BarChartConsumption } from '@/components/charts/BarChartConsumption';
+import { captureError } from '@/lib/sentry';
 
-// Define types for consumption data
-interface MonthlyData {
-  month: string;
-  value: number;
-}
+const READ_TYPE_LABEL: Record<string, string> = {
+  manual: 'Ručno',
+  smart: 'Pametni mjerač',
+  estimated: 'Procjena',
+  ocr: 'OCR kamera',
+};
 
-interface YearlyData {
-  year: string;
-  value: number;
-}
+const READ_TYPE_ICON = (type: string) => {
+  switch (type) {
+    case 'smart': return <Wifi size={14} color="#4CAF50" />;
+    case 'ocr': return <Camera size={14} color="#FF9800" />;
+    case 'estimated': return <ClipboardList size={14} color="#9E9E9E" />;
+    default: return <Droplet size={14} color={Colors.primary} />;
+  }
+};
 
-// Type guard functions
-function isMonthlyData(data: MonthlyData | YearlyData): data is MonthlyData {
-  return 'month' in data;
-}
+const formatDate = (ts: number | undefined | null) => {
+  if (!ts) return '—';
+  return new Date(ts).toLocaleDateString('de-DE', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  });
+};
 
-function isYearlyData(data: MonthlyData | YearlyData): data is YearlyData {
-  return 'year' in data;
-}
-
-// Mock consumption data
-const mockMonthlyData: MonthlyData[] = [
-  { month: 'Jan', value: 12.5 },
-  { month: 'Feb', value: 11.8 },
-  { month: 'Mar', value: 13.2 },
-  { month: 'Apr', value: 14.7 },
-  { month: 'Maj', value: 15.3 },
-  { month: 'Jun', value: 18.1 },
-  { month: 'Jul', value: 20.5 },
-  { month: 'Avg', value: 19.8 },
-  { month: 'Sep', value: 16.4 },
-  { month: 'Okt', value: 14.2 },
-  { month: 'Nov', value: 12.9 },
-  { month: 'Dec', value: 13.5 }
-];
-
-const mockYearlyData: YearlyData[] = [
-  { year: '2018', value: 156.8 },
-  { year: '2019', value: 168.2 },
-  { year: '2020', value: 172.5 },
-  { year: '2021', value: 165.9 },
-  { year: '2022', value: 170.3 },
-  { year: '2023', value: 182.9 }
-];
+const formatDateTime = (ts: number | undefined | null) => {
+  if (!ts) return '—';
+  return new Date(ts).toLocaleString('de-DE', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+};
 
 export default function ConsumptionScreen() {
   const router = useRouter();
   const { user } = useAuthStore();
-  
-  const [period, setPeriod] = useState<'monthly' | 'yearly'>('monthly');
-  const [year, setYear] = useState(2023);
-  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-  
-  useEffect(() => {
-    if (!user) {
-      router.replace('/login');
+  const { isEndUser } = usePermissions();
+  const { connectionId } = useLocalSearchParams<{ connectionId?: string }>();
+
+  const PAGE_SIZE = 40;
+  const [readings, setReadings] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [fetchError, setFetchError] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const [pageOffset, setPageOffset] = useState(0);
+  const [selected, setSelected] = useState<any>(null);
+  const [detailVisible, setDetailVisible] = useState(false);
+
+  const fetchData = async () => {
+    if (!user) return;
+    setFetchError(false);
+    setPageOffset(0);
+    setHasMore(true);
+    try {
+      let data: any[];
+      if (connectionId) {
+        data = await getReadingsByConnection(connectionId, { limit: PAGE_SIZE, offset: 0 });
+      } else if (isEndUser) {
+        data = await getReadingsByUser(user.id, { limit: PAGE_SIZE, offset: 0 });
+      } else {
+        data = await getReadings({ limit: PAGE_SIZE, offset: 0 });
+      }
+      setReadings(data);
+      setHasMore(data.length === PAGE_SIZE);
+      setPageOffset(PAGE_SIZE);
+    } catch (err) {
+      captureError(err, { screen: 'consumption', action: 'fetchReadings' });
+      setFetchError(true);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
     }
-  }, [user, router]);
-  
-  const handlePeriodChange = (newPeriod: 'monthly' | 'yearly') => {
-    setPeriod(newPeriod);
   };
-  
-  const handleYearChange = (direction: 'prev' | 'next') => {
-    if (direction === 'prev') {
-      setYear(year - 1);
-    } else {
-      setYear(year + 1);
+
+  const loadMore = async () => {
+    if (loadingMore || !hasMore || !user) return;
+    setLoadingMore(true);
+    try {
+      let data: any[];
+      if (connectionId) {
+        data = await getReadingsByConnection(connectionId, { limit: PAGE_SIZE, offset: pageOffset });
+      } else if (isEndUser) {
+        data = await getReadingsByUser(user.id, { limit: PAGE_SIZE, offset: pageOffset });
+      } else {
+        data = await getReadings({ limit: PAGE_SIZE, offset: pageOffset });
+      }
+      setReadings(prev => [...prev, ...data]);
+      setHasMore(data.length === PAGE_SIZE);
+      setPageOffset(prev => prev + PAGE_SIZE);
+    } catch (err) {
+      captureError(err, { screen: 'consumption', action: 'loadMore' });
+    } finally {
+      setLoadingMore(false);
     }
   };
-  
-  const handleDownloadReport = () => {
-    // In a real app, you would generate and download a report
-    alert('Izvještaj će biti preuzet.');
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchData();
+    }, [user?.id, connectionId]),
+  );
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    fetchData();
   };
-  
-  const calculateAverageConsumption = () => {
-    const data = period === 'monthly' ? mockMonthlyData : mockYearlyData;
-    const sum = data.reduce((acc, item) => acc + item.value, 0);
-    return (sum / data.length).toFixed(1);
+
+  /* ── Stats ─────────────────────────────────────── */
+  const lastReading = readings[0];
+  const totalReadings = readings.length;
+
+  const totalConsumption = (() => {
+    if (readings.length < 2) return null;
+    const sorted = [...readings].sort((a, b) => a.readingDate - b.readingDate);
+    return sorted[sorted.length - 1].value - sorted[0].value;
+  })();
+
+  /* ── Card render ───────────────────────────────── */
+  const renderCard = ({ item }: { item: any }) => (
+    <TouchableOpacity
+      onPress={() => {
+        setSelected(item);
+        setDetailVisible(true);
+      }}
+      activeOpacity={0.8}
+    >
+      <Card style={styles.card}>
+        <View style={styles.cardRow}>
+          {/* Left: icon + date */}
+          <View style={styles.cardLeft}>
+            <View style={styles.iconCircle}>
+              {READ_TYPE_ICON(item.readMethod)}
+            </View>
+            <View>
+              <Text style={styles.cardDate}>{formatDate(item.readingDate)}</Text>
+              <Text style={styles.cardType}>
+                {READ_TYPE_LABEL[item.readMethod] || item.readMethod}
+              </Text>
+              {item.meterSerialNumber && (
+                <Text style={styles.cardSerial}>{item.meterSerialNumber}</Text>
+              )}
+            </View>
+          </View>
+
+          {/* Right: value + status */}
+          <View style={styles.cardRight}>
+            <Text style={styles.cardValue}>{item.value} m³</Text>
+            <View
+              style={[
+                styles.verifiedBadge,
+                {
+                  backgroundColor:
+                    item.status === 'verified' ? '#E8F5E9' : '#FFF8E1',
+                },
+              ]}
+            >
+              {item.status === 'verified' ? (
+                <CheckCircle size={11} color="#4CAF50" />
+              ) : (
+                <Clock size={11} color="#FF9800" />
+              )}
+              <Text
+                style={[
+                  styles.verifiedText,
+                  {
+                    color:
+                      item.status === 'verified' ? '#4CAF50' : '#FF9800',
+                  },
+                ]}
+              >
+                {item.status === 'verified' ? 'Verifikovano' : 'Na čekanju'}
+              </Text>
+            </View>
+          </View>
+        </View>
+      </Card>
+    </TouchableOpacity>
+  );
+
+  /* ── Detail modal ──────────────────────────────── */
+  const renderDetail = () => {
+    if (!selected) return null;
+    return (
+      <Modal
+        visible={detailVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setDetailVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalBox}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Detalji očitanja</Text>
+              <TouchableOpacity onPress={() => setDetailVisible(false)}>
+                <X size={22} color={Colors.text} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.modalBody}>
+              <Row label="Vrijednost" value={`${selected.value} m³`} bold />
+              <Row label="Datum" value={formatDateTime(selected.readingDate)} />
+              <Row
+                label="Metod"
+                value={READ_TYPE_LABEL[selected.readMethod] || selected.readMethod}
+              />
+              {selected.meterSerialNumber && (
+                <Row label="Vodomjer" value={selected.meterSerialNumber} />
+              )}
+              <Row
+                label="Status"
+                value={selected.status === 'verified' ? 'Verifikovano' : 'Na čekanju'}
+              />
+              {selected.notes && (
+                <Row label="Napomena" value={selected.notes} />
+              )}
+            </ScrollView>
+
+            <View style={styles.modalFooter}>
+              <TouchableOpacity
+                style={styles.closeBtn}
+                onPress={() => setDetailVisible(false)}
+              >
+                <Text style={styles.closeBtnText}>Zatvori</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    );
   };
-  
-  const calculateTotalConsumption = () => {
-    const data = period === 'monthly' ? mockMonthlyData : mockYearlyData;
-    return data.reduce((acc, item) => acc + item.value, 0).toFixed(1);
-  };
-  
-  const findMaxConsumption = () => {
-    const data = period === 'monthly' ? mockMonthlyData : mockYearlyData;
-    const maxItem = data.reduce((max, item) => item.value > max.value ? item : max, data[0]);
-    
-    return {
-      period: isMonthlyData(maxItem) ? maxItem.month : isYearlyData(maxItem) ? maxItem.year : '',
-      value: maxItem.value.toFixed(1)
-    };
-  };
-  
-  const findMinConsumption = () => {
-    const data = period === 'monthly' ? mockMonthlyData : mockYearlyData;
-    const minItem = data.reduce((min, item) => item.value < min.value ? item : min, data[0]);
-    
-    return {
-      period: isMonthlyData(minItem) ? minItem.month : isYearlyData(minItem) ? minItem.year : '',
-      value: minItem.value.toFixed(1)
-    };
-  };
-  
-  const maxConsumption = findMaxConsumption();
-  const minConsumption = findMinConsumption();
-  
+
+  /* ── Loading ───────────────────────────────────── */
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <Header
+          title="Historija očitanja"
+          showBack
+          onLeftPress={() => router.back()}
+        />
+        <View style={styles.center}>
+          <ActivityIndicator size="large" color={Colors.primary} />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.safeArea}>
-      <View style={styles.container}>
-        <Header 
-          title="Potrošnja vode"
-          showBack
-          showMenu
-          onLeftPress={() => setIsDrawerOpen(true)}
-        />
-        
-        <Drawer
-          isOpen={isDrawerOpen}
-          onClose={() => setIsDrawerOpen(false)}
-        />
-        
-        <ScrollView 
-          style={styles.scrollView}
-          contentContainerStyle={styles.scrollContent}
-        >
-          <Card style={styles.periodCard}>
-            <View style={styles.periodSelector}>
-              <TouchableOpacity
-                style={[
-                  styles.periodOption,
-                  period === 'monthly' && styles.periodOptionActive
-                ]}
-                onPress={() => handlePeriodChange('monthly')}
-              >
-                <Text style={[
-                  styles.periodOptionText,
-                  period === 'monthly' && styles.periodOptionTextActive
-                ]}>Mjesečno</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity
-                style={[
-                  styles.periodOption,
-                  period === 'yearly' && styles.periodOptionActive
-                ]}
-                onPress={() => handlePeriodChange('yearly')}
-              >
-                <Text style={[
-                  styles.periodOptionText,
-                  period === 'yearly' && styles.periodOptionTextActive
-                ]}>Godišnje</Text>
-              </TouchableOpacity>
-            </View>
-            
-            <View style={styles.yearSelector}>
-              <TouchableOpacity
-                style={styles.yearButton}
-                onPress={() => handleYearChange('prev')}
-              >
-                <ChevronLeft size={24} color={Colors.primary} />
-              </TouchableOpacity>
-              
-              <View style={styles.yearContainer}>
-                <Calendar size={16} color={Colors.textLight} style={styles.yearIcon} />
-                <Text style={styles.yearText}>{year}</Text>
-              </View>
-              
-              <TouchableOpacity
-                style={styles.yearButton}
-                onPress={() => handleYearChange('next')}
-              >
-                <ChevronRight size={24} color={Colors.primary} />
-              </TouchableOpacity>
-            </View>
-          </Card>
-          
-          <Card style={styles.chartCard}>
-            <Text style={styles.chartTitle}>
-              {period === 'monthly' ? 'Mjesečna potrošnja vode' : 'Godišnja potrošnja vode'}
-            </Text>
-            
-            <View style={styles.chartContainer}>
-              <BarChartConsumption 
-                data={period === 'monthly' ? mockMonthlyData : mockYearlyData}
-                xKey={period === 'monthly' ? 'month' : 'year'}
-                yKey="value"
-              />
-            </View>
-            
-            <Button
-              title="Preuzmi izvještaj"
-              variant="outline"
-              leftIcon={<Download size={20} color={Colors.primary} />}
-              onPress={handleDownloadReport}
-              style={styles.downloadButton}
-            />
-          </Card>
-          
-          <View style={styles.statsGrid}>
-            <Card style={styles.statsCard}>
-              <View style={styles.statsIconContainer}>
-                <Droplet size={24} color={Colors.primary} />
-              </View>
-              <Text style={styles.statsValue}>{calculateTotalConsumption()} m³</Text>
-              <Text style={styles.statsLabel}>Ukupna potrošnja</Text>
-            </Card>
-            
-            <Card style={styles.statsCard}>
-              <View style={styles.statsIconContainer}>
-                <BarChart2 size={24} color={Colors.primary} />
-              </View>
-              <Text style={styles.statsValue}>{calculateAverageConsumption()} m³</Text>
-              <Text style={styles.statsLabel}>Prosječna potrošnja</Text>
-            </Card>
-            
-            <Card style={styles.statsCard}>
-              <View style={styles.statsIconContainer}>
-                <Droplet size={24} color={Colors.success} />
-              </View>
-              <Text style={styles.statsValue}>{minConsumption.value} m³</Text>
-              <Text style={styles.statsLabel}>
-                Min. potrošnja ({minConsumption.period})
-              </Text>
-            </Card>
-            
-            <Card style={styles.statsCard}>
-              <View style={styles.statsIconContainer}>
-                <Droplet size={24} color={Colors.error} />
-              </View>
-              <Text style={styles.statsValue}>{maxConsumption.value} m³</Text>
-              <Text style={styles.statsLabel}>
-                Max. potrošnja ({maxConsumption.period})
-              </Text>
-            </Card>
+      <Header
+        title="Historija očitanja"
+        showBack
+        onLeftPress={() => router.back()}
+      />
+
+      {/* Stats row */}
+      {readings.length > 0 && (
+        <View style={styles.statsRow}>
+          <View style={styles.statBox}>
+            <BarChart2 size={18} color={Colors.primary} />
+            <Text style={styles.statValue}>{totalReadings}</Text>
+            <Text style={styles.statLabel}>Očitanja</Text>
           </View>
-          
-          <Card style={styles.tipsCard}>
-            <Text style={styles.tipsTitle}>Savjeti za uštedu vode</Text>
-            
-            <View style={styles.tipItem}>
-              <View style={styles.tipBullet} />
-              <Text style={styles.tipText}>
-                Popravite slavine koje cure - jedna kap u sekundi može potrošiti 10.000 litara vode godišnje.
-              </Text>
+          {lastReading && (
+            <View style={styles.statBox}>
+              <Droplet size={18} color={Colors.primary} />
+              <Text style={styles.statValue}>{lastReading.value} m³</Text>
+              <Text style={styles.statLabel}>Zadnje stanje</Text>
             </View>
-            
-            <View style={styles.tipItem}>
-              <View style={styles.tipBullet} />
-              <Text style={styles.tipText}>
-                Koristite mašine za pranje veša i suđa samo kada su pune.
-              </Text>
+          )}
+          {totalConsumption != null && totalConsumption > 0 && (
+            <View style={styles.statBox}>
+              <Droplet size={18} color="#4CAF50" />
+              <Text style={styles.statValue}>{totalConsumption.toFixed(1)} m³</Text>
+              <Text style={styles.statLabel}>Ukupno (period)</Text>
             </View>
-            
-            <View style={styles.tipItem}>
-              <View style={styles.tipBullet} />
-              <Text style={styles.tipText}>
-                Zatvarajte slavinu dok perete zube ili se brijete.
-              </Text>
-            </View>
-            
-            <View style={styles.tipItem}>
-              <View style={styles.tipBullet} />
-              <Text style={styles.tipText}>
-                Instalirajte štedljive slavine i tuševe koji mogu smanjiti potrošnju vode do 50%.
-              </Text>
-            </View>
-          </Card>
-        </ScrollView>
-      </View>
+          )}
+        </View>
+      )}
+
+      <FlatList
+        data={readings}
+        renderItem={renderCard}
+        keyExtractor={(item) => item.id}
+        contentContainerStyle={styles.list}
+        onEndReached={loadMore}
+        onEndReachedThreshold={0.3}
+        ListFooterComponent={loadingMore ? <ActivityIndicator size="small" color={Colors.primary} style={{ marginVertical: 16 }} /> : null}
+        ListEmptyComponent={
+          fetchError
+            ? <EmptyState
+                title="Greška pri učitavanju"
+                message="Provjeri vezu i pokušaj ponovo."
+                icon={<AlertTriangle size={48} color={Colors.error} />}
+                actionLabel="Pokušaj ponovo"
+                onAction={fetchData}
+              />
+            : <EmptyState
+                title="Nema očitanja"
+                message="Za ovaj priključak još nema unesenih očitanja."
+                icon={<Droplet size={48} color={Colors.textLight} />}
+              />
+        }
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
+      />
+
+      {renderDetail()}
     </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    padding: 16,
-    paddingBottom: Platform.OS === 'android' ? 100 : 80, // Extra padding for Android
-  },
-  periodCard: {
-    padding: 16,
-    marginBottom: 16,
-  },
-  periodSelector: {
+function Row({
+  label,
+  value,
+  bold,
+}: {
+  label: string;
+  value: string;
+  bold?: boolean;
+}) {
+  return (
+    <View style={rowStyles.row}>
+      <Text style={rowStyles.label}>{label}</Text>
+      <Text
+        style={[
+          rowStyles.value,
+          bold && { fontWeight: 'bold', color: Colors.text },
+        ]}
+      >
+        {value}
+      </Text>
+    </View>
+  );
+}
+
+const rowStyles = StyleSheet.create({
+  row: {
     flexDirection: 'row',
-    marginBottom: 16,
-  },
-  periodOption: {
-    flex: 1,
+    justifyContent: 'space-between',
     paddingVertical: 8,
-    alignItems: 'center',
-    borderRadius: 8,
-    backgroundColor: Colors.highlight,
-    marginHorizontal: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
   },
-  periodOptionActive: {
-    backgroundColor: Colors.primary,
-  },
-  periodOptionText: {
+  label: { fontSize: 14, color: Colors.textLight },
+  value: {
     fontSize: 14,
-    fontWeight: '500',
     color: Colors.text,
+    maxWidth: '60%',
+    textAlign: 'right',
   },
-  periodOptionTextActive: {
-    color: '#fff',
-  },
-  yearSelector: {
+});
+
+const styles = StyleSheet.create({
+  safeArea: { flex: 1, backgroundColor: '#fff' },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+
+  statsRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  yearButton: {
-    padding: 8,
-  },
-  yearContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 8,
+    justifyContent: 'space-around',
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
     backgroundColor: Colors.highlight,
   },
-  yearIcon: {
-    marginRight: 8,
-  },
-  yearText: {
+  statBox: { alignItems: 'center', gap: 4 },
+  statValue: {
     fontSize: 16,
     fontWeight: 'bold',
     color: Colors.text,
+    marginTop: 2,
   },
-  chartCard: {
+  statLabel: { fontSize: 11, color: Colors.textLight },
+
+  list: {
     padding: 16,
-    marginBottom: 16,
+    paddingBottom: Platform.OS === 'android' ? 100 : 80,
   },
-  chartTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: Colors.text,
-    marginBottom: 16,
-    textAlign: 'center',
-  },
-  chartContainer: {
-    height: 250,
-    marginBottom: 16,
-  },
-  downloadButton: {
-    marginTop: 8,
-  },
-  statsGrid: {
+  card: { marginBottom: 10 },
+
+  cardRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
     justifyContent: 'space-between',
-    marginBottom: 16,
-  },
-  statsCard: {
-    width: '48%',
-    padding: 16,
-    marginBottom: 16,
     alignItems: 'center',
+    padding: 14,
   },
-  statsIconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+  cardLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
+  iconCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: Colors.highlight,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 12,
   },
-  statsValue: {
-    fontSize: 20,
+  cardDate: { fontSize: 14, fontWeight: '600', color: Colors.text },
+  cardType: { fontSize: 12, color: Colors.textLight, marginTop: 1 },
+  cardSerial: { fontSize: 11, color: Colors.textLight, marginTop: 1 },
+
+  cardRight: { alignItems: 'flex-end' },
+  cardValue: {
+    fontSize: 16,
     fontWeight: 'bold',
-    color: Colors.text,
+    color: Colors.primary,
     marginBottom: 4,
   },
-  statsLabel: {
-    fontSize: 12,
-    color: Colors.textLight,
-    textAlign: 'center',
-  },
-  tipsCard: {
-    padding: 16,
-    marginBottom: 16,
-  },
-  tipsTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: Colors.text,
-    marginBottom: 16,
-  },
-  tipItem: {
+  verifiedBadge: {
     flexDirection: 'row',
-    marginBottom: 12,
+    alignItems: 'center',
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 10,
+    gap: 3,
   },
-  tipBullet: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: Colors.primary,
-    marginTop: 6,
-    marginRight: 8,
-  },
-  tipText: {
+  verifiedText: { fontSize: 10, fontWeight: '600' },
+
+  /* Modal */
+  modalOverlay: {
     flex: 1,
-    fontSize: 14,
-    color: Colors.text,
-    lineHeight: 20,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'flex-end',
   },
+  modalBox: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    maxHeight: '70%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  modalTitle: { fontSize: 17, fontWeight: 'bold', color: Colors.text },
+  modalBody: { padding: 16 },
+  modalFooter: { padding: 16, borderTopWidth: 1, borderTopColor: Colors.border },
+  closeBtn: {
+    backgroundColor: Colors.highlight,
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  closeBtnText: { fontSize: 15, fontWeight: '600', color: Colors.text },
 });

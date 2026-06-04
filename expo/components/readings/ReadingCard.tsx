@@ -5,7 +5,7 @@ import { FileText, AlertTriangle, CheckCircle, XCircle, Edit3 } from 'lucide-rea
 import { Card } from '../ui/Card';
 import { StatusIndicator } from '../ui/StatusIndicator';
 import Colors from '@/constants/colors';
-import { Reading } from '@/types/location';
+import { Reading } from '@/types/user';
 
 interface ReadingCardProps {
   reading: Reading;
@@ -39,7 +39,7 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
     switch (method) {
       case 'manual': return 'Ručno';
       case 'ocr': return 'OCR';
-      case 'citizen': return 'Korisnik';
+      case 'end_user': return 'Korisnik';
       default: return method || 'Nepoznato';
     }
   };

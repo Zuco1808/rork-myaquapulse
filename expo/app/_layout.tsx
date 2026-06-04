@@ -1,32 +1,30 @@
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { useFonts } from "expo-font";
-import { Stack } from "expo-router";
+import { Stack, useRouter } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
-import { useEffect } from 'react';
-import { registerForPushNotifications, savePushToken } from '@/lib/notifications';
+import * as Notifications from 'expo-notifications';
+import { useEffect, useRef } from 'react';
+import { AppState, AppStateStatus } from 'react-native';
 import { useAuthStore } from '@/store/auth-store';
-import { Platform } from "react-native";
+import { useNotificationStore } from '@/store/notification-store';
+import { registerPushToken, clearPushToken } from '@/lib/push-notifications';
+import { deepLinkForNotification } from '@/lib/notification-routing';
+import { initSentry, Sentry } from '@/lib/sentry';
 
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { trpc, trpcClient } from "@/lib/trpc";
+// Inicijalizacija što ranije — prije renderinga bilo čega
+initSentry();
+
+SplashScreen.preventAutoHideAsync();
 
 export const unstable_settings = {
-  // Ensure that reloading on `/modal` keeps a back button present.
   initialRouteName: "(tabs)",
 };
 
-// Create a client
-const queryClient = new QueryClient();
-
-// Prevent the splash screen from auto-hiding before asset loading is complete.
-SplashScreen.preventAutoHideAsync();
-
-export default function RootLayout() {
+function RootLayout() {
   const [loaded, error] = useFonts({
     ...FontAwesome.font,
   });
-
-  const { user } = useAuthStore();
+  const initialize = useAuthStore((s) => s.initialize);
 
   useEffect(() => {
     if (error) {
@@ -37,32 +35,77 @@ export default function RootLayout() {
 
   useEffect(() => {
     if (loaded) {
-      SplashScreen.hideAsync();
+      // Verify the Supabase session before hiding the splash screen so
+      // expired JWTs are cleared before the first screen renders.
+      initialize().finally(() => SplashScreen.hideAsync());
     }
   }, [loaded]);
-
-  useEffect(() => {
-    if (user?.id) {
-      registerForPushNotifications().then(token => {
-        if (token) savePushToken(user.id, token);
-      });
-    }
-  }, [user?.id]);
 
   if (!loaded) {
     return null;
   }
 
-  return (
-    <trpc.Provider client={trpcClient} queryClient={queryClient}>
-      <QueryClientProvider client={queryClient}>
-        <RootLayoutNav />
-      </QueryClientProvider>
-    </trpc.Provider>
-  );
+  return <RootLayoutNav />;
 }
 
+export default Sentry.wrap(RootLayout);
+
 function RootLayoutNav() {
+  const router  = useRouter();
+  const { user } = useAuthStore();
+  const { subscribeRealtime, fetchUnreadCount } = useNotificationStore();
+
+  /* ── Push token + Realtime subscription on login/logout ────────────────── */
+  const prevUserId     = useRef<string | null>(null);
+  const unsubscribeRef = useRef<(() => void) | null>(null);
+
+  useEffect(() => {
+    if (user && user.id !== prevUserId.current) {
+      prevUserId.current = user.id;
+      registerPushToken().catch((err) =>
+        console.warn('[_layout] Push token registration failed:', err),
+      );
+      unsubscribeRef.current = subscribeRealtime(user.id);
+    }
+
+    if (!user && prevUserId.current !== null) {
+      unsubscribeRef.current?.();
+      unsubscribeRef.current = null;
+      clearPushToken().catch(() => {});
+      prevUserId.current = null;
+    }
+  }, [user?.id]);
+
+  /* ── AppState: refresh badge when app comes to foreground ───────────────── */
+  useEffect(() => {
+    const handleAppStateChange = (nextState: AppStateStatus) => {
+      if (nextState === 'active' && user) fetchUnreadCount();
+    };
+    const sub = AppState.addEventListener('change', handleAppStateChange);
+    return () => sub.remove();
+  }, [user?.id]);
+
+  /* ── Foreground notification listeners ──────────────────────────────────── */
+  useEffect(() => {
+    const receivedSub = Notifications.addNotificationReceivedListener(() => {
+      fetchUnreadCount();
+    });
+
+    const responseSub = Notifications.addNotificationResponseReceivedListener((response) => {
+      const data = response.notification.request.content.data as Record<string, any> | undefined;
+      const route = deepLinkForNotification(
+        data?.related_entity_type,
+        data?.related_entity_id,
+      );
+      router.push(route as any);
+    });
+
+    return () => {
+      receivedSub.remove();
+      responseSub.remove();
+    };
+  }, []);
+
   return (
     <Stack
       screenOptions={{
@@ -70,34 +113,71 @@ function RootLayoutNav() {
         contentStyle: { backgroundColor: '#fff' },
       }}
     >
+      {/* ── Core ──────────────────────────────────────────────────────── */}
       <Stack.Screen name="(tabs)" />
-      <Stack.Screen name="login" options={{ gestureEnabled: false }} />
+      <Stack.Screen name="login"    options={{ gestureEnabled: false }} />
       <Stack.Screen name="register" />
-      <Stack.Screen name="readings/[id]" options={{ headerShown: true, title: 'Detalji očitanja' }} />
-      <Stack.Screen name="meters/[id]" options={{ headerShown: true, title: 'Detalji vodomjera' }} />
-      <Stack.Screen name="tasks/[id]" options={{ headerShown: true, title: 'Detalji zadatka' }} />
-      <Stack.Screen name="bills/[id]" options={{ headerShown: true, title: 'Detalji računa' }} />
-      <Stack.Screen name="users" options={{ headerShown: true, title: 'Korisnici' }} />
-      <Stack.Screen name="users/add" options={{ headerShown: true, title: 'Dodaj korisnika' }} />
-      <Stack.Screen name="users/edit/[id]" options={{ headerShown: true, title: 'Uredi korisnika' }} />
-      <Stack.Screen name="users/reports/[id]" options={{ headerShown: true, title: 'Izvještaji korisnika' }} />
-      <Stack.Screen name="companies" options={{ headerShown: true, title: 'Kompanije' }} />
-      <Stack.Screen name="companies/add" options={{ headerShown: true, title: 'Dodaj kompaniju' }} />
-      <Stack.Screen name="companies/edit/[id]" options={{ headerShown: true, title: 'Uredi kompaniju' }} />
-      <Stack.Screen name="companies/[id]" options={{ headerShown: true, title: 'Detalji kompanije' }} />
-      <Stack.Screen name="locations" options={{ headerShown: true, title: 'Lokacije' }} />
-      <Stack.Screen name="locations/add" options={{ headerShown: true, title: 'Dodaj lokaciju' }} />
-      <Stack.Screen name="locations/edit/[id]" options={{ headerShown: true, title: 'Uredi lokaciju' }} />
-      <Stack.Screen name="meters" options={{ headerShown: true, title: 'Vodomjeri' }} />
-      <Stack.Screen name="alerts" options={{ headerShown: true, title: 'Alarmi' }} />
-      <Stack.Screen name="tasks" options={{ headerShown: true, title: 'Zadaci' }} />
-      <Stack.Screen name="my-meters" options={{ headerShown: false, title: 'Moj pregled' }} />
-      <Stack.Screen name="bills" options={{ headerShown: true, title: 'Računi' }} />
-      <Stack.Screen name="support" options={{ headerShown: true, title: 'Podrška' }} />
-      <Stack.Screen name="notifications" options={{ headerShown: true, title: 'Notifikacije' }} />
-      <Stack.Screen name="notifications/send" options={{ headerShown: true, title: 'Pošalji obavijest' }} />
-      <Stack.Screen name="settings" options={{ headerShown: true, title: 'Postavke' }} />
-      <Stack.Screen name="modal" options={{ presentation: "modal" }} />
+      <Stack.Screen name="modal"    options={{ presentation: 'modal' }} />
+
+      {/* ── Users ─────────────────────────────────────────────────────── */}
+      {/* All user screens have a custom <Header> component */}
+      <Stack.Screen name="users" />
+      <Stack.Screen name="users/add" />
+      <Stack.Screen name="users/edit/[id]" />
+      {/* users/reports uses the native nav header (no custom <Header>) */}
+      <Stack.Screen name="users/reports/[id]" options={{ headerShown: false }} />
+
+      {/* ── Companies / Vodovodi ──────────────────────────────────────── */}
+      <Stack.Screen name="companies" />
+      <Stack.Screen name="companies/[id]" />
+      <Stack.Screen name="companies/add" />
+      <Stack.Screen name="companies/edit/[id]" />
+
+      {/* ── Distributors ──────────────────────────────────────────────── */}
+      <Stack.Screen name="distributors" />
+      <Stack.Screen name="distributors/[id]" />
+      <Stack.Screen name="distributors/add" />
+      <Stack.Screen name="distributors/edit/[id]" />
+
+      {/* ── Locations ─────────────────────────────────────────────────── */}
+      <Stack.Screen name="locations" />
+      <Stack.Screen name="locations/add" />
+      <Stack.Screen name="locations/edit/[id]" />
+
+      {/* ── Meters / Vodomjeri ────────────────────────────────────────── */}
+      <Stack.Screen name="meters" />
+      <Stack.Screen name="meters/add" />
+      <Stack.Screen name="meters/edit/[id]" />
+
+      {/* ── Readings / Consumption ────────────────────────────────────── */}
+      <Stack.Screen name="consumption" />
+
+      {/* ── Bills / Invoices ──────────────────────────────────────────── */}
+      <Stack.Screen name="bills" />
+      <Stack.Screen name="bills/[id]" />
+
+      {/* ── Tasks / Alerts ────────────────────────────────────────────── */}
+      <Stack.Screen name="tasks" />
+      <Stack.Screen name="tasks/[id]" />
+      <Stack.Screen name="alerts" />
+
+      {/* ── Pricing ───────────────────────────────────────────────────── */}
+      <Stack.Screen name="pricing" />
+      <Stack.Screen name="pricing/periods" />
+      <Stack.Screen name="pricing/user-groups" />
+      <Stack.Screen name="pricing/packages/[id]" />
+
+      {/* ── Notifications ─────────────────────────────────────────────── */}
+      <Stack.Screen name="notifications" />
+      <Stack.Screen name="notifications/send" />
+
+      {/* ── Support ───────────────────────────────────────────────────── */}
+      <Stack.Screen name="support" />
+      <Stack.Screen name="support/report-issue" />
+      <Stack.Screen name="support/contact" />
+      <Stack.Screen name="support/faq" />
+      <Stack.Screen name="support/guides" />
+      <Stack.Screen name="support/emergency" />
     </Stack>
   );
 }

@@ -1,196 +1,136 @@
 import { create } from 'zustand';
-import { persist, createJSONStorage } from 'zustand/middleware';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Notifications from 'expo-notifications';
 import { supabase } from '@/lib/supabase';
-
-export type NotificationType = 'info' | 'warning' | 'error' | 'success';
-
-export interface Notification {
-  id: string;
-  userId: string;
-  title: string;
-  message: string;
-  type: NotificationType;
-  isRead: boolean;
-  createdAt: number;
-  relatedEntityId?: string;
-  relatedEntityType?: 'meter' | 'reading' | 'bill' | 'task';
-}
-
-export interface SendNotificationInput {
-  title: string;
-  message: string;
-  type: NotificationType;
-  targetAll?: boolean;
-  targetRoles?: string[];
-  targetUserIds?: string[];
-  relatedEntityId?: string;
-  relatedEntityType?: Notification['relatedEntityType'];
-}
+import {
+  getMyNotifications,
+  getUnreadCount,
+  markAsRead as apiMarkAsRead,
+  markAllAsRead as apiMarkAllAsRead,
+  AppNotification,
+} from '@/lib/api/notifications';
 
 interface NotificationState {
-  notifications: Notification[];
+  notifications: AppNotification[];
   unreadCount: number;
   isLoading: boolean;
-  error: string | null;
 
-  fetchNotifications: (userId?: string) => Promise<void>;
-  markAsRead: (notificationId: string) => Promise<void>;
-  markAllAsRead: (userId?: string) => Promise<void>;
-  deleteNotification: (notificationId: string) => Promise<void>;
-  sendNotification: (notification: SendNotificationInput) => Promise<void>;
+  fetchNotifications: () => Promise<void>;
+  fetchUnreadCount: () => Promise<void>;
+  markAsRead: (id: string) => Promise<void>;
+  markAllAsRead: () => Promise<void>;
+  /** Subscribe to real-time inserts for the given userId. Returns unsubscribe fn. */
+  subscribeRealtime: (userId: string) => () => void;
 }
 
-interface NotificationRow {
-  id: string;
-  user_id: string;
-  title: string;
-  message: string;
-  type: NotificationType;
-  is_read: boolean;
-  created_at: string;
-  related_entity_id?: string | null;
-  related_entity_type?: Notification['relatedEntityType'] | null;
-}
+/** Sync Expo app badge with current unread count (best effort). */
+const syncBadge = (count: number) => {
+  Notifications.setBadgeCountAsync(count).catch(() => {});
+};
 
-const mapRow = (row: NotificationRow): Notification => ({
-  id: row.id,
-  userId: row.user_id,
-  title: row.title,
-  message: row.message,
-  type: row.type,
-  isRead: row.is_read,
-  createdAt: new Date(row.created_at).getTime(),
-  relatedEntityId: row.related_entity_id ?? undefined,
-  relatedEntityType: row.related_entity_type ?? undefined,
-});
+export const useNotificationStore = create<NotificationState>((set, get) => ({
+  notifications: [],
+  unreadCount: 0,
+  isLoading: false,
 
-export const useNotificationStore = create<NotificationState>()(
-  persist(
-    (set, get) => ({
-      notifications: [],
-      unreadCount: 0,
-      isLoading: false,
-      error: null,
-
-      fetchNotifications: async (userId?: string) => {
-        set({ isLoading: true, error: null });
-
-        try {
-          let query = supabase
-            .from('notifications')
-            .select('*')
-            .order('created_at', { ascending: false });
-
-          if (userId) {
-            query = query.eq('user_id', userId);
-          }
-
-          const { data, error } = await query;
-
-          if (error) throw error;
-
-          const list = (data ?? []).map((row) => mapRow(row as NotificationRow));
-          set({
-            notifications: list,
-            unreadCount: list.filter((n) => !n.isRead).length,
-            isLoading: false,
-          });
-        } catch {
-          set({ error: 'Failed to fetch notifications', isLoading: false });
-        }
-      },
-
-      markAsRead: async (notificationId: string) => {
-        const { notifications } = get();
-        const updated = notifications.map((n) =>
-          n.id === notificationId ? { ...n, isRead: true } : n
-        );
-        set({
-          notifications: updated,
-          unreadCount: updated.filter((n) => !n.isRead).length,
-        });
-
-        await supabase
-          .from('notifications')
-          .update({ is_read: true })
-          .eq('id', notificationId);
-      },
-
-      markAllAsRead: async (userId?: string) => {
-        const { notifications } = get();
-        const updated = notifications.map((n) =>
-          userId ? (n.userId === userId ? { ...n, isRead: true } : n) : { ...n, isRead: true }
-        );
-        set({
-          notifications: updated,
-          unreadCount: updated.filter((n) => !n.isRead).length,
-        });
-
-        let query = supabase.from('notifications').update({ is_read: true });
-        if (userId) query = query.eq('user_id', userId);
-        await query;
-      },
-
-      deleteNotification: async (notificationId: string) => {
-        const { notifications } = get();
-        const updated = notifications.filter((n) => n.id !== notificationId);
-        set({
-          notifications: updated,
-          unreadCount: updated.filter((n) => !n.isRead).length,
-        });
-
-        await supabase.from('notifications').delete().eq('id', notificationId);
-      },
-
-      sendNotification: async (notification: SendNotificationInput) => {
-        set({ isLoading: true, error: null });
-
-        try {
-          let targetIds: string[] = [];
-
-          if (notification.targetUserIds && notification.targetUserIds.length > 0) {
-            targetIds = notification.targetUserIds;
-          } else if (notification.targetAll) {
-            const { data } = await supabase.from('profiles').select('id');
-            targetIds = (data ?? []).map((p) => p.id as string);
-          } else if (notification.targetRoles && notification.targetRoles.length > 0) {
-            const { data } = await supabase
-              .from('profiles')
-              .select('id')
-              .in('role', notification.targetRoles);
-            targetIds = (data ?? []).map((p) => p.id as string);
-          }
-
-          if (targetIds.length === 0) {
-            set({ isLoading: false });
-            return;
-          }
-
-          const rows = targetIds.map((uid) => ({
-            user_id: uid,
-            title: notification.title,
-            message: notification.message,
-            type: notification.type,
-            is_read: false,
-            related_entity_id: notification.relatedEntityId ?? null,
-            related_entity_type: notification.relatedEntityType ?? null,
-            created_at: new Date().toISOString(),
-          }));
-
-          const { error } = await supabase.from('notifications').insert(rows);
-          if (error) throw error;
-
-          set({ isLoading: false });
-        } catch {
-          set({ error: 'Failed to send notification', isLoading: false });
-          throw new Error('Failed to send notification');
-        }
-      },
-    }),
-    {
-      name: 'notification-storage',
-      storage: createJSONStorage(() => AsyncStorage),
+  fetchNotifications: async () => {
+    set({ isLoading: true });
+    try {
+      const data = await getMyNotifications();
+      const unreadCount = data.filter((n) => !n.is_read).length;
+      set({ notifications: data, unreadCount, isLoading: false });
+      syncBadge(unreadCount);
+    } catch {
+      set({ isLoading: false });
     }
-  )
-);
+  },
+
+  fetchUnreadCount: async () => {
+    try {
+      const count = await getUnreadCount();
+      set({ unreadCount: count });
+      syncBadge(count);
+    } catch {}
+  },
+
+  markAsRead: async (id: string) => {
+    try {
+      await apiMarkAsRead(id);
+      set((state) => {
+        const unreadCount = Math.max(0, state.unreadCount - 1);
+        syncBadge(unreadCount);
+        return {
+          notifications: state.notifications.map((n) =>
+            n.id === id ? { ...n, is_read: true } : n,
+          ),
+          unreadCount,
+        };
+      });
+    } catch {}
+  },
+
+  markAllAsRead: async () => {
+    try {
+      await apiMarkAllAsRead();
+      set((state) => {
+        syncBadge(0);
+        return {
+          notifications: state.notifications.map((n) => ({ ...n, is_read: true })),
+          unreadCount: 0,
+        };
+      });
+    } catch {}
+  },
+
+  /**
+   * Opens a Supabase Realtime channel that listens for INSERT events on
+   * `notifications` filtered to the current user. New rows are prepended to
+   * the list and the badge is updated immediately — no polling required.
+   *
+   * Call this once after login (from _layout.tsx) and call the returned
+   * cleanup function on logout.
+   */
+  subscribeRealtime: (userId: string) => {
+    const channel = supabase
+      .channel(`notifications:${userId}`)
+      .on(
+        'postgres_changes',
+        {
+          event:  'INSERT',
+          schema: 'public',
+          table:  'notifications',
+          filter: `user_id=eq.${userId}`,
+        },
+        (payload) => {
+          const raw = payload.new as any;
+          const notif: AppNotification = {
+            id:                  raw.id,
+            user_id:             raw.user_id,
+            utility_id:          raw.utility_id ?? null,
+            title:               raw.title,
+            message:             raw.message,
+            type:                raw.type,
+            is_read:             raw.is_read,
+            related_entity_id:   raw.related_entity_id   ?? null,
+            related_entity_type: raw.related_entity_type ?? null,
+            created_at:          raw.created_at,
+            created_by:          raw.created_by ?? null,
+          };
+
+          set((state) => {
+            const unreadCount = state.unreadCount + 1;
+            syncBadge(unreadCount);
+            return {
+              notifications: [notif, ...state.notifications],
+              unreadCount,
+            };
+          });
+        },
+      )
+      .subscribe();
+
+    // Return cleanup function
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  },
+}));

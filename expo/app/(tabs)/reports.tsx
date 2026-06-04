@@ -1,397 +1,417 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Alert,
-  ActivityIndicator,
   Platform,
+  ActivityIndicator,
+  SafeAreaView,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useFocusEffect } from 'expo-router';
 import {
   BarChart3,
-  Download,
-  Calendar,
   ChevronDown,
   Droplet,
   DollarSign,
   Users,
-  AlertTriangle,
+  ClipboardList,
 } from 'lucide-react-native';
 import { Card } from '@/components/ui/Card';
-import { Button } from '@/components/ui/Button';
 import { useAuthStore } from '@/store/auth-store';
-import {
-  getConsumptionReport,
-  getFinancialReport,
-  getUsersReport,
-  getAlertsReport,
-  type ReportPeriod,
-  type ChartReport,
-  type UsersReport,
-  type AlertsReport,
-} from '@/lib/api/reports';
+import { supabase } from '@/lib/supabase';
 import Colors from '@/constants/colors';
 
-type ReportType = 'consumption' | 'financial' | 'users' | 'alerts';
+/* ── Types ─────────────────────────────────────── */
+interface BarItem {
+  label: string;
+  value: number;
+}
 
-const reportTypes: { id: ReportType; label: string; icon: React.ReactNode }[] = [
-  { id: 'consumption', label: 'Potrošnja vode', icon: <Droplet size={20} color={Colors.primary} /> },
-  { id: 'financial', label: 'Finansijski izvještaji', icon: <DollarSign size={20} color={Colors.primary} /> },
-  { id: 'users', label: 'Korisnici', icon: <Users size={20} color={Colors.primary} /> },
-  { id: 'alerts', label: 'Alarmi i anomalije', icon: <AlertTriangle size={20} color={Colors.primary} /> },
+/* ── Helpers ───────────────────────────────────── */
+const BOSNIAN_MONTHS = [
+  'Jan', 'Feb', 'Mar', 'Apr', 'Maj', 'Jun',
+  'Jul', 'Avg', 'Sep', 'Okt', 'Nov', 'Dec',
 ];
 
-const timePeriods: { id: ReportPeriod; label: string }[] = [
-  { id: 'day', label: 'Dan' },
-  { id: 'week', label: 'Sedmica' },
-  { id: 'month', label: 'Mjesec' },
-  { id: 'quarter', label: 'Kvartal' },
-  { id: 'year', label: 'Godina' },
+/** Build last-N-months skeleton [{ key: 'YYYY-MM', label: 'Mon' }] */
+const lastNMonths = (n: number) => {
+  const result: { key: string; label: string }[] = [];
+  for (let i = n - 1; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(1);
+    d.setMonth(d.getMonth() - i);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    result.push({ key, label: BOSNIAN_MONTHS[d.getMonth()] });
+  }
+  return result;
+};
+
+/* ── Report types ───────────────────────────────── */
+type ReportType = 'consumption' | 'financial' | 'users' | 'tasks';
+
+const REPORT_TYPES: { id: ReportType; label: string; icon: React.ReactNode }[] = [
+  { id: 'consumption', label: 'Potrošnja vode', icon: <Droplet size={18} color={Colors.primary} /> },
+  { id: 'financial', label: 'Finansije', icon: <DollarSign size={18} color={Colors.primary} /> },
+  { id: 'users', label: 'Korisnici', icon: <Users size={18} color={Colors.primary} /> },
+  { id: 'tasks', label: 'Zadaci / kvarovi', icon: <ClipboardList size={18} color={Colors.primary} /> },
 ];
 
-const formatNumber = (n: number): string =>
-  n.toLocaleString('bs-BA', { maximumFractionDigits: 2 });
-
-const formatTrend = (pct: number | null): string => {
-  if (pct === null) return '—';
-  return `${pct > 0 ? '+' : ''}${pct}%`;
-};
-
-const formatDate = (timestamp: number): string => {
-  const d = new Date(timestamp);
-  if (Number.isNaN(d.getTime())) return '—';
-  return d.toLocaleDateString('bs-BA');
-};
-
+/* ════════════════════════════════════════════════ */
 export default function ReportsScreen() {
-  const router = useRouter();
   const { user } = useAuthStore();
 
-  const [selectedReportType, setSelectedReportType] = useState<ReportType>('consumption');
-  const [selectedPeriod, setSelectedPeriod] = useState<ReportPeriod>('month');
-  const [showReportTypes, setShowReportTypes] = useState(false);
-  const [showPeriods, setShowPeriods] = useState(false);
+  const [reportType, setReportType] = useState<ReportType>('consumption');
+  const [showTypePicker, setShowTypePicker] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  const [isLoading, setIsLoading] = useState(true);
-  const [consumption, setConsumption] = useState<ChartReport | null>(null);
-  const [financial, setFinancial] = useState<ChartReport | null>(null);
-  const [usersReport, setUsersReport] = useState<UsersReport | null>(null);
-  const [alertsReport, setAlertsReport] = useState<AlertsReport | null>(null);
+  /* ── Consumption data ──────────────────────────── */
+  const [consumptionData, setConsumptionData] = useState<BarItem[]>([]);
+  const [totalConsumption, setTotalConsumption] = useState(0);
+  const [avgConsumption, setAvgConsumption] = useState(0);
 
-  useEffect(() => {
-    if (!user) {
-      router.replace('/login');
-      return;
+  /* ── Financial data ────────────────────────────── */
+  const [financialData, setFinancialData] = useState<BarItem[]>([]);
+  const [totalRevenue, setTotalRevenue] = useState(0);
+  const [pendingRevenue, setPendingRevenue] = useState(0);
+
+  /* ── Users data ────────────────────────────────── */
+  const [usersStats, setUsersStats] = useState({
+    total: 0,
+    active: 0,
+    workers: 0,
+    endUsers: 0,
+    connections: 0,
+  });
+
+  /* ── Tasks data ────────────────────────────────── */
+  const [tasksStats, setTasksStats] = useState({
+    open: 0,
+    inProgress: 0,
+    done: 0,
+    cancelled: 0,
+    urgent: 0,
+  });
+
+  /* ── Fetch ─────────────────────────────────────── */
+  const fetchAll = async () => {
+    setLoading(true);
+    try {
+      await Promise.all([
+        fetchConsumption(),
+        fetchFinancial(),
+        fetchUsers(),
+        fetchTasks(),
+      ]);
+    } finally {
+      setLoading(false);
     }
+  };
 
-    let active = true;
-    setIsLoading(true);
-    (async () => {
-      try {
-        if (selectedReportType === 'consumption') {
-          const r = await getConsumptionReport(selectedPeriod);
-          if (active) setConsumption(r);
-        } else if (selectedReportType === 'financial') {
-          const r = await getFinancialReport(selectedPeriod);
-          if (active) setFinancial(r);
-        } else if (selectedReportType === 'users') {
-          const r = await getUsersReport();
-          if (active) setUsersReport(r);
-        } else if (selectedReportType === 'alerts') {
-          const r = await getAlertsReport();
-          if (active) setAlertsReport(r);
-        }
-      } catch (error) {
-        console.error('Greška pri učitavanju izvještaja:', error);
-        if (active) Alert.alert('Greška', 'Nije moguće učitati izvještaj. Pokušajte ponovo.');
-      } finally {
-        if (active) setIsLoading(false);
-      }
+  const fetchConsumption = async () => {
+    const months = lastNMonths(6);
+
+    // Fetch from one extra month back so we have a base reading for the first
+    // month of the 6-month window (needed to compute the delta for month[0]).
+    const sinceBase = (() => {
+      const d = new Date();
+      d.setDate(1);
+      d.setMonth(d.getMonth() - 6);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
     })();
 
-    return () => {
-      active = false;
-    };
-  }, [user, router, selectedReportType, selectedPeriod]);
+    const { data } = await supabase
+      .from('meter_readings')
+      .select('connection_id, reading_value, reading_date')
+      .gte('reading_date', sinceBase)
+      .order('reading_date', { ascending: true });
 
-  const handleReportTypeChange = (type: ReportType) => {
-    setSelectedReportType(type);
-    setShowReportTypes(false);
+    // Group readings per connection so we can compute per-connection deltas
+    const byConnection: Record<string, { date: string; value: number }[]> = {};
+    (data || []).forEach((r: any) => {
+      const cid = r.connection_id as string;
+      if (!byConnection[cid]) byConnection[cid] = [];
+      byConnection[cid].push({
+        date: String(r.reading_date),
+        value: Number(r.reading_value) || 0,
+      });
+    });
+
+    // Delta between consecutive readings → assign to month of the later reading
+    const grouped: Record<string, number> = {};
+    Object.values(byConnection).forEach((readings) => {
+      for (let i = 1; i < readings.length; i++) {
+        const delta = readings[i].value - readings[i - 1].value;
+        // Ignore negative deltas (meter replacement / data error)
+        if (delta > 0) {
+          const key = readings[i].date.slice(0, 7);
+          grouped[key] = (grouped[key] || 0) + delta;
+        }
+      }
+    });
+
+    const items = months.map((m) => ({
+      label: m.label,
+      value: Math.round(grouped[m.key] || 0),
+    }));
+    setConsumptionData(items);
+    const total = items.reduce((s, i) => s + i.value, 0);
+    setTotalConsumption(total);
+    setAvgConsumption(items.length ? Math.round(total / items.length) : 0);
   };
 
-  const handlePeriodChange = (period: ReportPeriod) => {
-    setSelectedPeriod(period);
-    setShowPeriods(false);
+  const fetchFinancial = async () => {
+    const months = lastNMonths(6);
+    const since = months[0].key + '-01';
+
+    const { data: allInvoices } = await supabase
+      .from('invoices')
+      .select('amount_bam, status, period_from')
+      .gte('period_from', since);
+
+    const grouped: Record<string, number> = {};
+    let pending = 0;
+    let paid = 0;
+
+    (allInvoices || []).forEach((inv: any) => {
+      const amount = Number(inv.amount_bam) || 0;
+      if (inv.status === 'paid') {
+        const key = String(inv.period_from).slice(0, 7);
+        grouped[key] = (grouped[key] || 0) + amount;
+        paid += amount;
+      }
+      if (inv.status === 'pending' || inv.status === 'sent' || inv.status === 'overdue') {
+        pending += amount;
+      }
+    });
+
+    const items = months.map((m) => ({
+      label: m.label,
+      value: Math.round(grouped[m.key] || 0),
+    }));
+    setFinancialData(items);
+    setTotalRevenue(Math.round(paid));
+    setPendingRevenue(Math.round(pending));
   };
 
-  const handleExport = () => {
-    if (Platform.OS === 'web' && typeof window !== 'undefined') {
-      window.print();
-    } else {
-      Alert.alert(
-        'Izvoz izvještaja',
-        'Izvoz u PDF/štampanje je dostupno u web verziji aplikacije.',
-        [{ text: 'OK' }],
-      );
-    }
+  const fetchUsers = async () => {
+    const [profilesRes, connectionsRes] = await Promise.all([
+      supabase.from('profiles').select('role, is_active'),
+      supabase.from('connections').select('id', { count: 'exact', head: true }),
+    ]);
+    const profiles = profilesRes.data || [];
+    const connCount = connectionsRes.count || 0;
+
+    setUsersStats({
+      total: profiles.length,
+      active: profiles.filter((p: any) => p.is_active).length,
+      workers: profiles.filter((p: any) => p.role === 'worker').length,
+      endUsers: profiles.filter((p: any) => p.role === 'end_user').length,
+      connections: connCount,
+    });
   };
 
-  const getReportTitle = () => {
-    const reportType = reportTypes.find((r) => r.id === selectedReportType);
-    const period = timePeriods.find((p) => p.id === selectedPeriod);
-    return `${reportType?.label} - ${period?.label}`;
+  const fetchTasks = async () => {
+    const { data } = await supabase
+      .from('tasks')
+      .select('status, priority');
+
+    const tasks = data || [];
+    setTasksStats({
+      open: tasks.filter((t: any) => t.status === 'open').length,
+      inProgress: tasks.filter((t: any) => t.status === 'in_progress').length,
+      done: tasks.filter((t: any) => t.status === 'done').length,
+      cancelled: tasks.filter((t: any) => t.status === 'cancelled').length,
+      urgent: tasks.filter((t: any) => t.priority === 'urgent').length,
+    });
   };
 
-  const renderActions = () => (
-    <View style={styles.reportActions}>
-      <Button
-        title="Preuzmi PDF"
-        variant="outline"
-        size="small"
-        leftIcon={<Download size={16} color={Colors.primary} />}
-        onPress={handleExport}
-      />
-      <Button
-        title="Štampaj"
-        size="small"
-        style={{ marginLeft: 8 }}
-        onPress={handleExport}
-      />
-    </View>
-  );
+  useFocusEffect(useCallback(() => { fetchAll(); }, [user?.id]));
 
-  const renderChartReport = (
-    report: ChartReport,
-    unit: string,
-    barColor: string,
-  ) => {
-    const maxValue = Math.max(1, ...report.buckets.map((d) => d.value));
-
+  /* ── Bar chart ─────────────────────────────────── */
+  const renderBarChart = (data: BarItem[], unit: string, color: string) => {
+    const max = Math.max(...data.map((d) => d.value), 1);
     return (
-      <View style={styles.reportContent}>
-        <Text style={styles.reportTitle}>{getReportTitle()}</Text>
-
-        <View style={styles.chartContainer}>
-          <View style={styles.yAxis}>
-            <Text style={styles.axisLabel}>{formatNumber(maxValue)} {unit}</Text>
-            <Text style={styles.axisLabel}>{formatNumber(Math.round(maxValue / 2))} {unit}</Text>
-            <Text style={styles.axisLabel}>0 {unit}</Text>
-          </View>
-
-          <View style={styles.chart}>
-            {report.buckets.map((item, index) => (
-              <View key={index} style={styles.barContainer}>
-                <View
-                  style={[
-                    styles.bar,
-                    {
-                      height: `${(item.value / maxValue) * 100}%`,
-                      backgroundColor: barColor,
-                    },
-                  ]}
-                />
-                <Text style={styles.barLabel}>{item.label}</Text>
-              </View>
-            ))}
-          </View>
+      <View style={styles.chartContainer}>
+        {/* Y axis labels */}
+        <View style={styles.yAxis}>
+          <Text style={styles.axisLabel}>{max} {unit}</Text>
+          <Text style={styles.axisLabel}>{Math.round(max / 2)} {unit}</Text>
+          <Text style={styles.axisLabel}>0</Text>
         </View>
-
-        <View style={styles.statsContainer}>
-          <View style={styles.statItem}>
-            <Text style={styles.statValue}>{formatNumber(report.total)} {unit}</Text>
-            <Text style={styles.statLabel}>Ukupno</Text>
-          </View>
-
-          <View style={styles.statItem}>
-            <Text style={styles.statValue}>{formatNumber(report.average)} {unit}</Text>
-            <Text style={styles.statLabel}>Prosjek po periodu</Text>
-          </View>
-
-          <View style={styles.statItem}>
-            <Text style={styles.statValue}>{formatTrend(report.trendPct)}</Text>
-            <Text style={styles.statLabel}>Trend</Text>
-          </View>
+        {/* Bars */}
+        <View style={styles.chart}>
+          {data.map((item, idx) => (
+            <View key={idx} style={styles.barContainer}>
+              <View
+                style={[
+                  styles.bar,
+                  {
+                    height: `${Math.max((item.value / max) * 100, item.value > 0 ? 2 : 0)}%`,
+                    backgroundColor: color,
+                  },
+                ]}
+              />
+              <Text style={styles.barLabel}>{item.label}</Text>
+            </View>
+          ))}
         </View>
-
-        {renderActions()}
       </View>
     );
   };
 
-  const renderUsersReport = (report: UsersReport) => (
-    <View style={styles.reportContent}>
-      <Text style={styles.reportTitle}>{getReportTitle()}</Text>
-
-      <View style={styles.tableContainer}>
-        <View style={styles.tableHeader}>
-          <Text style={[styles.tableHeaderCell, { flex: 2 }]}>Korisnik</Text>
-          <Text style={[styles.tableHeaderCell, { flex: 1 }]}>Uloga</Text>
-          <Text style={[styles.tableHeaderCell, { flex: 1 }]}>Potrošnja</Text>
-          <Text style={[styles.tableHeaderCell, { flex: 1 }]}>Računi</Text>
-        </View>
-
-        {report.rows.length === 0 ? (
-          <View style={styles.tableRow}>
-            <Text style={[styles.tableCell, { flex: 1 }]}>Nema podataka o korisnicima.</Text>
-          </View>
-        ) : (
-          report.rows.map((row) => (
-            <View key={row.id} style={styles.tableRow}>
-              <Text style={[styles.tableCell, { flex: 2 }]}>{row.name}</Text>
-              <Text style={[styles.tableCell, { flex: 1 }]}>{row.roleLabel}</Text>
-              <Text style={[styles.tableCell, { flex: 1 }]}>{formatNumber(row.consumption)} m³</Text>
-              <Text style={[styles.tableCell, { flex: 1 }]}>{row.billsPaid}/{row.billsTotal}</Text>
-            </View>
-          ))
-        )}
-      </View>
-
-      <View style={styles.statsContainer}>
-        <View style={styles.statItem}>
-          <Text style={styles.statValue}>{report.totalUsers}</Text>
-          <Text style={styles.statLabel}>Ukupno korisnika</Text>
-        </View>
-
-        <View style={styles.statItem}>
-          <Text style={styles.statValue}>{report.newThisMonth}</Text>
-          <Text style={styles.statLabel}>Novih ovaj mjesec</Text>
-        </View>
-
-        <View style={styles.statItem}>
-          <Text style={styles.statValue}>{report.collectionRate}%</Text>
-          <Text style={styles.statLabel}>Stopa naplate</Text>
-        </View>
-      </View>
-
-      {renderActions()}
+  /* ── Stat box ───────────────────────────────────── */
+  const renderStatBox = (value: string | number, label: string) => (
+    <View style={styles.statItem}>
+      <Text style={styles.statValue}>{value}</Text>
+      <Text style={styles.statLabel}>{label}</Text>
     </View>
   );
 
-  const renderAlertsReport = (report: AlertsReport) => (
-    <View style={styles.reportContent}>
-      <Text style={styles.reportTitle}>{getReportTitle()}</Text>
+  /* ── Report sections ───────────────────────────── */
+  const renderConsumption = () => (
+    <>
+      {renderBarChart(consumptionData, 'm³', Colors.primary)}
+      <View style={styles.statsRow}>
+        {renderStatBox(`${totalConsumption} m³`, 'Ukupno (6 mj.)')}
+        {renderStatBox(`${avgConsumption} m³`, 'Prosjek / mj.')}
+        {renderStatBox(
+          consumptionData.length
+            ? `${consumptionData[consumptionData.length - 1].value} m³`
+            : '—',
+          'Prošli mj.',
+        )}
+      </View>
+    </>
+  );
 
-      <View style={styles.tableContainer}>
-        <View style={styles.tableHeader}>
-          <Text style={[styles.tableHeaderCell, { flex: 2 }]}>Alarm</Text>
-          <Text style={[styles.tableHeaderCell, { flex: 1 }]}>Tip</Text>
-          <Text style={[styles.tableHeaderCell, { flex: 1 }]}>Datum</Text>
-          <Text style={[styles.tableHeaderCell, { flex: 1 }]}>Status</Text>
-        </View>
+  const renderFinancial = () => (
+    <>
+      {renderBarChart(financialData, 'KM', '#4CAF50')}
+      <View style={styles.statsRow}>
+        {renderStatBox(`${totalRevenue} KM`, 'Naplaćeno (6 mj.)')}
+        {renderStatBox(`${pendingRevenue} KM`, 'Na naplati')}
+        {renderStatBox(
+          financialData.length
+            ? `${financialData[financialData.length - 1].value} KM`
+            : '—',
+          'Prošli mj.',
+        )}
+      </View>
+    </>
+  );
 
-        {report.rows.length === 0 ? (
-          <View style={styles.tableRow}>
-            <Text style={[styles.tableCell, { flex: 1 }]}>Nema alarma.</Text>
+  const renderUsers = () => (
+    <View>
+      {/* Stat cards grid */}
+      <View style={styles.usersGrid}>
+        {[
+          { v: usersStats.total, l: 'Ukupno korisnika' },
+          { v: usersStats.active, l: 'Aktivnih' },
+          { v: usersStats.workers, l: 'Radnika' },
+          { v: usersStats.endUsers, l: 'Krajnjih korisnika' },
+          { v: usersStats.connections, l: 'Priključaka' },
+        ].map(({ v, l }) => (
+          <View key={l} style={styles.usersCard}>
+            <Text style={styles.usersCardValue}>{v}</Text>
+            <Text style={styles.usersCardLabel}>{l}</Text>
           </View>
-        ) : (
-          report.rows.map((row) => (
-            <View key={row.id} style={styles.tableRow}>
-              <Text style={[styles.tableCell, { flex: 2 }]}>{row.title}</Text>
-              <Text style={[styles.tableCell, { flex: 1 }]}>{row.typeLabel}</Text>
-              <Text style={[styles.tableCell, { flex: 1 }]}>{formatDate(row.date)}</Text>
-              <Text
+        ))}
+      </View>
+    </View>
+  );
+
+  const renderTasks = () => {
+    const total = tasksStats.open + tasksStats.inProgress + tasksStats.done + tasksStats.cancelled;
+    return (
+      <View>
+        {[
+          { label: 'Otvoreni', value: tasksStats.open, color: Colors.primary },
+          { label: 'U toku', value: tasksStats.inProgress, color: '#FF9800' },
+          { label: 'Završeni', value: tasksStats.done, color: '#4CAF50' },
+          { label: 'Otkazani', value: tasksStats.cancelled, color: '#9E9E9E' },
+          { label: 'Hitni', value: tasksStats.urgent, color: Colors.error },
+        ].map(({ label, value, color }) => (
+          <View key={label} style={styles.taskRow}>
+            <Text style={styles.taskLabel}>{label}</Text>
+            <View style={styles.taskBarWrapper}>
+              <View
                 style={[
-                  styles.tableCell,
-                  { flex: 1, color: row.resolved ? Colors.success : Colors.warning },
+                  styles.taskBar,
+                  {
+                    width: total > 0 ? `${Math.round((value / total) * 100)}%` : '0%',
+                    backgroundColor: color,
+                  },
                 ]}
-              >
-                {row.resolved ? 'Riješen' : 'Aktivan'}
-              </Text>
+              />
             </View>
-          ))
-        )}
-      </View>
-
-      <View style={styles.statsContainer}>
-        <View style={styles.statItem}>
-          <Text style={styles.statValue}>{report.total}</Text>
-          <Text style={styles.statLabel}>Ukupno alarma</Text>
-        </View>
-
-        <View style={styles.statItem}>
-          <Text style={styles.statValue}>{report.active}</Text>
-          <Text style={styles.statLabel}>Aktivnih</Text>
-        </View>
-
-        <View style={styles.statItem}>
-          <Text style={styles.statValue}>{report.resolved}</Text>
-          <Text style={styles.statLabel}>Riješenih</Text>
+            <Text style={[styles.taskCount, { color }]}>{value}</Text>
+          </View>
+        ))}
+        <View style={styles.statsRow}>
+          {renderStatBox(total, 'Ukupno zadataka')}
+          {renderStatBox(tasksStats.open + tasksStats.inProgress, 'Aktivnih')}
+          {renderStatBox(tasksStats.urgent, 'Hitnih')}
         </View>
       </View>
+    );
+  };
 
-      {renderActions()}
-    </View>
-  );
-
-  const renderReportContent = () => {
-    if (isLoading) {
-      return (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={Colors.primary} />
-          <Text style={styles.loadingText}>Učitavanje izvještaja...</Text>
-        </View>
-      );
-    }
-
-    switch (selectedReportType) {
-      case 'consumption':
-        return consumption ? renderChartReport(consumption, 'm³', Colors.primary) : null;
-      case 'financial':
-        return financial ? renderChartReport(financial, 'KM', Colors.secondary) : null;
-      case 'users':
-        return usersReport ? renderUsersReport(usersReport) : null;
-      case 'alerts':
-        return alertsReport ? renderAlertsReport(alertsReport) : null;
-      default:
-        return null;
+  const renderContent = () => {
+    switch (reportType) {
+      case 'consumption': return renderConsumption();
+      case 'financial':   return renderFinancial();
+      case 'users':       return renderUsers();
+      case 'tasks':       return renderTasks();
+      default:            return renderConsumption();
     }
   };
 
+  /* ── Main render ───────────────────────────────── */
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Izvještaji</Text>
-        <BarChart3 size={24} color={Colors.primary} />
-      </View>
-
-      <View style={styles.filters}>
-        <View style={[styles.filterGroup, showReportTypes && styles.filterGroupElevated]}>
-          <Text style={styles.filterLabel}>Tip izvještaja:</Text>
+    <SafeAreaView style={styles.safeArea}>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.content}
+      >
+        {/* Type picker */}
+        <View style={styles.typePickerWrapper}>
           <TouchableOpacity
-            style={styles.dropdown}
-            onPress={() => setShowReportTypes(!showReportTypes)}
+            style={styles.typePicker}
+            onPress={() => setShowTypePicker(!showTypePicker)}
           >
-            <View style={styles.dropdownContent}>
-              {reportTypes.find((r) => r.id === selectedReportType)?.icon}
-              <Text style={styles.dropdownText}>
-                {reportTypes.find((r) => r.id === selectedReportType)?.label}
+            <View style={styles.typePickerLeft}>
+              {REPORT_TYPES.find((r) => r.id === reportType)?.icon}
+              <Text style={styles.typePickerText}>
+                {REPORT_TYPES.find((r) => r.id === reportType)?.label}
               </Text>
             </View>
             <ChevronDown size={20} color={Colors.textLight} />
           </TouchableOpacity>
 
-          {showReportTypes && (
-            <View style={styles.dropdownMenu}>
-              {reportTypes.map((type) => (
+          {showTypePicker && (
+            <View style={styles.typeDropdown}>
+              {REPORT_TYPES.map((rt) => (
                 <TouchableOpacity
-                  key={type.id}
+                  key={rt.id}
                   style={[
-                    styles.dropdownMenuItem,
-                    selectedReportType === type.id && styles.dropdownMenuItemActive,
+                    styles.typeDropdownItem,
+                    reportType === rt.id && styles.typeDropdownItemActive,
                   ]}
-                  onPress={() => handleReportTypeChange(type.id)}
+                  onPress={() => {
+                    setReportType(rt.id);
+                    setShowTypePicker(false);
+                  }}
                 >
-                  {type.icon}
+                  {rt.icon}
                   <Text
                     style={[
-                      styles.dropdownMenuItemText,
-                      selectedReportType === type.id && styles.dropdownMenuItemTextActive,
+                      styles.typeDropdownItemText,
+                      reportType === rt.id && { color: Colors.primary, fontWeight: '600' },
                     ]}
                   >
-                    {type.label}
+                    {rt.label}
                   </Text>
                 </TouchableOpacity>
               ))}
@@ -399,194 +419,104 @@ export default function ReportsScreen() {
           )}
         </View>
 
-        <View style={[styles.filterGroup, showPeriods && styles.filterGroupElevated]}>
-          <Text style={styles.filterLabel}>Period:</Text>
-          <TouchableOpacity
-            style={styles.dropdown}
-            onPress={() => setShowPeriods(!showPeriods)}
-          >
-            <View style={styles.dropdownContent}>
-              <Calendar size={20} color={Colors.primary} />
-              <Text style={styles.dropdownText}>
-                {timePeriods.find((p) => p.id === selectedPeriod)?.label}
+        {/* Report card */}
+        <Card style={styles.reportCard}>
+          {loading ? (
+            <View style={styles.loadingBox}>
+              <ActivityIndicator size="large" color={Colors.primary} />
+            </View>
+          ) : (
+            <>
+              <Text style={styles.reportTitle}>
+                {REPORT_TYPES.find((r) => r.id === reportType)?.label}
               </Text>
-            </View>
-            <ChevronDown size={20} color={Colors.textLight} />
-          </TouchableOpacity>
-
-          {showPeriods && (
-            <View style={styles.dropdownMenu}>
-              {timePeriods.map((period) => (
-                <TouchableOpacity
-                  key={period.id}
-                  style={[
-                    styles.dropdownMenuItem,
-                    selectedPeriod === period.id && styles.dropdownMenuItemActive,
-                  ]}
-                  onPress={() => handlePeriodChange(period.id)}
-                >
-                  <Text
-                    style={[
-                      styles.dropdownMenuItemText,
-                      selectedPeriod === period.id && styles.dropdownMenuItemTextActive,
-                    ]}
-                  >
-                    {period.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+              {renderContent()}
+            </>
           )}
-        </View>
-      </View>
-
-      <Card style={styles.reportCard}>{renderReportContent()}</Card>
-    </ScrollView>
+        </Card>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
-  contentContainer: {
-    padding: 16,
-    paddingBottom: 32,
-  },
-  header: {
+  safeArea: { flex: 1, backgroundColor: '#f4f6f9' },
+  scroll: { flex: 1 },
+  content: { padding: 16, paddingBottom: Platform.OS === 'android' ? 100 : 60 },
+
+  /* Type picker */
+  typePickerWrapper: { marginBottom: 12, zIndex: 10 },
+  typePicker: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 16,
-  },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: Colors.text,
-  },
-  filters: {
-    marginBottom: 16,
-    zIndex: 10,
-  },
-  filterGroup: {
-    marginBottom: 12,
-    position: 'relative',
-    zIndex: 1,
-  },
-  filterGroupElevated: {
-    zIndex: 20,
-    elevation: 20,
-  },
-  filterLabel: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: Colors.text,
-    marginBottom: 8,
-  },
-  dropdown: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: 8,
-    padding: 12,
-    backgroundColor: '#fff',
-  },
-  dropdownContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  dropdownText: {
-    fontSize: 14,
-    color: Colors.text,
-    marginLeft: 8,
-  },
-  dropdownMenu: {
-    position: 'absolute',
-    top: 80,
-    left: 0,
-    right: 0,
     backgroundColor: '#fff',
     borderWidth: 1,
     borderColor: Colors.border,
-    borderRadius: 8,
-    zIndex: 10,
-    elevation: 5,
+    borderRadius: 10,
+    padding: 13,
+  },
+  typePickerLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  typePickerText: { fontSize: 15, fontWeight: '600', color: Colors.text },
+  typeDropdown: {
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: 10,
+    marginTop: 4,
+    overflow: 'hidden',
+    elevation: 4,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.08,
     shadowRadius: 4,
   },
-  dropdownMenuItem: {
+  typeDropdownItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 12,
+    gap: 10,
+    padding: 13,
     borderBottomWidth: 1,
     borderBottomColor: Colors.border,
   },
-  dropdownMenuItemActive: {
-    backgroundColor: Colors.highlight,
-  },
-  dropdownMenuItemText: {
-    fontSize: 14,
-    color: Colors.text,
-    marginLeft: 8,
-  },
-  dropdownMenuItemTextActive: {
-    color: Colors.primary,
-    fontWeight: '500',
-  },
-  reportCard: {
-    marginBottom: 16,
-  },
-  reportContent: {
-    padding: 16,
-  },
+  typeDropdownItemActive: { backgroundColor: Colors.highlight },
+  typeDropdownItemText: { fontSize: 14, color: Colors.text },
+
+  /* Report card */
+  reportCard: { padding: 16 },
+  loadingBox: { height: 200, alignItems: 'center', justifyContent: 'center' },
   reportTitle: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: 'bold',
     color: Colors.text,
-    marginBottom: 16,
+    marginBottom: 18,
     textAlign: 'center',
   },
-  loadingContainer: {
-    padding: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  loadingText: {
-    marginTop: 12,
-    fontSize: 14,
-    color: Colors.textLight,
-  },
+
+  /* Bar chart */
   chartContainer: {
     flexDirection: 'row',
     height: 200,
-    marginBottom: 24,
+    marginBottom: 20,
   },
   yAxis: {
-    width: 60,
+    width: 52,
     height: '100%',
     justifyContent: 'space-between',
     alignItems: 'flex-end',
-    paddingRight: 8,
+    paddingRight: 6,
+    paddingBottom: 20,
   },
-  axisLabel: {
-    fontSize: 12,
-    color: Colors.textLight,
-  },
+  axisLabel: { fontSize: 11, color: Colors.textLight },
   chart: {
     flex: 1,
     flexDirection: 'row',
     justifyContent: 'space-around',
     alignItems: 'flex-end',
-    height: '100%',
     borderLeftWidth: 1,
     borderBottomWidth: 1,
     borderColor: Colors.border,
-    paddingTop: 8,
+    paddingTop: 4,
   },
   barContainer: {
     flex: 1,
@@ -596,67 +526,73 @@ const styles = StyleSheet.create({
     paddingBottom: 20,
   },
   bar: {
-    width: '60%',
-    minHeight: 4,
-    borderTopLeftRadius: 4,
-    borderTopRightRadius: 4,
+    width: '55%',
+    minHeight: 2,
+    borderTopLeftRadius: 3,
+    borderTopRightRadius: 3,
   },
   barLabel: {
     position: 'absolute',
     bottom: 0,
-    fontSize: 12,
+    fontSize: 11,
     color: Colors.textLight,
   },
-  statsContainer: {
+
+  /* Stats row */
+  statsRow: {
     flexDirection: 'row',
     justifyContent: 'space-around',
-    marginBottom: 24,
+    marginTop: 4,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: Colors.border,
   },
-  statItem: {
-    alignItems: 'center',
-    flex: 1,
-  },
+  statItem: { alignItems: 'center' },
   statValue: {
-    fontSize: 18,
+    fontSize: 17,
+    fontWeight: 'bold',
+    color: Colors.primary,
+    marginBottom: 3,
+  },
+  statLabel: { fontSize: 11, color: Colors.textLight, textAlign: 'center' },
+
+  /* Users grid */
+  usersGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    marginBottom: 8,
+  },
+  usersCard: {
+    width: '47%',
+    backgroundColor: Colors.highlight,
+    borderRadius: 10,
+    padding: 14,
+    alignItems: 'center',
+  },
+  usersCardValue: {
+    fontSize: 28,
     fontWeight: 'bold',
     color: Colors.primary,
     marginBottom: 4,
-    textAlign: 'center',
   },
-  statLabel: {
-    fontSize: 12,
-    color: Colors.textLight,
-    textAlign: 'center',
-  },
-  reportActions: {
+  usersCardLabel: { fontSize: 12, color: Colors.textLight, textAlign: 'center' },
+
+  /* Tasks */
+  taskRow: {
     flexDirection: 'row',
-    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 10,
   },
-  tableContainer: {
-    marginBottom: 24,
+  taskLabel: { width: 90, fontSize: 13, color: Colors.text },
+  taskBarWrapper: {
+    flex: 1,
+    height: 10,
+    backgroundColor: Colors.border,
+    borderRadius: 5,
+    overflow: 'hidden',
+    marginHorizontal: 8,
   },
-  tableHeader: {
-    flexDirection: 'row',
-    backgroundColor: Colors.highlight,
-    paddingVertical: 10,
-    paddingHorizontal: 8,
-    borderTopLeftRadius: 8,
-    borderTopRightRadius: 8,
-  },
-  tableHeaderCell: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: Colors.text,
-  },
-  tableRow: {
-    flexDirection: 'row',
-    paddingVertical: 10,
-    paddingHorizontal: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-  },
-  tableCell: {
-    fontSize: 14,
-    color: Colors.text,
-  },
+  taskBar: { height: '100%', borderRadius: 5, minWidth: 4 },
+  taskCount: { width: 30, fontSize: 13, fontWeight: 'bold', textAlign: 'right' },
 });

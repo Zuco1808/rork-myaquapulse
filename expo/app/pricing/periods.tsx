@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -8,264 +8,246 @@ import {
   Alert,
   Modal,
   ActivityIndicator,
+  SafeAreaView,
 } from 'react-native';
-import { useRouter } from 'expo-router';
-import { Plus, X, Calendar } from 'lucide-react-native';
-import { PeriodCard, type PricingPeriod } from '@/components/pricing/PeriodCard';
+import { useRouter, useFocusEffect } from 'expo-router';
+import { Plus, X, Calendar, Info } from 'lucide-react-native';
+import { DatePickerSheet } from '@/components/ui/DatePickerSheet';
+import { PeriodCard, PricingPeriod } from '@/components/pricing/PeriodCard';
 import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { Header } from '@/components/layout/Header';
-import { Drawer } from '@/components/layout/Drawer';
 import Colors from '@/constants/colors';
 import { useAuthStore } from '@/store/auth-store';
+import { usePermissions } from '@/lib/use-permissions';
 import {
-  getPeriods,
-  createPeriod,
-  updatePeriod,
-  deletePeriod,
-  type PricingPeriodDto,
+  getPricingPeriods,
+  createPricingPeriod,
+  updatePricingPeriod,
+  deletePricingPeriod,
 } from '@/lib/api/pricing';
+import { captureError } from '@/lib/sentry';
+
+/* ── date helpers (DD.MM.YYYY ↔ Date) ─────────────────────────────── */
+const parseDMY = (s: string): Date => {
+  const [d, m, y] = s.split('.');
+  const parsed = new Date(+y, +m - 1, +d);
+  return isNaN(parsed.getTime()) ? new Date() : parsed;
+};
+const toDMY = (d: Date): string =>
+  `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()}`;
 
 export default function PeriodsScreen() {
-  const router = useRouter();
+  const router  = useRouter();
   const { user } = useAuthStore();
-  const [periods, setPeriods] = useState<PricingPeriodDto[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
-  const [modalVisible, setModalVisible] = useState(false);
-  const [isEditing, setIsEditing] = useState(false);
-  const [currentPeriod, setCurrentPeriod] = useState<PricingPeriod | null>(null);
-  const [isSaving, setIsSaving] = useState(false);
+  const isSuperAdmin = user?.role === 'super_admin';
+  const utilityId    = user?.utility_id;
+  const canCreate    = !isSuperAdmin && !!utilityId;
 
-  const [periodName, setPeriodName] = useState('');
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
-  const [description, setDescription] = useState('');
-  const [isActive, setIsActive] = useState(false);
+  const [periods,    setPeriods]   = useState<PricingPeriod[]>([]);
+  const [isLoading,  setIsLoading] = useState(true);
+  const [isSaving,   setIsSaving]  = useState(false);
 
-  const [nameError, setNameError] = useState('');
+  /* ── modal state ────────────────────────────────── */
+  const [modalVisible,   setModalVisible]   = useState(false);
+  const [isEditing,      setIsEditing]      = useState(false);
+  const [currentPeriod,  setCurrentPeriod]  = useState<PricingPeriod | null>(null);
+
+  const [periodName,   setPeriodName]   = useState('');
+  const [startDate,    setStartDate]    = useState('');
+  const [endDate,      setEndDate]      = useState('');
+  const [description,  setDescription]  = useState('');
+  const [isActive,     setIsActive]     = useState(false);
+
+  const [nameError,      setNameError]      = useState('');
   const [startDateError, setStartDateError] = useState('');
-  const [endDateError, setEndDateError] = useState('');
+  const [endDateError,   setEndDateError]   = useState('');
+  const [showStartPicker, setShowStartPicker] = useState(false);
+  const [showEndPicker,   setShowEndPicker]   = useState(false);
 
-  const canManagePricing =
-    user?.role === 'superadmin' || user?.role === 'admin' || user?.role === 'finance';
-
-  const loadPeriods = useCallback(async () => {
+  /* ── fetch ──────────────────────────────────────── */
+  const fetchPeriods = async () => {
+    setIsLoading(true);
     try {
-      const data = await getPeriods();
+      const data = await getPricingPeriods(utilityId);
       setPeriods(data);
-    } catch (error) {
-      console.error('Greška pri učitavanju perioda:', error);
-      Alert.alert('Greška', 'Nije moguće učitati periode.');
+    } catch (e: any) {
+      captureError(e, { screen: 'pricing-periods', action: 'fetchPeriods' });
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
-  }, []);
+  };
 
-  useEffect(() => {
-    if (!canManagePricing) {
-      setLoading(false);
+  useFocusEffect(useCallback(() => { fetchPeriods(); }, [utilityId]));
+
+  /* ── modal helpers ──────────────────────────────── */
+  const openAddModal = () => {
+    if (!canCreate) {
+      Alert.alert('Super Admin', 'Upravljanje periodima je dostupno na razini vodovoda.');
       return;
     }
-    loadPeriods();
-  }, [canManagePricing, loadPeriods]);
-
-  const handleAddPeriod = () => {
-    setPeriodName('');
-    setStartDate('');
-    setEndDate('');
-    setDescription('');
-    setIsActive(false);
-    setNameError('');
-    setStartDateError('');
-    setEndDateError('');
-    setIsEditing(false);
-    setCurrentPeriod(null);
+    setPeriodName(''); setStartDate(''); setEndDate('');
+    setDescription(''); setIsActive(false);
+    setNameError(''); setStartDateError(''); setEndDateError('');
+    setIsEditing(false); setCurrentPeriod(null);
     setModalVisible(true);
   };
 
-  const handleEditPeriod = (period: PricingPeriod) => {
+  const openEditModal = (period: PricingPeriod) => {
     setPeriodName(period.name);
     setStartDate(period.startDate);
     setEndDate(period.endDate);
     setDescription(period.description || '');
     setIsActive(period.isActive);
-    setNameError('');
-    setStartDateError('');
-    setEndDateError('');
-    setIsEditing(true);
-    setCurrentPeriod(period);
+    setNameError(''); setStartDateError(''); setEndDateError('');
+    setIsEditing(true); setCurrentPeriod(period);
     setModalVisible(true);
   };
 
-  const handleDeletePeriod = (periodId: string) => {
+  /* ── validation ─────────────────────────────────── */
+  const dateRegex = /^\d{2}\.\d{2}\.\d{4}$/;
+  const validate = () => {
+    let ok = true;
+    if (!periodName.trim()) { setNameError('Naziv perioda je obavezan'); ok = false; } else setNameError('');
+    if (!startDate)         { setStartDateError('Datum početka je obavezan'); ok = false; }
+    else if (!dateRegex.test(startDate)) { setStartDateError('Format: DD.MM.YYYY'); ok = false; }
+    else setStartDateError('');
+    if (!endDate)           { setEndDateError('Datum završetka je obavezan'); ok = false; }
+    else if (!dateRegex.test(endDate)) { setEndDateError('Format: DD.MM.YYYY'); ok = false; }
+    else setEndDateError('');
+    return ok;
+  };
+
+  /* ── save ───────────────────────────────────────── */
+  const handleSave = async () => {
+    if (!validate()) return;
+    setIsSaving(true);
+    try {
+      if (isEditing && currentPeriod) {
+        const updated = await updatePricingPeriod(currentPeriod.id, {
+          name: periodName.trim(), startDate, endDate, description, isActive,
+        });
+        setPeriods((prev) => prev.map((p) => p.id === currentPeriod.id ? updated : p));
+      } else {
+        const created = await createPricingPeriod({
+          utility_id: utilityId!, name: periodName.trim(),
+          startDate, endDate, description, isActive,
+        });
+        setPeriods((prev) => [...prev, created]);
+      }
+      setModalVisible(false);
+    } catch (e: any) {
+      Alert.alert('Greška', e?.message || 'Snimanje nije uspjelo.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  /* ── delete ─────────────────────────────────────── */
+  const handleDelete = (periodId: string) => {
     Alert.alert(
       'Brisanje perioda',
       'Da li ste sigurni da želite obrisati ovaj period?',
       [
         { text: 'Otkaži', style: 'cancel' },
         {
-          text: 'Obriši',
-          style: 'destructive',
+          text: 'Obriši', style: 'destructive',
           onPress: async () => {
             try {
-              await deletePeriod(periodId);
+              await deletePricingPeriod(periodId);
               setPeriods((prev) => prev.filter((p) => p.id !== periodId));
-            } catch (error) {
-              console.error('Greška pri brisanju perioda:', error);
-              Alert.alert('Greška', 'Nije moguće obrisati period.');
+            } catch (e: any) {
+              Alert.alert('Greška', e?.message);
             }
           },
         },
       ],
-      { cancelable: true },
     );
   };
 
-  const validateForm = () => {
-    let isValid = true;
-    const dateRegex = /^\d{2}\.\d{2}\.\d{4}$/;
-
-    if (!periodName.trim()) {
-      setNameError('Naziv perioda je obavezan');
-      isValid = false;
-    } else {
-      setNameError('');
-    }
-
-    if (!startDate) {
-      setStartDateError('Datum početka je obavezan');
-      isValid = false;
-    } else if (!dateRegex.test(startDate)) {
-      setStartDateError('Format datuma mora biti DD.MM.YYYY');
-      isValid = false;
-    } else {
-      setStartDateError('');
-    }
-
-    if (!endDate) {
-      setEndDateError('Datum završetka je obavezan');
-      isValid = false;
-    } else if (!dateRegex.test(endDate)) {
-      setEndDateError('Format datuma mora biti DD.MM.YYYY');
-      isValid = false;
-    } else {
-      setEndDateError('');
-    }
-
-    return isValid;
-  };
-
-  const handleSavePeriod = async () => {
-    if (!validateForm()) return;
-
-    setIsSaving(true);
-    try {
-      if (isEditing && currentPeriod) {
-        await updatePeriod(currentPeriod.id, {
-          name: periodName,
-          startDate,
-          endDate,
-          description,
-          isActive,
-        });
-      } else {
-        await createPeriod({
-          name: periodName,
-          startDate,
-          endDate,
-          description,
-          isActive,
-          companyId: user?.companyId ?? null,
-        });
-      }
-      await loadPeriods();
-      setModalVisible(false);
-    } catch (error) {
-      console.error('Greška pri spremanju perioda:', error);
-      Alert.alert('Greška', 'Nije moguće sačuvati period. Pokušajte ponovo.');
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
+  /* ── access guard ───────────────────────────────── */
+  const { canManageBilling: canManagePricing } = usePermissions();
   if (!canManagePricing) {
     return (
-      <View style={styles.container}>
-        <Text style={styles.noAccessText}>Nemate pristup ovoj stranici.</Text>
-      </View>
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.container}>
+          <Text style={styles.noAccessText}>Nemate pristup ovoj stranici.</Text>
+        </View>
+      </SafeAreaView>
     );
   }
 
-  const activePeriods = periods.filter((p) => p.isActive);
-  const upcomingPeriods = periods.filter((p) => !p.isActive);
+  const activePeriods   = periods.filter((p) => p.isActive);
+  const inactivePeriods = periods.filter((p) => !p.isActive);
 
+  /* ── render ─────────────────────────────────────── */
   return (
-    <>
+    <SafeAreaView style={styles.safeArea}>
       <Header
         title="Periodi cijena"
-        showBack={true}
-        showMenu={true}
+        showBack
         onLeftPress={() => router.back()}
-        onMenuPress={() => setIsDrawerOpen(true)}
       />
 
-      <Drawer isOpen={isDrawerOpen} onClose={() => setIsDrawerOpen(false)} />
-
       <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
+        {isSuperAdmin && (
+          <View style={styles.infoNote}>
+            <Info size={14} color={Colors.info} />
+            <Text style={styles.infoNoteText}>
+              Super admin pregled svih perioda. Za upravljanje koristite račun administratora vodovoda.
+            </Text>
+          </View>
+        )}
+
         <View style={styles.header}>
           <Text style={styles.headerTitle}>Upravljanje periodima</Text>
-          <TouchableOpacity style={styles.addButton} onPress={handleAddPeriod} activeOpacity={0.7}>
-            <Plus size={20} color="#fff" />
-            <Text style={styles.addButtonText}>Dodaj period</Text>
-          </TouchableOpacity>
+          {canCreate && (
+            <TouchableOpacity style={styles.addButton} onPress={openAddModal} activeOpacity={0.7}>
+              <Plus size={20} color="#fff" />
+              <Text style={styles.addButtonText}>Dodaj period</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         <Text style={styles.description}>
-          Periodi omogućavaju definisanje različitih cijena za različite dijelove godine. Na
-          primjer, možete definisati ljetni period sa višim cijenama za prekomjernu potrošnju.
+          Periodi omogućavaju definisanje različitih cijena za različite dijelove godine.
         </Text>
 
-        {loading ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color={Colors.primary} />
-            <Text style={styles.loadingText}>Učitavanje perioda...</Text>
-          </View>
+        {isLoading ? (
+          <ActivityIndicator size="large" color={Colors.primary} style={{ marginTop: 40 }} />
         ) : (
           <>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>Aktivni periodi</Text>
             </View>
-            {activePeriods.length === 0 ? (
-              <Text style={styles.emptyText}>Nema aktivnih perioda.</Text>
-            ) : (
-              activePeriods.map((period) => (
-                <PeriodCard
-                  key={period.id}
-                  period={period}
-                  onEdit={handleEditPeriod}
-                  onDelete={handleDeletePeriod}
-                />
-              ))
-            )}
+            {activePeriods.length === 0
+              ? <Text style={styles.emptyText}>Nema aktivnih perioda.</Text>
+              : activePeriods.map((p) => (
+                  <PeriodCard
+                    key={p.id} period={p}
+                    onEdit={canCreate ? openEditModal : undefined}
+                    onDelete={canCreate ? handleDelete : undefined}
+                    onPress={canCreate ? () => openEditModal(p) : undefined}
+                  />
+                ))
+            }
 
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Nadolazeći periodi</Text>
+              <Text style={styles.sectionTitle}>Nadolazeći / neaktivni periodi</Text>
             </View>
-            {upcomingPeriods.length === 0 ? (
-              <Text style={styles.emptyText}>Nema nadolazećih perioda.</Text>
-            ) : (
-              upcomingPeriods.map((period) => (
-                <PeriodCard
-                  key={period.id}
-                  period={period}
-                  onEdit={handleEditPeriod}
-                  onDelete={handleDeletePeriod}
-                />
-              ))
-            )}
+            {inactivePeriods.length === 0
+              ? <Text style={styles.emptyText}>Nema neaktivnih perioda.</Text>
+              : inactivePeriods.map((p) => (
+                  <PeriodCard
+                    key={p.id} period={p}
+                    onEdit={canCreate ? openEditModal : undefined}
+                    onDelete={canCreate ? handleDelete : undefined}
+                    onPress={canCreate ? () => openEditModal(p) : undefined}
+                  />
+                ))
+            }
           </>
         )}
 
@@ -282,7 +264,7 @@ export default function PeriodsScreen() {
         {/* Add/Edit Period Modal */}
         <Modal
           animationType="slide"
-          transparent={true}
+          transparent
           visible={modalVisible}
           onRequestClose={() => setModalVisible(false)}
         >
@@ -302,27 +284,49 @@ export default function PeriodsScreen() {
                   label="Naziv perioda"
                   placeholder="Unesite naziv perioda"
                   value={periodName}
-                  onChangeText={setPeriodName}
+                  onChangeText={(t) => { setPeriodName(t); if (nameError) setNameError(''); }}
                   error={nameError}
                   leftIcon={<Calendar size={20} color={Colors.textLight} />}
                 />
-
-                <Input
-                  label="Datum početka"
-                  placeholder="DD.MM.YYYY"
-                  value={startDate}
-                  onChangeText={setStartDate}
-                  error={startDateError}
+                {/* Start date */}
+                <Text style={styles.pickerLabel}>Datum početka</Text>
+                <TouchableOpacity
+                  style={[styles.datePickerBtn, startDateError ? styles.datePickerBtnErr : null]}
+                  onPress={() => { setShowStartPicker(true); if (startDateError) setStartDateError(''); }}
+                  activeOpacity={0.7}
+                >
+                  <Calendar size={16} color={startDate ? Colors.primary : Colors.textLight} />
+                  <Text style={startDate ? styles.datePickerVal : styles.datePickerPh}>
+                    {startDate || 'Odaberi datum početka'}
+                  </Text>
+                </TouchableOpacity>
+                {!!startDateError && <Text style={styles.pickerError}>{startDateError}</Text>}
+                <DatePickerSheet
+                  visible={showStartPicker}
+                  value={startDate ? parseDMY(startDate) : new Date()}
+                  onChange={(date) => setStartDate(toDMY(date))}
+                  onClose={() => setShowStartPicker(false)}
                 />
 
-                <Input
-                  label="Datum završetka"
-                  placeholder="DD.MM.YYYY"
-                  value={endDate}
-                  onChangeText={setEndDate}
-                  error={endDateError}
+                {/* End date */}
+                <Text style={styles.pickerLabel}>Datum završetka</Text>
+                <TouchableOpacity
+                  style={[styles.datePickerBtn, endDateError ? styles.datePickerBtnErr : null]}
+                  onPress={() => { setShowEndPicker(true); if (endDateError) setEndDateError(''); }}
+                  activeOpacity={0.7}
+                >
+                  <Calendar size={16} color={endDate ? Colors.primary : Colors.textLight} />
+                  <Text style={endDate ? styles.datePickerVal : styles.datePickerPh}>
+                    {endDate || 'Odaberi datum završetka'}
+                  </Text>
+                </TouchableOpacity>
+                {!!endDateError && <Text style={styles.pickerError}>{endDateError}</Text>}
+                <DatePickerSheet
+                  visible={showEndPicker}
+                  value={endDate ? parseDMY(endDate) : new Date()}
+                  onChange={(date) => setEndDate(toDMY(date))}
+                  onClose={() => setShowEndPicker(false)}
                 />
-
                 <Input
                   label="Opis"
                   placeholder="Unesite opis perioda"
@@ -331,202 +335,92 @@ export default function PeriodsScreen() {
                   multiline
                   numberOfLines={3}
                 />
-
                 <View style={styles.switchContainer}>
                   <Text style={styles.switchLabel}>Aktivan period:</Text>
                   <TouchableOpacity
-                    style={[
-                      styles.switchButton,
-                      isActive ? styles.switchButtonActive : styles.switchButtonInactive,
-                    ]}
+                    style={[styles.switchButton, isActive ? styles.switchBtnOn : styles.switchBtnOff]}
                     onPress={() => setIsActive(!isActive)}
                   >
-                    <Text style={isActive ? styles.switchTextActive : styles.switchTextInactive}>
+                    <Text style={isActive ? styles.switchTextOn : styles.switchTextOff}>
                       {isActive ? 'Da' : 'Ne'}
                     </Text>
                   </TouchableOpacity>
                 </View>
 
                 <View style={styles.modalActions}>
-                  <Button
-                    title="Otkaži"
-                    variant="outline"
-                    onPress={() => setModalVisible(false)}
-                    style={styles.modalButton}
-                    disabled={isSaving}
-                  />
-
-                  <Button
-                    title="Sačuvaj"
-                    onPress={handleSavePeriod}
-                    style={styles.modalButton}
-                    isLoading={isSaving}
-                    disabled={isSaving}
-                  />
+                  <Button title="Otkaži" variant="outline" onPress={() => setModalVisible(false)} style={styles.modalButton} />
+                  <Button title="Sačuvaj" onPress={handleSave} isLoading={isSaving} style={styles.modalButton} />
                 </View>
               </ScrollView>
             </View>
           </View>
         </Modal>
       </ScrollView>
-    </>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
+  safeArea:         { flex: 1, backgroundColor: '#fff' },
+  container:        { flex: 1, backgroundColor: '#fff' },
+  contentContainer: { padding: 16, paddingBottom: 32 },
+  noAccessText:     { fontSize: 16, color: Colors.text, textAlign: 'center', marginTop: 24 },
+  emptyText:        { fontSize: 14, color: Colors.textLight, textAlign: 'center', marginVertical: 12 },
+
+  infoNote: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: Colors.highlight, borderRadius: 8,
+    padding: 12, marginBottom: 14,
   },
-  contentContainer: {
-    padding: 16,
-    paddingBottom: 32,
+  infoNoteText: { fontSize: 12, color: Colors.textLight, flex: 1 },
+
+  header:        { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
+  headerTitle:   { fontSize: 20, fontWeight: 'bold', color: Colors.text },
+  addButton:     { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.primary, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 },
+  addButtonText: { color: '#fff', fontSize: 14, fontWeight: '500', marginLeft: 4 },
+
+  description: { fontSize: 14, color: Colors.textLight, marginBottom: 24, lineHeight: 20 },
+
+  sectionHeader: { marginBottom: 16, marginTop: 8 },
+  sectionTitle:  { fontSize: 18, fontWeight: 'bold', color: Colors.text },
+
+  infoCard:        { marginTop: 24 },
+  infoCardContent: { padding: 16, backgroundColor: Colors.background },
+  infoTitle:       { fontSize: 16, fontWeight: 'bold', color: Colors.text, marginBottom: 8 },
+  infoText:        { fontSize: 14, color: Colors.text, lineHeight: 20 },
+
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
+  modalContent: { width: '90%', maxHeight: '85%', backgroundColor: '#fff', borderRadius: 12, overflow: 'hidden' },
+  modalHeader:  { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: Colors.border },
+  modalTitle:   { fontSize: 18, fontWeight: 'bold', color: Colors.text },
+  closeButton:  { padding: 4 },
+  modalBody:    { padding: 16 },
+  modalActions: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 16, marginBottom: 8 },
+  modalButton:  { flex: 1, marginHorizontal: 8 },
+
+  /* date picker */
+  pickerLabel:      { fontSize: 14, fontWeight: '500', color: Colors.text, marginBottom: 6 },
+  datePickerBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    borderWidth: 1, borderColor: Colors.border,
+    borderRadius: 10, paddingHorizontal: 12, paddingVertical: 13,
+    marginBottom: 4, backgroundColor: '#fff',
   },
-  noAccessText: {
-    fontSize: 16,
-    color: Colors.text,
-    textAlign: 'center',
-    marginTop: 24,
+  datePickerBtnErr: { borderColor: Colors.error },
+  datePickerVal:      { flex: 1, fontSize: 15, color: Colors.text },
+  datePickerPh:       { flex: 1, fontSize: 15, color: Colors.textLight },
+  pickerError:        { fontSize: 12, color: Colors.error, marginBottom: 12 },
+  datePickerDone: {
+    alignItems: 'center', paddingVertical: 10, marginBottom: 8,
+    borderRadius: 8, backgroundColor: Colors.highlight,
   },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: Colors.text,
-  },
-  addButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.primary,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
-  },
-  addButtonText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '500',
-    marginLeft: 4,
-  },
-  description: {
-    fontSize: 14,
-    color: Colors.textLight,
-    marginBottom: 24,
-    lineHeight: 20,
-  },
-  loadingContainer: {
-    padding: 32,
-    alignItems: 'center',
-  },
-  loadingText: {
-    marginTop: 12,
-    fontSize: 14,
-    color: Colors.textLight,
-  },
-  sectionHeader: {
-    marginBottom: 16,
-    marginTop: 8,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: Colors.text,
-  },
-  emptyText: {
-    fontSize: 14,
-    color: Colors.textLight,
-    marginBottom: 16,
-  },
-  infoCard: {
-    marginTop: 24,
-  },
-  infoCardContent: {
-    padding: 16,
-    backgroundColor: Colors.background,
-  },
-  infoTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: Colors.text,
-    marginBottom: 8,
-  },
-  infoText: {
-    fontSize: 14,
-    color: Colors.text,
-    lineHeight: 20,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modalContent: {
-    width: '90%',
-    maxHeight: '80%',
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    overflow: 'hidden',
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: Colors.text,
-  },
-  closeButton: {
-    padding: 4,
-  },
-  modalBody: {
-    padding: 16,
-  },
-  switchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 24,
-  },
-  switchLabel: {
-    fontSize: 16,
-    color: Colors.text,
-  },
-  switchButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-  },
-  switchButtonActive: {
-    backgroundColor: Colors.primary,
-  },
-  switchButtonInactive: {
-    backgroundColor: Colors.card,
-  },
-  switchTextActive: {
-    color: '#fff',
-    fontWeight: '500',
-  },
-  switchTextInactive: {
-    color: Colors.textLight,
-  },
-  modalActions: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 16,
-  },
-  modalButton: {
-    flex: 1,
-    marginHorizontal: 8,
-  },
+  datePickerDoneText: { fontSize: 14, fontWeight: '600', color: Colors.primary },
+
+  switchContainer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 },
+  switchLabel:     { fontSize: 16, color: Colors.text },
+  switchButton:    { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20 },
+  switchBtnOn:     { backgroundColor: Colors.primary },
+  switchBtnOff:    { backgroundColor: Colors.card },
+  switchTextOn:    { color: '#fff', fontWeight: '500' },
+  switchTextOff:   { color: Colors.textLight },
 });

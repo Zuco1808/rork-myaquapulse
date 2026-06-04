@@ -1,138 +1,114 @@
 import { supabase } from '@/lib/supabase';
+import { Location } from '@/types/user';
 
-export interface LocationWithStats {
-  id: string;
-  name: string;
-  address: string;
-  city: string;
-  postalCode: string;
-  companyId: string;
-  type?: string;
-  parentId?: string;
-  buildingCount: number;
-  meterCount: number;
-  userCount: number;
-  createdAt: number;
-}
+/* ── mapper ──────────────────────────────────────────────── */
+const mapLocation = (r: any): Location => ({
+  id:           r.id,
+  name:         r.name,
+  address:      r.address    ?? '',
+  city:         r.city       ?? '',
+  postalCode:   r.postal_code ?? '',
+  country:      r.country    ?? 'BA',
+  companyId:    r.utility_id,
+  type:         r.type       ?? undefined,
+  parentId:     r.parent_id  ?? undefined,
+  coordinates:  (r.latitude != null && r.longitude != null)
+    ? { latitude: Number(r.latitude), longitude: Number(r.longitude) }
+    : undefined,
+  // Computed counts — not stored in DB; returned as null by default
+  buildingCount: r.building_count ?? undefined,
+  meterCount:    r.meter_count    ?? undefined,
+  userCount:     r.user_count     ?? undefined,
+  createdAt:     new Date(r.created_at).getTime(),
+  updatedAt:     r.updated_at ? new Date(r.updated_at).getTime() : undefined,
+});
 
-// Returns all locations enriched with derived counts:
-// meterCount (water_meters at the location), userCount (distinct meter owners),
-// buildingCount (child locations whose parent_id points here).
-export const getLocationsWithStats = async (): Promise<LocationWithStats[]> => {
-  const [locationsRes, metersRes] = await Promise.all([
-    supabase.from('locations').select('*').order('name'),
-    supabase.from('water_meters').select('id, location_id, user_id'),
-  ]);
+/* ── queries ─────────────────────────────────────────────── */
 
-  if (locationsRes.error) throw locationsRes.error;
-  if (metersRes.error) throw metersRes.error;
-
-  const locations = (locationsRes.data || []) as any[];
-  const meters = (metersRes.data || []) as any[];
-
-  const childCountByParent = new Map<string, number>();
-  locations.forEach((loc) => {
-    if (loc.parent_id) {
-      childCountByParent.set(loc.parent_id, (childCountByParent.get(loc.parent_id) || 0) + 1);
-    }
-  });
-
-  const meterCountByLocation = new Map<string, number>();
-  const usersByLocation = new Map<string, Set<string>>();
-  meters.forEach((m) => {
-    if (!m.location_id) return;
-    meterCountByLocation.set(m.location_id, (meterCountByLocation.get(m.location_id) || 0) + 1);
-    if (m.user_id) {
-      const set = usersByLocation.get(m.location_id) || new Set<string>();
-      set.add(m.user_id);
-      usersByLocation.set(m.location_id, set);
-    }
-  });
-
-  return locations.map((loc) => ({
-    id: loc.id,
-    name: loc.name,
-    address: loc.address ?? '',
-    city: loc.city ?? '',
-    postalCode: loc.postal_code ?? '',
-    companyId: loc.company_id ?? '',
-    type: loc.type ?? undefined,
-    parentId: loc.parent_id ?? undefined,
-    buildingCount: childCountByParent.get(loc.id) || 0,
-    meterCount: meterCountByLocation.get(loc.id) || 0,
-    userCount: usersByLocation.get(loc.id)?.size || 0,
-    createdAt: loc.created_at ? new Date(loc.created_at).getTime() : Date.now(),
-  }));
-};
-
-export const getLocations = async () => {
-  const { data, error } = await supabase
+export const getLocations = async (utilityId?: string): Promise<Location[]> => {
+  let q = supabase
     .from('locations')
     .select('*')
+    .eq('is_active', true)
     .order('name');
-
+  if (utilityId) q = q.eq('utility_id', utilityId);
+  const { data, error } = await q;
   if (error) throw error;
-  return data;
+  return (data ?? []).map(mapLocation);
 };
 
-export const getLocationById = async (id: string) => {
+export const getLocationById = async (id: string): Promise<Location> => {
   const { data, error } = await supabase
     .from('locations')
     .select('*')
     .eq('id', id)
     .single();
-
   if (error) throw error;
-  return data;
+  return mapLocation(data);
 };
 
-export const createLocation = async (location: {
-  name: string;
-  address: string;
-  city: string;
-  postal_code: string;
-  company_id?: string;
-  type?: string;
-  parent_id?: string;
-  latitude?: number;
-  longitude?: number;
-}) => {
+/* ── mutations ───────────────────────────────────────────── */
+
+export const createLocation = async (params: {
+  name:         string;
+  address?:     string;
+  city?:        string;
+  postal_code?: string;
+  country?:     string;
+  type?:        string;
+  /** Alias accepted for backward-compat; maps to utility_id */
+  company_id?:  string;
+  utility_id?:  string;
+  parent_id?:   string;
+  latitude?:    number;
+  longitude?:   number;
+}): Promise<Location> => {
+  const { company_id, ...rest } = params;
+  const row = {
+    ...rest,
+    // accept either field name; utility_id takes precedence
+    utility_id: rest.utility_id ?? company_id,
+  };
+
   const { data, error } = await supabase
     .from('locations')
-    .insert(location)
+    .insert(row)
     .select()
     .single();
-
   if (error) throw error;
-  return data;
+  return mapLocation(data);
 };
 
-export const updateLocation = async (id: string, updates: Partial<{
-  name: string;
-  address: string;
-  city: string;
-  postal_code: string;
-  type: string;
-  parent_id: string;
-  latitude: number;
-  longitude: number;
-}>) => {
+export const updateLocation = async (
+  id: string,
+  updates: Partial<{
+    name:        string;
+    address:     string;
+    city:        string;
+    postal_code: string;
+    country:     string;
+    type:        string;
+    parent_id:   string;
+    latitude:    number;
+    longitude:   number;
+    is_active:   boolean;
+  }>,
+): Promise<Location> => {
   const { data, error } = await supabase
     .from('locations')
     .update(updates)
     .eq('id', id)
     .select()
     .single();
-
   if (error) throw error;
-  return data;
+  return mapLocation(data);
 };
 
-export const deleteLocation = async (id: string) => {
+export const deleteLocation = async (id: string): Promise<void> => {
+  // Soft-delete: set is_active=false
   const { error } = await supabase
     .from('locations')
-    .delete()
+    .update({ is_active: false })
     .eq('id', id);
-
   if (error) throw error;
 };

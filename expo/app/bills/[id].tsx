@@ -1,1210 +1,508 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  ScrollView, 
-  TouchableOpacity, 
+import React, { useState, useCallback } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
   Alert,
   Modal,
   SafeAreaView,
   Platform,
-  TextInput as RNTextInput
+  ActivityIndicator,
 } from 'react-native';
-import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { 
-  CreditCard, 
-  Calendar, 
-  DollarSign, 
-  User, 
-  MapPin, 
-  Droplet, 
-  CheckCircle, 
-  Download, 
+import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
+import {
+  CreditCard,
+  Calendar,
+  DollarSign,
+  MapPin,
+  Droplet,
+  CheckCircle,
+  Download,
   Printer,
   X,
-  Menu
+  Clock,
+  FileText,
 } from 'lucide-react-native';
-import { StatusIndicator } from '@/components/ui/StatusIndicator';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Header } from '@/components/layout/Header';
-import { Drawer } from '@/components/layout/Drawer';
 import { useAuthStore } from '@/store/auth-store';
-import {
-  getBillById,
-  updateBillStatus,
-  calculateBillAmount,
-} from '@/lib/api/bills';
+import { usePermissions } from '@/lib/use-permissions';
+import { getBillById, updateBillStatus } from '@/lib/api/bills';
 import Colors from '@/constants/colors';
 
-type BillStatus = 'paid' | 'pending' | 'overdue' | 'issued' | 'draft' | 'cancelled';
+/* ── types ───────────────────────────────────────── */
+type InvoiceStatus = 'draft' | 'pending' | 'sent' | 'paid' | 'overdue' | 'cancelled';
 
-interface BillItem {
-  description: string;
-  amount: number;
-  quantity?: number;
-  pricePerUnit?: number;
-}
-
-interface Bill {
-  id: string;
-  number: string;
-  userId: string;
-  userName: string;
-  userAddress: string;
-  companyId: string;
-  companyName: string;
-  amount: number;
-  status: BillStatus;
-  dueDate: string;
-  paidDate: string | null;
-  period: string;
-  consumption: number;
-  items: BillItem[];
-}
-
-const MONTH_NAMES = [
-  'Januar', 'Februar', 'Mart', 'April', 'Maj', 'Jun',
-  'Jul', 'August', 'Septembar', 'Oktobar', 'Novembar', 'Decembar',
-];
-
-function formatPeriod(fromTs: number, toTs: number): string {
-  const to = new Date(toTs);
-  return `${MONTH_NAMES[to.getMonth()]} ${to.getFullYear()}`;
-}
-
-function formatDate(ts: number | null | undefined): string {
-  if (!ts) return '';
-  return new Date(ts).toLocaleDateString('bs-BA');
-}
-
-function deriveBillNumber(id: string, createdAt: number): string {
-  const year = new Date(createdAt).getFullYear();
-  const shortId = id.slice(-6).toUpperCase();
-  return `F-${year}-${shortId}`;
-}
-
-function mapApiBillToUiBill(api: any): Bill {
-  const consumption = Number(api.consumption ?? 0);
-  const breakdown = consumption > 0
-    ? calculateBillAmount(consumption, 'standard').breakdown
-    : [];
-
-  const items: BillItem[] = breakdown.length > 0
-    ? breakdown.map((b) => ({
-        description: b.label,
-        amount: b.amount,
-        quantity: b.consumption,
-        pricePerUnit: b.pricePerUnit,
-      }))
-    : [{ description: 'Iznos', amount: Number(api.amount ?? 0) }];
-
-  return {
-    id: api.id,
-    number: deriveBillNumber(api.id, api.createdAt ?? Date.now()),
-    userId: api.userId ?? '',
-    userName: api.userName ?? 'Nepoznat korisnik',
-    userAddress: api.locationName ?? '',
-    companyId: '',
-    companyName: 'Vodovod',
-    amount: Number(api.amount ?? 0),
-    status: (api.status ?? 'pending') as BillStatus,
-    dueDate: formatDate(api.dueDate),
-    paidDate: api.paidDate ? formatDate(api.paidDate) : null,
-    period: api.periodFrom && api.periodTo ? formatPeriod(api.periodFrom, api.periodTo) : '',
-    consumption,
-    items,
+type MappedInvoice = ReturnType<typeof fakeMap>;
+function fakeMap(b: any) {
+  return b as {
+    id: string;
+    connection_id: string;
+    utility_id: string;
+    period_from: string;
+    period_to: string;
+    consumption_m3: number | null;
+    amount: number;
+    currency: string;
+    status: InvoiceStatus;
+    due_date: string | null;
+    paid_at: string | null;
+    meterSerial: string;
+    address: string;
+    createdAt: number;
+    periodFrom: number;
+    periodTo: number;
+    dueDate: number | null;
+    paidDate: number | null;
   };
 }
 
+/* ── status helpers ──────────────────────────────── */
+const STATUS_LABEL: Record<InvoiceStatus, string> = {
+  draft: 'Nacrt', pending: 'Na čekanju', sent: 'Poslano',
+  paid: 'Plaćeno', overdue: 'Prekoračeno', cancelled: 'Otkazano',
+};
+const STATUS_COLOR: Record<InvoiceStatus, string> = {
+  draft: '#9E9E9E', pending: '#FF9800', sent: '#2196F3',
+  paid: '#4CAF50',  overdue: '#F44336',  cancelled: '#9E9E9E',
+};
+const STATUS_BG: Record<InvoiceStatus, string> = {
+  draft: '#F5F5F5', pending: '#FFF3E0', sent: '#E3F2FD',
+  paid: '#E8F5E9',  overdue: '#FFEBEE',  cancelled: '#F5F5F5',
+};
+
+function getStatusActions(status: InvoiceStatus): { label: string; next: InvoiceStatus }[] {
+  switch (status) {
+    case 'draft':   return [{ label: 'Aktiviraj', next: 'pending' }];
+    case 'pending': return [{ label: 'Pošalji', next: 'sent' }, { label: 'Plaćeno', next: 'paid' }];
+    case 'sent':    return [{ label: 'Plaćeno', next: 'paid' }, { label: 'Prekoračeno', next: 'overdue' }];
+    case 'overdue': return [{ label: 'Plaćeno', next: 'paid' }];
+    default:        return [];
+  }
+}
+
+const formatDate = (iso: string | null | number) => {
+  if (!iso) return '—';
+  const d = new Date(typeof iso === 'number' ? iso : iso);
+  return d.toLocaleDateString('bs-BA');
+};
+
+const formatPeriod = (from: string, to: string) => {
+  const f = new Date(from);
+  const t = new Date(to);
+  return `${f.toLocaleDateString('bs-BA')} – ${t.toLocaleDateString('bs-BA')}`;
+};
+
+/* ── component ───────────────────────────────────── */
 export default function BillDetailsScreen() {
-  const params = useLocalSearchParams();
-  const router = useRouter();
+  const { id } = useLocalSearchParams<{ id: string }>();
+  const router  = useRouter();
   const { user } = useAuthStore();
-  const { id } = params;
-  
-  const [bill, setBill] = useState<Bill | null>(null);
-  const [paymentModalVisible, setPaymentModalVisible] = useState(false);
-  const [paymentAmount, setPaymentAmount] = useState('');
-  const [pdfModalVisible, setPdfModalVisible] = useState(false);
-  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-  
-  useEffect(() => {
-    if (!user) {
-      router.replace('/login');
-      return;
-    }
 
+  const [bill, setBill]               = useState<any | null>(null);
+  const [loading, setLoading]         = useState(true);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [pdfVisible, setPdfVisible]   = useState(false);
+
+  const { canManageBilling: canManageStatus, isEndUser } = usePermissions();
+  const canPay = isEndUser && bill && ['pending', 'sent', 'overdue'].includes(bill.status);
+
+  /* ── fetch ───────────────────────────────────── */
+  const fetchBill = async () => {
     if (!id) return;
-
-    let cancelled = false;
-    (async () => {
-      try {
-        const apiBill = await getBillById(String(id));
-        if (cancelled) return;
-        const uiBill = mapApiBillToUiBill(apiBill);
-        setBill(uiBill);
-        if (uiBill.amount) {
-          setPaymentAmount(uiBill.amount.toFixed(2));
-        }
-      } catch {
-        if (cancelled) return;
-        Alert.alert('Greška', 'Račun nije pronađen.');
-        router.back();
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [id, router, user]);
-  
-  const handlePayBill = () => {
-    if (!bill) return;
-    setPaymentModalVisible(true);
-  };
-  
-  const handleConfirmPayment = async () => {
-    if (!bill) return;
-
-    const amount = parseFloat(paymentAmount);
-    if (isNaN(amount) || amount <= 0) {
-      Alert.alert("Greška", "Unesite validan iznos za plaćanje.");
-      return;
-    }
-
-    const paidDateIso = new Date().toISOString();
-
     try {
-      await updateBillStatus(bill.id, 'paid', paidDateIso);
-
-      setBill({
-        ...bill,
-        status: 'paid',
-        paidDate: paidDateIso.split('T')[0],
-      });
-      setPaymentModalVisible(false);
-
-      Alert.alert(
-        "Uspjeh",
-        `Račun je uspješno plaćen u iznosu od ${amount.toFixed(2)} KM.`
-      );
+      const data = await getBillById(id);
+      setBill(data);
     } catch {
-      Alert.alert("Greška", "Nije moguće spremiti plaćanje. Pokušajte ponovo.");
-    }
-  };
-  
-  const handleViewPdf = () => {
-    if (!bill) return;
-    setPdfModalVisible(true);
-  };
-  
-  const handlePrintBill = () => {
-    if (Platform.OS === 'web' && typeof window !== 'undefined') {
-      window.print();
-    } else {
-      Alert.alert(
-        'Štampanje',
-        'Štampanje računa trenutno je podržano samo iz web aplikacije.'
-      );
+      Alert.alert('Greška', 'Račun nije pronađen.');
+      router.back();
+    } finally {
+      setLoading(false);
     }
   };
 
-  // Same as Print on web — browser's print dialog has Save as PDF option.
-  const handleDownloadPdf = () => {
-    if (Platform.OS === 'web' && typeof window !== 'undefined') {
-      window.print();
-    } else {
-      Alert.alert(
-        'Preuzimanje PDF-a',
-        'PDF preuzimanje trenutno je podržano samo iz web aplikacije.'
-      );
+  useFocusEffect(useCallback(() => { fetchBill(); }, [id]));
+
+  /* ── status change ───────────────────────────── */
+  const handleStatusChange = async (next: InvoiceStatus) => {
+    if (!bill) return;
+    setActionLoading(true);
+    try {
+      const paidAt = next === 'paid' ? new Date().toISOString() : undefined;
+      const updated = await updateBillStatus(bill.id, next, paidAt);
+      setBill(updated);
+    } catch (e: any) {
+      Alert.alert('Greška', e?.message || 'Promjena statusa nije uspjela.');
+    } finally {
+      setActionLoading(false);
     }
   };
-  
-  if (!bill) {
+
+  /* ── end_user "plaćanje" ─────────────────────── */
+  const handlePayRequest = () => {
+    Alert.alert(
+      'Plaćanje računa',
+      `Ukupan iznos: ${bill?.amount?.toFixed(2)} BAM\n\nPotvrdite plaćanje?`,
+      [
+        { text: 'Otkaži', style: 'cancel' },
+        {
+          text: 'Potvrdi',
+          onPress: () => handleStatusChange('paid'),
+        },
+      ],
+    );
+  };
+
+  /* ── loading ─────────────────────────────────── */
+  if (loading || !bill) {
     return (
       <SafeAreaView style={styles.safeArea}>
-        <View style={styles.container}>
-          <Header 
-            title="Detalji računa" 
-            showBack 
-            showMenu
-            onLeftPress={() => setIsDrawerOpen(true)}
-          />
-          <Drawer
-            isOpen={isDrawerOpen}
-            onClose={() => setIsDrawerOpen(false)}
-          />
-          <View style={styles.loadingContainer}>
-            <Text style={styles.loadingText}>Učitavanje...</Text>
-          </View>
+        <Header title="Detalji računa" showBack onLeftPress={() => router.back()} />
+        <View style={styles.center}>
+          <ActivityIndicator size="large" color={Colors.primary} />
         </View>
       </SafeAreaView>
     );
   }
-  
+
+  const statusActions = canManageStatus ? getStatusActions(bill.status as InvoiceStatus) : [];
+
+  /* ── render ──────────────────────────────────── */
   return (
     <SafeAreaView style={styles.safeArea}>
-      <View style={styles.container}>
-        <Header 
-          title="Detalji računa" 
-          showBack 
-          showMenu
-          onLeftPress={() => setIsDrawerOpen(true)}
-        />
-        
-        <Drawer
-          isOpen={isDrawerOpen}
-          onClose={() => setIsDrawerOpen(false)}
-        />
-        
-        <ScrollView style={styles.scrollView} contentContainerStyle={styles.contentContainer}>
-          <Card style={styles.billCard}>
-            <View style={styles.billHeader}>
-              <View style={styles.billInfo}>
-                <Text style={styles.billNumber}>{bill.number}</Text>
-                <Text style={styles.billPeriod}>{bill.period}</Text>
-              </View>
-              <StatusIndicator 
-                status={bill.status} 
-                labels={{
-                  paid: 'Plaćeno',
-                  pending: 'Na čekanju',
-                  overdue: 'Prekoračeno',
-                  issued: 'Izdat',
-                  draft: 'Nacrt',
-                  cancelled: 'Otkazan',
-                }}
-                size="large"
-              />
+      <Header title="Detalji računa" showBack onLeftPress={() => router.back()} />
+
+      <ScrollView contentContainerStyle={styles.content}>
+        {/* Status badge */}
+        <View style={[styles.statusBanner, { backgroundColor: STATUS_BG[bill.status as InvoiceStatus] }]}>
+          <Text style={[styles.statusText, { color: STATUS_COLOR[bill.status as InvoiceStatus] }]}>
+            {STATUS_LABEL[bill.status as InvoiceStatus] ?? bill.status}
+          </Text>
+        </View>
+
+        {/* Info card */}
+        <Card style={styles.card}>
+          <View style={styles.cardHeaderRow}>
+            <View style={styles.cardIconBox}>
+              <CreditCard size={24} color={Colors.primary} />
             </View>
-            
-            <View style={styles.section}>
-              <View style={styles.sectionHeader}>
-                <User size={20} color={Colors.primary} />
-                <Text style={styles.sectionTitle}>Podaci o korisniku</Text>
-              </View>
-              <View style={styles.sectionContent}>
-                <Text style={styles.userName}>{bill.userName}</Text>
-                <View style={styles.infoRow}>
-                  <MapPin size={16} color={Colors.textLight} />
-                  <Text style={styles.infoText}>{bill.userAddress}</Text>
-                </View>
-              </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.amountLarge}>{bill.amount?.toFixed(2)} BAM</Text>
+              <Text style={styles.periodLabel}>
+                {formatPeriod(bill.period_from, bill.period_to)}
+              </Text>
             </View>
-            
-            <View style={styles.section}>
-              <View style={styles.sectionHeader}>
-                <CreditCard size={20} color={Colors.primary} />
-                <Text style={styles.sectionTitle}>Podaci o računu</Text>
-              </View>
-              <View style={styles.sectionContent}>
-                <View style={styles.infoRow}>
-                  <DollarSign size={16} color={Colors.textLight} />
-                  <Text style={styles.infoText}>
-                    <Text style={styles.infoLabel}>Iznos: </Text>
-                    <Text style={styles.infoValue}>{bill.amount.toFixed(2)} KM</Text>
-                  </Text>
-                </View>
-                
-                <View style={styles.infoRow}>
-                  <Calendar size={16} color={Colors.textLight} />
-                  <Text style={styles.infoText}>
-                    <Text style={styles.infoLabel}>Rok plaćanja: </Text>
-                    <Text style={styles.infoValue}>{bill.dueDate}</Text>
-                  </Text>
-                </View>
-                
-                <View style={styles.infoRow}>
-                  <Droplet size={16} color={Colors.textLight} />
-                  <Text style={styles.infoText}>
-                    <Text style={styles.infoLabel}>Potrošnja: </Text>
-                    <Text style={styles.infoValue}>{bill.consumption} m³</Text>
-                  </Text>
-                </View>
-                
-                {bill.status === 'paid' && bill.paidDate && (
-                  <View style={styles.infoRow}>
-                    <CheckCircle size={16} color={Colors.success} />
-                    <Text style={styles.infoText}>
-                      <Text style={styles.infoLabel}>Plaćeno: </Text>
-                      <Text style={styles.infoValue}>{bill.paidDate}</Text>
-                    </Text>
-                  </View>
-                )}
-              </View>
-            </View>
-            
-            <View style={styles.section}>
-              <View style={styles.sectionHeader}>
-                <Text style={styles.sectionTitle}>Stavke računa</Text>
-              </View>
-              <View style={styles.sectionContent}>
-                <View style={styles.itemsHeader}>
-                  <Text style={[styles.itemHeaderText, { flex: 2 }]}>Opis</Text>
-                  <Text style={[styles.itemHeaderText, { flex: 1, textAlign: 'right' }]}>Iznos</Text>
-                </View>
-                
-                {bill.items.map((item, index) => (
-                  <View key={index} style={styles.itemRow}>
-                    <Text style={[styles.itemText, { flex: 2 }]}>{item.description}</Text>
-                    <Text style={[styles.itemText, { flex: 1, textAlign: 'right' }]}>
-                      {item.amount.toFixed(2)} KM
-                    </Text>
-                  </View>
-                ))}
-                
-                <View style={styles.totalRow}>
-                  <Text style={styles.totalLabel}>Ukupno:</Text>
-                  <Text style={styles.totalValue}>{bill.amount.toFixed(2)} KM</Text>
-                </View>
-              </View>
+          </View>
+
+          <View style={styles.divider} />
+
+          <InfoRow icon={<MapPin size={15} color={Colors.primary} />}
+            label="Adresa" value={bill.address || '—'} />
+          <InfoRow icon={<Droplet size={15} color={Colors.primary} />}
+            label="Vodomjer" value={bill.meterSerial || '—'} />
+          {bill.consumption_m3 != null && (
+            <InfoRow icon={<Droplet size={15} color={Colors.primary} />}
+              label="Potrošnja" value={`${bill.consumption_m3} m³`} />
+          )}
+          <InfoRow icon={<Calendar size={15} color={Colors.primary} />}
+            label="Rok plaćanja" value={formatDate(bill.due_date)} />
+          {bill.paid_at && (
+            <InfoRow icon={<CheckCircle size={15} color="#4CAF50" />}
+              label="Plaćeno" value={formatDate(bill.paid_at)} />
+          )}
+          <InfoRow icon={<Clock size={15} color={Colors.textLight} />}
+            label="Kreirano" value={formatDate(bill.createdAt)} />
+        </Card>
+
+        {/* Admin/finance status actions */}
+        {canManageStatus && statusActions.length > 0 && (
+          <Card style={styles.card}>
+            <Text style={styles.actionsTitle}>Promjena statusa</Text>
+            <View style={styles.actionsRow}>
+              {statusActions.map((a) => (
+                <Button
+                  key={a.next}
+                  title={a.label}
+                  size="small"
+                  variant={a.next === 'paid' ? 'primary' : 'outline'}
+                  onPress={() => handleStatusChange(a.next)}
+                  isLoading={actionLoading}
+                  style={styles.actionBtn}
+                />
+              ))}
+              {!['paid', 'cancelled'].includes(bill.status) && (
+                <Button
+                  key="cancel"
+                  title="Otkaži"
+                  size="small"
+                  variant="outline"
+                  onPress={() => handleStatusChange('cancelled')}
+                  isLoading={actionLoading}
+                  style={[styles.actionBtn, { borderColor: Colors.error }]}
+                />
+              )}
             </View>
           </Card>
-          
-          <View style={styles.actions}>
-            {bill.status !== 'paid' && bill.status !== 'cancelled' && (
-              <Button
-                title="Plati račun"
-                onPress={handlePayBill}
-                leftIcon={<CheckCircle size={20} color="#fff" />}
-                style={styles.actionButton}
-              />
-            )}
-            
-            <Button
-              title="Preuzmi PDF"
-              variant="outline"
-              onPress={handleViewPdf}
-              leftIcon={<Download size={20} color={Colors.primary} />}
-              style={styles.actionButton}
-            />
-            
-            <Button
-              title="Štampaj"
-              variant="outline"
-              onPress={handlePrintBill}
-              leftIcon={<Printer size={20} color={Colors.primary} />}
-              style={styles.actionButton}
-            />
+        )}
+
+        {/* End-user pay button */}
+        {canPay && (
+          <Button
+            title={`Plati ${bill.amount?.toFixed(2)} BAM`}
+            leftIcon={<CheckCircle size={18} color="#fff" />}
+            onPress={handlePayRequest}
+            isLoading={actionLoading}
+            style={styles.payBtn}
+          />
+        )}
+
+        {/* PDF / Print buttons */}
+        <View style={styles.utilityRow}>
+          <TouchableOpacity style={styles.utilBtn} onPress={() => setPdfVisible(true)}>
+            <FileText size={18} color={Colors.primary} />
+            <Text style={styles.utilBtnText}>Pregled</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.utilBtn}
+            onPress={() => Alert.alert('PDF', 'PDF preuzimanje će biti implementirano.')}
+          >
+            <Download size={18} color={Colors.primary} />
+            <Text style={styles.utilBtnText}>Preuzmi PDF</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.utilBtn}
+            onPress={() => Alert.alert('Štampa', 'Štampanje će biti implementirano.')}
+          >
+            <Printer size={18} color={Colors.primary} />
+            <Text style={styles.utilBtnText}>Štampaj</Text>
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
+
+      {/* ── PDF Preview Modal ── */}
+      <Modal visible={pdfVisible} animationType="slide" onRequestClose={() => setPdfVisible(false)}>
+        <SafeAreaView style={styles.pdfSafe}>
+          {/* Header */}
+          <View style={styles.pdfHeader}>
+            <TouchableOpacity onPress={() => setPdfVisible(false)} style={styles.pdfClose}>
+              <X size={24} color={Colors.text} />
+            </TouchableOpacity>
+            <Text style={styles.pdfHeaderTitle}>Račun</Text>
+            <TouchableOpacity
+              onPress={() => Alert.alert('PDF', 'PDF preuzimanje će biti implementirano.')}
+              style={styles.pdfClose}
+            >
+              <Download size={22} color={Colors.primary} />
+            </TouchableOpacity>
           </View>
-        </ScrollView>
-        
-        {/* Payment Modal */}
-        <Modal
-          visible={paymentModalVisible}
-          transparent
-          animationType="fade"
-          onRequestClose={() => setPaymentModalVisible(false)}
-        >
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalContainer}>
-              <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>Plaćanje računa</Text>
-                <TouchableOpacity 
-                  onPress={() => setPaymentModalVisible(false)}
-                  style={styles.closeButton}
-                >
-                  <X size={24} color={Colors.text} />
-                </TouchableOpacity>
+
+          <ScrollView style={styles.pdfScroll} contentContainerStyle={styles.pdfContent}>
+            <View style={styles.pdfDoc}>
+              {/* Company header */}
+              <View style={styles.pdfDocHeader}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.pdfCompanyName}>JAVNO KOMUNALNO PREDUZEĆE</Text>
+                  <Text style={styles.pdfCompanyName}>"VODOVOD I KANALIZACIJA"</Text>
+                  <Text style={styles.pdfCompanyAddr}>AquaPulse platforma</Text>
+                </View>
+                <View style={{ alignItems: 'flex-end' }}>
+                  <Text style={styles.pdfBillTitle}>RAČUN</Text>
+                  <Text style={styles.pdfBillId}>{bill.id.substring(0, 8).toUpperCase()}</Text>
+                  <Text style={styles.pdfBillSub}>za utrošenu vodu</Text>
+                </View>
               </View>
-              
-              <View style={styles.modalContent}>
-                <Text style={styles.modalText}>
-                  Račun: {bill.number}
+
+              {/* Dates */}
+              <View style={styles.pdfDates}>
+                <Text style={styles.pdfDateItem}>Datum: {formatDate(bill.createdAt)}</Text>
+                <Text style={styles.pdfDateItem}>Valuta: {formatDate(bill.due_date)}</Text>
+              </View>
+
+              {/* Customer info */}
+              <View style={styles.pdfCustomerBox}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.pdfCustomerLabel}>Korisnik</Text>
+                  <Text style={styles.pdfCustomerAddr}>{bill.address || '—'}</Text>
+                </View>
+                <View style={{ alignItems: 'flex-end' }}>
+                  <Text style={styles.pdfCustomerLabel}>Vodomjer</Text>
+                  <Text style={styles.pdfCustomerAddr}>{bill.meterSerial || '—'}</Text>
+                </View>
+              </View>
+
+              {/* Period + consumption */}
+              <View style={styles.pdfTableHeader}>
+                <Text style={styles.pdfTableHeaderText}>Podaci o obračunu</Text>
+              </View>
+              <View style={styles.pdfRow}>
+                <Text style={styles.pdfRowLabel}>Period</Text>
+                <Text style={styles.pdfRowValue}>{formatPeriod(bill.period_from, bill.period_to)}</Text>
+              </View>
+              {bill.consumption_m3 != null && (
+                <View style={styles.pdfRow}>
+                  <Text style={styles.pdfRowLabel}>Potrošnja (m³)</Text>
+                  <Text style={styles.pdfRowValue}>{bill.consumption_m3}</Text>
+                </View>
+              )}
+
+              {/* Amount */}
+              <View style={styles.pdfTableHeader}>
+                <Text style={styles.pdfTableHeaderText}>Obračun</Text>
+              </View>
+              <View style={styles.pdfRow}>
+                <Text style={[styles.pdfRowLabel, { flex: 3 }]}>Usluga vodovoda</Text>
+                <Text style={[styles.pdfRowValue, { flex: 1, textAlign: 'right' }]}>
+                  {(bill.amount * 0.85).toFixed(2)} BAM
                 </Text>
-                <Text style={styles.modalText}>
-                  Korisnik: {bill.userName}
+              </View>
+              <View style={styles.pdfRow}>
+                <Text style={[styles.pdfRowLabel, { flex: 3 }]}>PDV (17%)</Text>
+                <Text style={[styles.pdfRowValue, { flex: 1, textAlign: 'right' }]}>
+                  {(bill.amount * 0.15).toFixed(2)} BAM
                 </Text>
-                <Text style={styles.modalText}>
-                  Iznos računa: {bill.amount.toFixed(2)} KM
-                </Text>
-                
-                <View style={styles.inputContainer}>
-                  <Text style={styles.inputLabel}>Iznos za plaćanje:</Text>
-                  <View style={styles.inputWrapper}>
-                    <DollarSign size={20} color={Colors.textLight} style={styles.inputIcon} />
-                    <TextInput
-                      style={styles.input}
-                      value={paymentAmount}
-                      onChangeText={setPaymentAmount}
-                      keyboardType="numeric"
-                      placeholder="Unesite iznos"
-                    />
-                  </View>
-                </View>
-                
-                <View style={styles.modalActions}>
-                  <Button
-                    title="Odustani"
-                    variant="outline"
-                    onPress={() => setPaymentModalVisible(false)}
-                    style={styles.modalButton}
-                  />
-                  <Button
-                    title="Plati"
-                    onPress={handleConfirmPayment}
-                    style={styles.modalButton}
-                  />
-                </View>
               </View>
-            </View>
-          </View>
-        </Modal>
-        
-        {/* PDF Preview Modal */}
-        <Modal
-          visible={pdfModalVisible}
-          transparent={false}
-          animationType="slide"
-          onRequestClose={() => setPdfModalVisible(false)}
-        >
-          <SafeAreaView style={styles.pdfModalContainer}>
-            <View style={styles.pdfModalHeader}>
-              <TouchableOpacity 
-                onPress={() => setPdfModalVisible(false)}
-                style={styles.pdfModalCloseButton}
-              >
-                <X size={24} color={Colors.text} />
-              </TouchableOpacity>
-              <Text style={styles.pdfModalTitle}>Račun {bill.number}</Text>
-              <View style={styles.pdfModalActions}>
-                <TouchableOpacity 
-                  style={styles.pdfModalAction}
-                  onPress={handleDownloadPdf}
-                >
-                  <Download size={24} color={Colors.primary} />
-                </TouchableOpacity>
-                <TouchableOpacity 
-                  style={styles.pdfModalAction}
-                  onPress={handlePrintBill}
-                >
-                  <Printer size={24} color={Colors.primary} />
-                </TouchableOpacity>
+              <View style={styles.pdfTotalRow}>
+                <Text style={styles.pdfTotalLabel}>UKUPNO (s PDV)</Text>
+                <Text style={styles.pdfTotalValue}>{bill.amount?.toFixed(2)} BAM</Text>
               </View>
-            </View>
-            
-            <View style={styles.billPdfContainer}>
-              <View style={styles.billPdfContent}>
-                {/* Header */}
-                <View style={styles.billPdfHeader}>
-                  <View style={styles.billPdfCompanyInfo}>
-                    <Text style={styles.billPdfCompanyName}>
-                      KANTONALNO JAVNO KOMUNALNO PREDUZEĆE
-                    </Text>
-                    <Text style={styles.billPdfCompanyName}>
-                      "VODOVOD I KANALIZACIJA" D.O.O. SARAJEVO
-                    </Text>
-                    <Text style={styles.billPdfCompanyAddress}>
-                      Jaroslava Černija 8, Sarajevo
-                    </Text>
-                  </View>
-                  <View style={styles.billPdfBillInfo}>
-                    <Text style={styles.billPdfBillTitle}>RAČUN broj</Text>
-                    <Text style={styles.billPdfBillNumber}>{bill.number}</Text>
-                    <Text style={styles.billPdfBillSubtitle}>
-                      za utrošenu vodu i odvođenje otpadnih voda
-                    </Text>
-                  </View>
-                </View>
-                
-                {/* Dates */}
-                <View style={styles.billPdfDates}>
-                  <View style={styles.billPdfDateItem}>
-                    <Text style={styles.billPdfDateLabel}>Sarajevo,</Text>
-                    <Text style={styles.billPdfDateValue}>
-                      {new Date().toLocaleDateString('bs-BA')}
-                    </Text>
-                  </View>
-                  <View style={styles.billPdfDateItem}>
-                    <Text style={styles.billPdfDateLabel}>Valuta,</Text>
-                    <Text style={styles.billPdfDateValue}>{bill.dueDate}</Text>
-                  </View>
-                </View>
-                
-                {/* Customer Info */}
-                <View style={styles.billPdfCustomerContainer}>
-                  <View style={styles.billPdfCustomerInfo}>
-                    <Text style={styles.billPdfCustomerName}>{bill.userName}</Text>
-                    <Text style={styles.billPdfCustomerAddress}>{bill.userAddress}</Text>
-                  </View>
-                  
-                  <View style={styles.billPdfMeterInfo}>
-                    <View style={styles.billPdfMeterRow}>
-                      <Text style={styles.billPdfMeterLabel}>Šifra potrošača:</Text>
-                      <Text style={styles.billPdfMeterValue}>377823</Text>
-                    </View>
-                    <View style={styles.billPdfMeterRow}>
-                      <Text style={styles.billPdfMeterLabel}>Broj vodomjera:</Text>
-                      <Text style={styles.billPdfMeterValue}>12-2-10030676</Text>
-                    </View>
-                    <View style={styles.billPdfMeterRow}>
-                      <Text style={styles.billPdfMeterLabel}>Tip potrošača:</Text>
-                      <Text style={styles.billPdfMeterValue}>11</Text>
-                    </View>
-                  </View>
-                </View>
-                
-                {/* Consumption Table */}
-                <View style={styles.billPdfConsumptionContainer}>
-                  <View style={styles.billPdfTableHeader}>
-                    <Text style={styles.billPdfTableHeaderText}>
-                      Podaci o isporuci vode i očitavanju vodomjera
-                    </Text>
-                  </View>
-                  
-                  <View style={styles.billPdfTableRow}>
-                    <View style={[styles.billPdfTableCell, { flex: 1 }]}>
-                      <Text style={styles.billPdfTableCellHeader}>Rbr</Text>
-                      <Text style={styles.billPdfTableCellValue}>1</Text>
-                    </View>
-                    <View style={[styles.billPdfTableCell, { flex: 2 }]}>
-                      <Text style={styles.billPdfTableCellHeader}>Broj vodomjera</Text>
-                      <Text style={styles.billPdfTableCellValue}>12-2-10030676</Text>
-                    </View>
-                    <View style={[styles.billPdfTableCell, { flex: 2 }]}>
-                      <Text style={styles.billPdfTableCellHeader}>Datum očitanja</Text>
-                      <Text style={styles.billPdfTableCellValue}>17.01.2024</Text>
-                    </View>
-                    <View style={[styles.billPdfTableCell, { flex: 1.5 }]}>
-                      <Text style={styles.billPdfTableCellHeader}>Stanje vodomjera</Text>
-                      <Text style={styles.billPdfTableCellValue}>352</Text>
-                    </View>
-                    <View style={[styles.billPdfTableCell, { flex: 1.5 }]}>
-                      <Text style={styles.billPdfTableCellHeader}>Utrošak m³</Text>
-                      <Text style={styles.billPdfTableCellValue}>{bill.consumption}</Text>
-                    </View>
-                  </View>
-                </View>
-                
-                {/* Billing Items */}
-                <View style={styles.billPdfItemsContainer}>
-                  <View style={styles.billPdfTableHeader}>
-                    <Text style={styles.billPdfTableHeaderText}>
-                      Obračun potrošnje
-                    </Text>
-                  </View>
-                  
-                  <View style={styles.billPdfItemsHeader}>
-                    <Text style={[styles.billPdfItemHeaderText, { flex: 3 }]}>Opis</Text>
-                    <Text style={[styles.billPdfItemHeaderText, { flex: 1 }]}>Količina</Text>
-                    <Text style={[styles.billPdfItemHeaderText, { flex: 1 }]}>Cijena</Text>
-                    <Text style={[styles.billPdfItemHeaderText, { flex: 1 }]}>Iznos</Text>
-                    <Text style={[styles.billPdfItemHeaderText, { flex: 1 }]}>PDV</Text>
-                    <Text style={[styles.billPdfItemHeaderText, { flex: 1.5 }]}>Ukupno</Text>
-                  </View>
-                  
-                  {bill.items.map((item, index) => (
-                    <View key={index} style={styles.billPdfItemRow}>
-                      <Text style={[styles.billPdfItemText, { flex: 3 }]}>{item.description}</Text>
-                      <Text style={[styles.billPdfItemText, { flex: 1 }]}>
-                        {index === 0 ? bill.consumption : ''}
-                      </Text>
-                      <Text style={[styles.billPdfItemText, { flex: 1 }]}>
-                        {(item.amount / (index === 0 ? bill.consumption : 1)).toFixed(2)}
-                      </Text>
-                      <Text style={[styles.billPdfItemText, { flex: 1 }]}>
-                        {(item.amount * 0.85).toFixed(2)}
-                      </Text>
-                      <Text style={[styles.billPdfItemText, { flex: 1 }]}>
-                        {(item.amount * 0.15).toFixed(2)}
-                      </Text>
-                      <Text style={[styles.billPdfItemText, { flex: 1.5, fontWeight: 'bold' }]}>
-                        {item.amount.toFixed(2)}
-                      </Text>
-                    </View>
-                  ))}
-                  
-                  <View style={styles.billPdfTotalRow}>
-                    <Text style={styles.billPdfTotalLabel}>UKUPAN IZNOS RAČUNA (sa PDV)</Text>
-                    <Text style={styles.billPdfTotalValue}>{bill.amount.toFixed(2)} KM</Text>
-                  </View>
-                </View>
-                
-                {/* Payment Slip */}
-                <View style={styles.billPdfPaymentSlip}>
-                  <View style={styles.billPdfPaymentHeader}>
-                    <Text style={styles.billPdfPaymentTitle}>UPLATNI NALOG</Text>
-                  </View>
-                  
-                  <View style={styles.billPdfPaymentContent}>
-                    <View style={styles.billPdfPaymentColumn}>
-                      <View style={styles.billPdfPaymentField}>
-                        <Text style={styles.billPdfPaymentLabel}>Platilac:</Text>
-                        <Text style={styles.billPdfPaymentValue}>{bill.userName}</Text>
-                        <Text style={styles.billPdfPaymentValue}>{bill.userAddress}</Text>
-                      </View>
-                      
-                      <View style={styles.billPdfPaymentField}>
-                        <Text style={styles.billPdfPaymentLabel}>Svrha:</Text>
-                        <Text style={styles.billPdfPaymentValue}>
-                          Račun za utrošenu vodu i odvođenje otpadnih voda za period {bill.period}
-                        </Text>
-                      </View>
-                      
-                      <View style={styles.billPdfPaymentField}>
-                        <Text style={styles.billPdfPaymentLabel}>Iznos:</Text>
-                        <Text style={styles.billPdfPaymentValue}>{bill.amount.toFixed(2)} KM</Text>
-                      </View>
-                    </View>
-                    
-                    <View style={styles.billPdfPaymentColumn}>
-                      <View style={styles.billPdfPaymentField}>
-                        <Text style={styles.billPdfPaymentLabel}>Primalac:</Text>
-                        <Text style={styles.billPdfPaymentValue}>{bill.companyName}</Text>
-                        <Text style={styles.billPdfPaymentValue}>Jaroslava Černija 8, Sarajevo</Text>
-                      </View>
-                      
-                      <View style={styles.billPdfPaymentField}>
-                        <Text style={styles.billPdfPaymentLabel}>Datum uplate:</Text>
-                        <Text style={styles.billPdfPaymentValue}>{bill.dueDate}</Text>
-                      </View>
-                      
-                      <View style={styles.billPdfPaymentField}>
-                        <Text style={styles.billPdfPaymentLabel}>Referenca:</Text>
-                        <Text style={styles.billPdfPaymentValue}>{bill.number}-377823-1</Text>
-                      </View>
-                    </View>
-                  </View>
-                </View>
-                
-                {/* Footer */}
-                <View style={styles.billPdfFooter}>
-                  <Text style={styles.billPdfFooterText}>
-                    Račun je pisan elektronski i punovažan je bez potpisa i pečata.
-                  </Text>
-                  <Text style={styles.billPdfFooterText}>
-                    Za račun koji nije plaćen u roku od 30 dana, zaračunava se zatezna kamata.
-                  </Text>
-                </View>
+
+              {/* Payment slip */}
+              <View style={[styles.pdfTableHeader, { marginTop: 20 }]}>
+                <Text style={styles.pdfTableHeaderText}>UPLATNI NALOG</Text>
               </View>
+              <View style={styles.pdfRow}>
+                <Text style={styles.pdfRowLabel}>Iznos</Text>
+                <Text style={[styles.pdfRowValue, { fontWeight: 'bold' }]}>{bill.amount?.toFixed(2)} BAM</Text>
+              </View>
+              <View style={styles.pdfRow}>
+                <Text style={styles.pdfRowLabel}>Rok</Text>
+                <Text style={styles.pdfRowValue}>{formatDate(bill.due_date)}</Text>
+              </View>
+
+              {/* Footer */}
+              <Text style={styles.pdfFooter}>
+                Račun je generisan elektronski putem AquaPulse platforme i punovažan je bez potpisa.
+              </Text>
             </View>
-          </SafeAreaView>
-        </Modal>
-      </View>
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   );
 }
 
-// TextInput component for the modal
-const TextInput = ({ 
-  style, 
-  value, 
-  onChangeText, 
-  placeholder, 
-  keyboardType 
-}: { 
-  style?: any, 
-  value: string, 
-  onChangeText: (text: string) => void, 
-  placeholder?: string,
-  keyboardType?: 'default' | 'numeric' | 'email-address' | 'phone-pad'
-}) => {
+/* ── InfoRow helper ──────────────────────────────── */
+function InfoRow({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
   return (
-    <View>
-      <RNTextInput
-        style={[styles.textInputContainer, style]}
-        value={value}
-        onChangeText={onChangeText}
-        placeholder={placeholder}
-        keyboardType={keyboardType}
-      />
+    <View style={infoStyles.row}>
+      {icon}
+      <Text style={infoStyles.label}>{label}:</Text>
+      <Text style={infoStyles.value}>{value}</Text>
     </View>
   );
-};
+}
+const infoStyles = StyleSheet.create({
+  row:   { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
+  label: { fontSize: 13, color: Colors.textLight, width: 90 },
+  value: { fontSize: 13, color: Colors.text, flex: 1, fontWeight: '500' },
+});
 
+/* ── styles ──────────────────────────────────────── */
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
+  safeArea: { flex: 1, backgroundColor: '#f4f6f9' },
+  center:   { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  content:  { padding: 16, paddingBottom: 40 },
+
+  statusBanner: {
+    alignSelf: 'center',
+    paddingHorizontal: 20, paddingVertical: 8,
+    borderRadius: 20, marginBottom: 16,
+  },
+  statusText: { fontSize: 14, fontWeight: '700' },
+
+  card:       { padding: 16, marginBottom: 14 },
+  cardHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 16 },
+  cardIconBox: {
+    width: 48, height: 48, borderRadius: 12,
+    backgroundColor: Colors.primary + '18',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  amountLarge: { fontSize: 22, fontWeight: '800', color: Colors.text },
+  periodLabel: { fontSize: 13, color: Colors.textLight, marginTop: 2 },
+  divider:     { height: 1, backgroundColor: Colors.border, marginBottom: 14 },
+
+  actionsTitle: { fontSize: 14, fontWeight: '700', color: Colors.text, marginBottom: 10 },
+  actionsRow:   { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  actionBtn:    { minWidth: 90 },
+
+  payBtn: { marginBottom: 14 },
+
+  utilityRow: {
+    flexDirection: 'row', gap: 10,
+    justifyContent: 'center', marginTop: 4,
+  },
+  utilBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 6, paddingVertical: 12, borderRadius: 10,
     backgroundColor: '#fff',
-  },
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loadingText: {
-    fontSize: 16,
-    color: Colors.textLight,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  contentContainer: {
-    padding: 16,
-    paddingBottom: Platform.OS === 'android' ? 100 : 80, // Extra padding for Android
-  },
-  billCard: {
-    padding: 16,
-  },
-  billHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 24,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-    paddingBottom: 16,
-  },
-  billInfo: {
-    flex: 1,
-  },
-  billNumber: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: Colors.text,
-    marginBottom: 4,
-  },
-  billPeriod: {
-    fontSize: 16,
-    color: Colors.textLight,
-  },
-  section: {
-    marginBottom: 24,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: Colors.text,
-    marginLeft: 8,
-  },
-  sectionContent: {
-    paddingLeft: 28,
-  },
-  userName: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: Colors.text,
-    marginBottom: 8,
-  },
-  infoRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  infoText: {
-    fontSize: 14,
-    color: Colors.text,
-    marginLeft: 8,
-  },
-  infoLabel: {
-    color: Colors.textLight,
-  },
-  infoValue: {
-    fontWeight: '500',
-  },
-  itemsHeader: {
-    flexDirection: 'row',
-    paddingBottom: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-    marginBottom: 8,
-  },
-  itemHeaderText: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: Colors.text,
-  },
-  itemRow: {
-    flexDirection: 'row',
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-  },
-  itemText: {
-    fontSize: 14,
-    color: Colors.text,
-  },
-  totalRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 16,
-    paddingTop: 8,
-  },
-  totalLabel: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: Colors.text,
-  },
-  totalValue: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: Colors.primary,
-  },
-  actions: {
-    marginTop: 24,
-  },
-  actionButton: {
-    marginBottom: 12,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modalContainer: {
-    width: '90%',
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    overflow: 'hidden',
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: Colors.text,
-  },
-  closeButton: {
-    padding: 4,
-  },
-  modalContent: {
-    padding: 16,
-  },
-  modalText: {
-    fontSize: 16,
-    color: Colors.text,
-    marginBottom: 8,
-  },
-  inputContainer: {
-    marginTop: 16,
-    marginBottom: 24,
-  },
-  inputLabel: {
-    fontSize: 14,
-    color: Colors.text,
-    marginBottom: 8,
-  },
-  inputWrapper: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    height: 48,
-  },
-  inputIcon: {
-    marginRight: 8,
-  },
-  input: {
-    flex: 1,
-    height: '100%',
-    color: Colors.text,
-    fontSize: 16,
-  },
-  modalActions: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  modalButton: {
-    flex: 1,
-    marginHorizontal: 8,
-  },
-  // TextInput component styles
-  textInputContainer: {
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    backgroundColor: Colors.highlight,
-    fontSize: 16,
-    color: Colors.text,
-  },
-  textInputText: {
-    fontSize: 16,
-    color: Colors.text,
-  },
-  // PDF Modal Styles
-  pdfModalContainer: {
-    flex: 1,
-    backgroundColor: '#f5f5f5',
-  },
-  pdfModalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 16,
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-  },
-  pdfModalCloseButton: {
-    padding: 4,
-  },
-  pdfModalTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: Colors.text,
-  },
-  pdfModalActions: {
-    flexDirection: 'row',
-  },
-  pdfModalAction: {
-    padding: 8,
-    marginLeft: 8,
-  },
-  billPdfContainer: {
-    flex: 1,
-    padding: 16,
-  },
-  billPdfContent: {
-    backgroundColor: '#fff',
-    borderRadius: 8,
-    padding: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  billPdfHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-    paddingBottom: 16,
-  },
-  billPdfCompanyInfo: {
-    flex: 1,
-  },
-  billPdfCompanyName: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: '#003366',
-    marginBottom: 2,
-  },
-  billPdfCompanyAddress: {
-    fontSize: 12,
-    color: Colors.textLight,
-  },
-  billPdfBillInfo: {
-    alignItems: 'flex-end',
-  },
-  billPdfBillTitle: {
-    fontSize: 14,
-    color: Colors.textLight,
-  },
-  billPdfBillNumber: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: Colors.primary,
-    marginVertical: 2,
-  },
-  billPdfBillSubtitle: {
-    fontSize: 12,
-    color: Colors.textLight,
-  },
-  billPdfDates: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 16,
-    marginBottom: 16,
-  },
-  billPdfDateItem: {
-    flexDirection: 'row',
-  },
-  billPdfDateLabel: {
-    fontSize: 12,
-    color: Colors.textLight,
-    marginRight: 4,
-  },
-  billPdfDateValue: {
-    fontSize: 12,
-    fontWeight: '500',
-    color: Colors.text,
-  },
-  billPdfCustomerContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 24,
-    borderWidth: 1,
-    borderColor: '#eee',
-    borderRadius: 4,
-    padding: 12,
-  },
-  billPdfCustomerInfo: {
-    flex: 1,
-  },
-  billPdfCustomerName: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: Colors.text,
-    marginBottom: 2,
-  },
-  billPdfCustomerAddress: {
-    fontSize: 12,
-    color: Colors.textLight,
-  },
-  billPdfMeterInfo: {
-    flex: 1,
-    alignItems: 'flex-end',
-  },
-  billPdfMeterRow: {
-    flexDirection: 'row',
-    marginBottom: 2,
-  },
-  billPdfMeterLabel: {
-    fontSize: 12,
-    color: Colors.textLight,
-    marginRight: 4,
-  },
-  billPdfMeterValue: {
-    fontSize: 12,
-    fontWeight: '500',
-    color: Colors.text,
-  },
-  billPdfConsumptionContainer: {
-    marginBottom: 24,
-  },
-  billPdfTableHeader: {
-    backgroundColor: '#f0f7ff',
-    padding: 8,
-    borderTopLeftRadius: 4,
-    borderTopRightRadius: 4,
-    borderWidth: 1,
-    borderColor: '#d0e5ff',
-  },
-  billPdfTableHeaderText: {
-    fontSize: 12,
-    fontWeight: 'bold',
-    color: '#003366',
-  },
-  billPdfTableRow: {
-    flexDirection: 'row',
-    borderWidth: 1,
-    borderTopWidth: 0,
-    borderColor: '#eee',
-  },
-  billPdfTableCell: {
-    padding: 8,
-    borderRightWidth: 1,
-    borderRightColor: '#eee',
-  },
-  billPdfTableCellHeader: {
-    fontSize: 10,
-    color: Colors.textLight,
-    marginBottom: 4,
-  },
-  billPdfTableCellValue: {
-    fontSize: 12,
-    color: Colors.text,
-  },
-  billPdfItemsContainer: {
-    marginBottom: 24,
-  },
-  billPdfItemsHeader: {
-    flexDirection: 'row',
-    backgroundColor: '#f0f7ff',
-    padding: 8,
-    borderWidth: 1,
-    borderTopWidth: 0,
-    borderColor: '#d0e5ff',
-  },
-  billPdfItemHeaderText: {
-    fontSize: 10,
-    fontWeight: 'bold',
-    color: '#003366',
-  },
-  billPdfItemRow: {
-    flexDirection: 'row',
-    borderWidth: 1,
-    borderTopWidth: 0,
-    borderColor: '#eee',
-    padding: 8,
-  },
-  billPdfItemText: {
-    fontSize: 12,
-    color: Colors.text,
-  },
-  billPdfTotalRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    backgroundColor: '#f0f7ff',
-    padding: 12,
-    borderWidth: 1,
-    borderTopWidth: 0,
-    borderColor: '#d0e5ff',
-    borderBottomLeftRadius: 4,
-    borderBottomRightRadius: 4,
-  },
-  billPdfTotalLabel: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: '#003366',
-  },
-  billPdfTotalValue: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: Colors.primary,
-  },
-  billPdfPaymentSlip: {
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: '#eee',
-    borderRadius: 4,
-  },
-  billPdfPaymentHeader: {
-    backgroundColor: '#f0f7ff',
-    padding: 8,
-    borderTopLeftRadius: 4,
-    borderTopRightRadius: 4,
-    borderBottomWidth: 1,
-    borderBottomColor: '#d0e5ff',
-  },
-  billPdfPaymentTitle: {
-    fontSize: 12,
-    fontWeight: 'bold',
-    color: '#003366',
-    textAlign: 'center',
-  },
-  billPdfPaymentContent: {
-    flexDirection: 'row',
-    padding: 12,
-  },
-  billPdfPaymentColumn: {
-    flex: 1,
-  },
-  billPdfPaymentField: {
-    marginBottom: 12,
-  },
-  billPdfPaymentLabel: {
-    fontSize: 10,
-    color: Colors.textLight,
-    marginBottom: 2,
-  },
-  billPdfPaymentValue: {
-    fontSize: 12,
-    color: Colors.text,
-  },
-  billPdfFooter: {
-    borderTopWidth: 1,
-    borderTopColor: '#eee',
-    paddingTop: 12,
-  },
-  billPdfFooterText: {
-    fontSize: 10,
-    color: Colors.textLight,
-    marginBottom: 4,
-    textAlign: 'center',
+    borderWidth: 1, borderColor: Colors.border,
+  },
+  utilBtnText: { fontSize: 12, fontWeight: '600', color: Colors.primary },
+
+  /* PDF modal */
+  pdfSafe:   { flex: 1, backgroundColor: '#f4f6f9' },
+  pdfHeader: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 16, paddingVertical: 14,
+    backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: Colors.border,
+  },
+  pdfClose:       { padding: 4 },
+  pdfHeaderTitle: { fontSize: 17, fontWeight: 'bold', color: Colors.text },
+  pdfScroll:      { flex: 1 },
+  pdfContent:     { padding: 16, paddingBottom: 40 },
+
+  pdfDoc: {
+    backgroundColor: '#fff', borderRadius: 10, padding: 20,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08, shadowRadius: 4, elevation: 2,
+  },
+  pdfDocHeader: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#eee', paddingBottom: 14, marginBottom: 14 },
+  pdfCompanyName:  { fontSize: 13, fontWeight: '700', color: '#003366' },
+  pdfCompanyAddr:  { fontSize: 11, color: Colors.textLight, marginTop: 2 },
+  pdfBillTitle:    { fontSize: 14, color: Colors.textLight },
+  pdfBillId:       { fontSize: 16, fontWeight: '800', color: Colors.primary, marginVertical: 2 },
+  pdfBillSub:      { fontSize: 11, color: Colors.textLight },
+  pdfDates:        { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 14 },
+  pdfDateItem:     { fontSize: 12, color: Colors.text },
+  pdfCustomerBox:  {
+    flexDirection: 'row', borderWidth: 1, borderColor: '#eee',
+    borderRadius: 6, padding: 12, marginBottom: 16,
+  },
+  pdfCustomerLabel: { fontSize: 11, color: Colors.textLight, marginBottom: 2 },
+  pdfCustomerAddr:  { fontSize: 13, color: Colors.text, fontWeight: '500' },
+  pdfTableHeader: {
+    backgroundColor: '#f0f7ff', padding: 8,
+    borderRadius: 4, marginBottom: 2,
+  },
+  pdfTableHeaderText: { fontSize: 12, fontWeight: '700', color: '#003366' },
+  pdfRow: {
+    flexDirection: 'row', paddingVertical: 8,
+    borderBottomWidth: 1, borderBottomColor: '#f0f0f0',
+  },
+  pdfRowLabel: { flex: 2, fontSize: 12, color: Colors.textLight },
+  pdfRowValue: { flex: 2, fontSize: 12, color: Colors.text, fontWeight: '500' },
+  pdfTotalRow: {
+    flexDirection: 'row', justifyContent: 'space-between',
+    backgroundColor: '#f0f7ff', padding: 12,
+    borderRadius: 4, marginTop: 4,
+  },
+  pdfTotalLabel: { fontSize: 14, fontWeight: '700', color: '#003366' },
+  pdfTotalValue: { fontSize: 16, fontWeight: '800', color: Colors.primary },
+  pdfFooter: {
+    fontSize: 10, color: Colors.textLight, textAlign: 'center',
+    marginTop: 24, lineHeight: 15,
   },
 });

@@ -3,7 +3,7 @@ import { View, Text, StyleSheet } from 'react-native';
 import Colors from '@/constants/colors';
 
 interface StatusIndicatorProps {
-  status: 'active' | 'inactive' | 'pending' | 'completed' | 'paid' | 'overdue' | 'maintenance' | 'verified' | 'flagged' | 'rejected';
+  status: 'active' | 'inactive' | 'pending' | 'completed' | 'paid' | 'overdue' | 'worker' | 'verified' | 'flagged' | 'rejected';
   labels?: Record<string, string>;
   size?: 'small' | 'medium' | 'large';
 }
@@ -38,7 +38,7 @@ export const StatusIndicator: React.FC<StatusIndicatorProps> = ({
       case 'flagged':
       case 'rejected':
         return Colors.error;
-      case 'maintenance':
+      case 'worker':
         return Colors.info;
       default:
         return Colors.textLight;
