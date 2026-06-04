@@ -37,11 +37,13 @@ export default function MetersScreen() {
   const [meters, setMeters] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [fetchError, setFetchError] = useState(false);
 
   const { canManageMeters: canManage, isEndUser } = usePermissions();
 
   const fetchData = async () => {
     if (!user) return;
+    setFetchError(false);
     try {
       const data =
         isEndUser
@@ -50,6 +52,7 @@ export default function MetersScreen() {
       setMeters(data);
     } catch (err) {
       captureError(err, { screen: 'meters', action: 'fetchMeters' });
+      setFetchError(true);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -214,15 +217,19 @@ export default function MetersScreen() {
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.list}
         ListEmptyComponent={
-          <EmptyState
-            title="Nema priključaka"
-            message={
-              isEndUser
-                ? 'Nemate aktivnih priključaka.'
-                : 'Nema registrovanih vodomjera.'
-            }
-            icon={<Droplet size={48} color={Colors.textLight} />}
-          />
+          fetchError
+            ? <EmptyState
+                title="Greška pri učitavanju"
+                message="Provjeri vezu i pokušaj ponovo."
+                icon={<AlertTriangle size={48} color={Colors.error} />}
+                actionLabel="Pokušaj ponovo"
+                onAction={fetchData}
+              />
+            : <EmptyState
+                title="Nema priključaka"
+                message={isEndUser ? 'Nemate aktivnih priključaka.' : 'Nema registrovanih vodomjera.'}
+                icon={<Droplet size={48} color={Colors.textLight} />}
+              />
         }
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />

@@ -213,7 +213,9 @@ export default function TasksScreen() {
       ]);
       setWorkers(w.filter(u => u.role === 'worker'));
       setConnections((c.data ?? []) as { id: string; address: string; meter_serial: string }[]);
-    } catch { /* ignore */ }
+    } catch (e: any) {
+      captureError(e, { screen: 'tasks', action: 'openCreateModal' });
+    }
     setNewTitle(''); setNewDesc(''); setNewType('worker');
     setNewPriority('normal'); setNewDueDate(''); setShowDatePicker(false);
     setNewAssignedTo(''); setNewConnectionId(''); setTitleError('');

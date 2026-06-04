@@ -23,6 +23,7 @@ import {
   Wifi,
   ClipboardList,
   BarChart2,
+  AlertTriangle,
 } from 'lucide-react-native';
 import { Header } from '@/components/layout/Header';
 import { Card } from '@/components/ui/Card';
@@ -82,11 +83,13 @@ export default function ConsumptionScreen() {
   const [readings, setReadings] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [fetchError, setFetchError] = useState(false);
   const [selected, setSelected] = useState<any>(null);
   const [detailVisible, setDetailVisible] = useState(false);
 
   const fetchData = async () => {
     if (!user) return;
+    setFetchError(false);
     try {
       let data: any[];
       if (connectionId) {
@@ -99,6 +102,7 @@ export default function ConsumptionScreen() {
       setReadings(data);
     } catch (err) {
       captureError(err, { screen: 'consumption', action: 'fetchReadings' });
+      setFetchError(true);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -295,11 +299,19 @@ export default function ConsumptionScreen() {
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.list}
         ListEmptyComponent={
-          <EmptyState
-            title="Nema očitanja"
-            message="Za ovaj priključak još nema unesenih očitanja."
-            icon={<Droplet size={48} color={Colors.textLight} />}
-          />
+          fetchError
+            ? <EmptyState
+                title="Greška pri učitavanju"
+                message="Provjeri vezu i pokušaj ponovo."
+                icon={<AlertTriangle size={48} color={Colors.error} />}
+                actionLabel="Pokušaj ponovo"
+                onAction={fetchData}
+              />
+            : <EmptyState
+                title="Nema očitanja"
+                message="Za ovaj priključak još nema unesenih očitanja."
+                icon={<Droplet size={48} color={Colors.textLight} />}
+              />
         }
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />

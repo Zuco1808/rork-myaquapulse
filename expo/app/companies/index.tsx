@@ -109,6 +109,8 @@ export default function CompaniesScreen() {
               .eq('id', id);
             if (!error) {
               setUtilities(prev => prev.filter(u => u.id !== id));
+            } else {
+              Alert.alert('Greška', error.message || 'Brisanje nije uspjelo.');
             }
           }
         }

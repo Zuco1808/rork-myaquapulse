@@ -168,6 +168,7 @@ export default function BillsScreen() {
   const [bills, setBills] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [fetchError, setFetchError] = useState(false);
 
   /* ── Filters ───────────────────────────────────── */
   const [filterStatus, setFilterStatus] = useState<InvoiceStatus | 'all'>('all');
@@ -208,6 +209,7 @@ export default function BillsScreen() {
   /* ── Fetch ─────────────────────────────────────── */
   const fetchData = async () => {
     if (!user) return;
+    setFetchError(false);
     try {
       let data: any[];
       if (connectionId) {
@@ -220,6 +222,7 @@ export default function BillsScreen() {
       setBills(data);
     } catch (err) {
       captureError(err, { screen: 'bills', action: 'fetchBills' });
+      setFetchError(true);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -281,8 +284,10 @@ export default function BillsScreen() {
       try {
         const data = await getReadingsByConnection(connId);
         setConnReadings(data);
-      } catch {
+      } catch (e: any) {
         setConnReadings([]);
+        captureError(e, { screen: 'bills', action: 'loadReadings' });
+        Alert.alert('Greška', 'Nije moguće učitati očitanja za ovaj priključak.');
       } finally {
         setLoadingReadings(false);
       }
@@ -942,11 +947,19 @@ export default function BillsScreen() {
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.list}
         ListEmptyComponent={
-          <EmptyState
-            title="Nema računa"
-            message="Nema računa koji odgovaraju odabranom filteru."
-            icon={<CreditCard size={48} color={Colors.textLight} />}
-          />
+          fetchError
+            ? <EmptyState
+                title="Greška pri učitavanju"
+                message="Provjeri vezu i pokušaj ponovo."
+                icon={<AlertCircle size={48} color={Colors.error} />}
+                actionLabel="Pokušaj ponovo"
+                onAction={fetchData}
+              />
+            : <EmptyState
+                title="Nema računa"
+                message="Nema računa koji odgovaraju odabranom filteru."
+                icon={<CreditCard size={48} color={Colors.textLight} />}
+              />
         }
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />

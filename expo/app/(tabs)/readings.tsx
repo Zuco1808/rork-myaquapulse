@@ -27,8 +27,8 @@ import { OCRCameraView } from '@/components/ocr/CameraView';
 import { OCRResult } from '@/components/ocr/OCRResult';
 import { useAuthStore } from '@/store/auth-store';
 import { usePermissions } from '@/lib/use-permissions';
-import { getReadings, createReading, verifyReading } from '@/lib/api/readings';
-import { getMeters } from '@/lib/api/meters';
+import { getReadings, getReadingsByUser, createReading, verifyReading } from '@/lib/api/readings';
+import { getMeters, getMetersByUser } from '@/lib/api/meters';
 import Colors from '@/constants/colors';
 import { ReadingDisplay } from '@/types/user';
 import { captureError } from '@/lib/sentry';
@@ -93,22 +93,23 @@ export default function ReadingsScreen() {
     }
     setLoading(true);
     try {
-      const [metersData, readingsData] = await Promise.all([
-        getMeters(),
-        getReadings(),
-      ]);
-      const userMeters = isEndUser
-        ? metersData.filter((m: any) => m.userId === user.id)
-        : metersData;
-      const userReadings = isEndUser
-        ? readingsData.filter((r: any) =>
-            userMeters.some((m: any) => m.id === r.meterId),
-          )
-        : readingsData;
-      setAvailableMeters(userMeters);
-      setReadings(userReadings);
-      if (userMeters.length > 0 && !selectedMeterId) {
-        setSelectedMeterId(userMeters[0].id);
+      let metersData: any[];
+      let readingsData: any[];
+      if (isEndUser) {
+        [metersData, readingsData] = await Promise.all([
+          getMetersByUser(user.id),
+          getReadingsByUser(user.id),
+        ]);
+      } else {
+        [metersData, readingsData] = await Promise.all([
+          getMeters(),
+          getReadings(),
+        ]);
+      }
+      setAvailableMeters(metersData);
+      setReadings(readingsData);
+      if (metersData.length > 0 && !selectedMeterId) {
+        setSelectedMeterId(metersData[0].id);
       }
     } catch (err) {
       captureError(err, { screen: 'readings', action: 'fetchData' });
@@ -219,15 +220,7 @@ export default function ReadingsScreen() {
     }
   };
 
-  /* ── Edit / Verify / Reject ─────────────────────────────────────────────── */
-  const handleEditReading = (_readingId: string) => {
-    if (!isStaff) {
-      Alert.alert('Nemate dozvolu', 'Samo administratori i finansije mogu uređivati očitanja.');
-      return;
-    }
-    Alert.alert('Uređivanje očitanja', 'Ova funkcionalnost će biti implementirana uskoro.');
-  };
-
+  /* ── Verify / Reject ────────────────────────────────────────────────────── */
   const handleVerifyReading = async (readingId: string) => {
     if (!isStaff) return;
     try {
@@ -308,7 +301,6 @@ export default function ReadingsScreen() {
               reading={reading}
               showMeterInfo={true}
               meterSerialNumber={reading.meterSerialNumber}
-              onEdit={() => handleEditReading(reading.id)}
               onVerify={
                 isStaff && reading.status === 'pending'
                   ? () => handleVerifyReading(reading.id)

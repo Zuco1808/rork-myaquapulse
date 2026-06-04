@@ -1,9 +1,9 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, StyleProp, ViewStyle } from 'react-native';
 import Colors from '@/constants/colors';
 
 export interface EmptyStateProps {
-  style?: any;
+  style?: StyleProp<ViewStyle>;
   title: string;
   message: string;
   icon?: React.ReactNode;
@@ -16,10 +16,11 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
   message,
   icon,
   actionLabel,
-  onAction
+  onAction,
+  style,
 }) => {
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, style]}>
       {icon && <View style={styles.iconContainer}>{icon}</View>}
       <Text style={styles.title}>{title}</Text>
       <Text style={styles.message}>{message}</Text>

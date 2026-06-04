@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import { captureError } from '@/lib/sentry';
 
 export interface OCRResult {
   readable: boolean;
@@ -16,7 +17,7 @@ export const readMeterFromImage = async (imageBase64: string, mimeType: string =
     if (error) throw error;
     return data as OCRResult;
   } catch (err: any) {
-    console.error('OCR error:', err);
+    captureError(err, { screen: 'ocr', action: 'readMeterFromImage' });
     return {
       readable: false,
       value: null,
@@ -28,7 +29,7 @@ export const readMeterFromImage = async (imageBase64: string, mimeType: string =
 
 export const uploadMeterImage = async (imageBase64: string, meterId: string): Promise<string | null> => {
   try {
-    const fileName = `meters//.jpg`;
+    const fileName = `meters/${meterId}_${Date.now()}.jpg`;
     const byteCharacters = atob(imageBase64);
     const byteNumbers = new Array(byteCharacters.length);
     for (let i = 0; i < byteCharacters.length; i++) {
@@ -52,7 +53,7 @@ export const uploadMeterImage = async (imageBase64: string, meterId: string): Pr
 
     return urlData.publicUrl;
   } catch (err) {
-    console.error('Upload error:', err);
+    captureError(err, { screen: 'ocr', action: 'uploadMeterImage' });
     return null;
   }
 };
