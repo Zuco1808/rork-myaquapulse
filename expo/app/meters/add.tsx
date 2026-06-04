@@ -17,10 +17,12 @@ import { Header } from '@/components/layout/Header';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
+import { GpsLocationPicker } from '@/components/ui/GpsLocationPicker';
 import { useAuthStore } from '@/store/auth-store';
 import { createMeter } from '@/lib/api/meters';
 import { supabase } from '@/lib/supabase';
 import { usePermissions } from '@/lib/use-permissions';
+import { GpsCoords } from '@/lib/use-gps-location';
 import Colors from '@/constants/colors';
 
 type MeterType = 'standard' | 'smart' | 'industrial';
@@ -49,6 +51,8 @@ export default function AddMeterScreen() {
   const [utilities, setUtilities]   = useState<{ id: string; name: string }[]>([]);
   const [endUsers, setEndUsers]     = useState<{ id: string; full_name: string; email: string }[]>([]);
   const [loadingData, setLoadingData] = useState(true);
+
+  const [gpsCoords, setGpsCoords] = useState<GpsCoords | null>(null);
 
   /* ── errors / saving ─────────────────────────── */
   const [serialError, setSerialError]   = useState('');
@@ -132,6 +136,8 @@ export default function AddMeterScreen() {
         address:      address.trim(),
         meter_serial: serial.trim(),
         meter_type:   meterType,
+        latitude:     gpsCoords?.latitude ?? null,
+        longitude:    gpsCoords?.longitude ?? null,
       });
       Alert.alert('Uspjeh', 'Priključak je uspješno kreiran.', [
         { text: 'OK', onPress: () => router.back() },
@@ -209,6 +215,8 @@ export default function AddMeterScreen() {
                 </TouchableOpacity>
               ))}
             </View>
+
+            <GpsLocationPicker value={gpsCoords} onChange={setGpsCoords} />
           </Card>
 
           {/* Vodovod (samo super_admin bira, ostali imaju predefiniran) */}

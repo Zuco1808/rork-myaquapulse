@@ -8,12 +8,11 @@ import {
   Alert,
   Modal,
   ActivityIndicator,
-  Platform,
   SafeAreaView,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Plus, X, Calendar, Info } from 'lucide-react-native';
-import DateTimePicker from '@react-native-community/datetimepicker';
+import { DatePickerSheet } from '@/components/ui/DatePickerSheet';
 import { PeriodCard, PricingPeriod } from '@/components/pricing/PeriodCard';
 import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
@@ -301,22 +300,12 @@ export default function PeriodsScreen() {
                   </Text>
                 </TouchableOpacity>
                 {!!startDateError && <Text style={styles.pickerError}>{startDateError}</Text>}
-                {showStartPicker && (
-                  <DateTimePicker
-                    value={startDate ? parseDMY(startDate) : new Date()}
-                    mode="date"
-                    display="spinner"
-                    onChange={(_, date) => {
-                      if (Platform.OS === 'android') setShowStartPicker(false);
-                      if (date) setStartDate(toDMY(date));
-                    }}
-                  />
-                )}
-                {showStartPicker && Platform.OS === 'ios' && (
-                  <TouchableOpacity style={styles.datePickerDone} onPress={() => setShowStartPicker(false)}>
-                    <Text style={styles.datePickerDoneText}>Gotovo</Text>
-                  </TouchableOpacity>
-                )}
+                <DatePickerSheet
+                  visible={showStartPicker}
+                  value={startDate ? parseDMY(startDate) : new Date()}
+                  onChange={(date) => setStartDate(toDMY(date))}
+                  onClose={() => setShowStartPicker(false)}
+                />
 
                 {/* End date */}
                 <Text style={styles.pickerLabel}>Datum završetka</Text>
@@ -331,22 +320,12 @@ export default function PeriodsScreen() {
                   </Text>
                 </TouchableOpacity>
                 {!!endDateError && <Text style={styles.pickerError}>{endDateError}</Text>}
-                {showEndPicker && (
-                  <DateTimePicker
-                    value={endDate ? parseDMY(endDate) : new Date()}
-                    mode="date"
-                    display="spinner"
-                    onChange={(_, date) => {
-                      if (Platform.OS === 'android') setShowEndPicker(false);
-                      if (date) setEndDate(toDMY(date));
-                    }}
-                  />
-                )}
-                {showEndPicker && Platform.OS === 'ios' && (
-                  <TouchableOpacity style={styles.datePickerDone} onPress={() => setShowEndPicker(false)}>
-                    <Text style={styles.datePickerDoneText}>Gotovo</Text>
-                  </TouchableOpacity>
-                )}
+                <DatePickerSheet
+                  visible={showEndPicker}
+                  value={endDate ? parseDMY(endDate) : new Date()}
+                  onChange={(date) => setEndDate(toDMY(date))}
+                  onClose={() => setShowEndPicker(false)}
+                />
                 <Input
                   label="Opis"
                   placeholder="Unesite opis perioda"

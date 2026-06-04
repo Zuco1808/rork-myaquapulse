@@ -18,10 +18,12 @@ import { Header } from '@/components/layout/Header';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
+import { GpsLocationPicker } from '@/components/ui/GpsLocationPicker';
 import { useAuthStore } from '@/store/auth-store';
 import { getMeterById, updateMeter } from '@/lib/api/meters';
 import { supabase } from '@/lib/supabase';
 import { usePermissions } from '@/lib/use-permissions';
+import { GpsCoords } from '@/lib/use-gps-location';
 import Colors from '@/constants/colors';
 
 type MeterType = 'standard' | 'smart' | 'industrial';
@@ -46,6 +48,7 @@ export default function EditMeterScreen() {
   const [meterType, setMeterType]     = useState<MeterType>('standard');
   const [isActive, setIsActive]       = useState(true);
   const [selectedUserId, setSelectedUserId] = useState('');
+  const [gpsCoords, setGpsCoords]     = useState<GpsCoords | null>(null);
 
   /* ── picker data ────────────────────────────── */
   const [endUsers, setEndUsers] = useState<{ id: string; full_name: string; email: string }[]>([]);
@@ -71,6 +74,9 @@ export default function EditMeterScreen() {
       setMeterType((meter.meter_type as MeterType) || 'standard');
       setIsActive(meter.is_active ?? true);
       setSelectedUserId(meter.user_id || '');
+      if (meter.latitude != null && meter.longitude != null) {
+        setGpsCoords({ latitude: meter.latitude, longitude: meter.longitude });
+      }
 
       // Load end users scoped to utility
       const utilityId = meter.utility_id || user?.utility_id;
@@ -110,6 +116,8 @@ export default function EditMeterScreen() {
         address:      address.trim(),
         meter_type:   meterType,
         is_active:    isActive,
+        latitude:     gpsCoords?.latitude ?? null,
+        longitude:    gpsCoords?.longitude ?? null,
         ...(selectedUserId ? { user_id: selectedUserId } : {}),
       });
       Alert.alert('Uspjeh', 'Priključak je uspješno ažuriran.', [
@@ -188,6 +196,8 @@ export default function EditMeterScreen() {
                 </TouchableOpacity>
               ))}
             </View>
+
+            <GpsLocationPicker value={gpsCoords} onChange={setGpsCoords} />
           </Card>
 
           {/* Status */}

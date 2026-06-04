@@ -16,7 +16,7 @@ import {
   KeyboardAvoidingView,
 } from 'react-native';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
-import DateTimePicker from '@react-native-community/datetimepicker';
+import { DatePickerSheet } from '@/components/ui/DatePickerSheet';
 import {
   CreditCard,
   Calendar,
@@ -753,20 +753,13 @@ export default function BillsScreen() {
                         </TouchableOpacity>
                       ) : null}
                     </TouchableOpacity>
-                    {showDueDatePicker && (
-                      <DateTimePicker
-                        value={newDueDate ? new Date(newDueDate) : new Date()}
-                        mode="date"
-                        display="spinner"
-                        minimumDate={new Date()}
-                        onChange={(_, d) => { if (Platform.OS === 'android') setShowDueDatePicker(false); if (d) setNewDueDate(toDateStr(d)); }}
-                      />
-                    )}
-                    {showDueDatePicker && Platform.OS === 'ios' && (
-                      <TouchableOpacity style={styles.datePickerDone} onPress={() => setShowDueDatePicker(false)}>
-                        <Text style={styles.datePickerDoneText}>Gotovo</Text>
-                      </TouchableOpacity>
-                    )}
+                    <DatePickerSheet
+                      visible={showDueDatePicker}
+                      value={newDueDate ? new Date(newDueDate) : new Date()}
+                      minimumDate={new Date()}
+                      onChange={(d) => setNewDueDate(toDateStr(d))}
+                      onClose={() => setShowDueDatePicker(false)}
+                    />
                   </>
                 )}
 
@@ -783,19 +776,6 @@ export default function BillsScreen() {
                             {newPeriodFrom || 'YYYY-MM-DD'}
                           </Text>
                         </TouchableOpacity>
-                        {showPeriodFromPicker && (
-                          <DateTimePicker
-                            value={newPeriodFrom ? new Date(newPeriodFrom) : new Date()}
-                            mode="date"
-                            display="spinner"
-                            onChange={(_, d) => { if (Platform.OS === 'android') setShowPeriodFromPicker(false); if (d) setNewPeriodFrom(toDateStr(d)); }}
-                          />
-                        )}
-                        {showPeriodFromPicker && Platform.OS === 'ios' && (
-                          <TouchableOpacity style={styles.datePickerDone} onPress={() => setShowPeriodFromPicker(false)}>
-                            <Text style={styles.datePickerDoneText}>Gotovo</Text>
-                          </TouchableOpacity>
-                        )}
                       </View>
                       <View style={{ flex: 1 }}>
                         <Text style={styles.datePickerLabel}>Period do *</Text>
@@ -805,21 +785,20 @@ export default function BillsScreen() {
                             {newPeriodTo || 'YYYY-MM-DD'}
                           </Text>
                         </TouchableOpacity>
-                        {showPeriodToPicker && (
-                          <DateTimePicker
-                            value={newPeriodTo ? new Date(newPeriodTo) : new Date()}
-                            mode="date"
-                            display="spinner"
-                            onChange={(_, d) => { if (Platform.OS === 'android') setShowPeriodToPicker(false); if (d) setNewPeriodTo(toDateStr(d)); }}
-                          />
-                        )}
-                        {showPeriodToPicker && Platform.OS === 'ios' && (
-                          <TouchableOpacity style={styles.datePickerDone} onPress={() => setShowPeriodToPicker(false)}>
-                            <Text style={styles.datePickerDoneText}>Gotovo</Text>
-                          </TouchableOpacity>
-                        )}
                       </View>
                     </View>
+                    <DatePickerSheet
+                      visible={showPeriodFromPicker}
+                      value={newPeriodFrom ? new Date(newPeriodFrom) : new Date()}
+                      onChange={(d) => setNewPeriodFrom(toDateStr(d))}
+                      onClose={() => setShowPeriodFromPicker(false)}
+                    />
+                    <DatePickerSheet
+                      visible={showPeriodToPicker}
+                      value={newPeriodTo ? new Date(newPeriodTo) : new Date()}
+                      onChange={(d) => setNewPeriodTo(toDateStr(d))}
+                      onClose={() => setShowPeriodToPicker(false)}
+                    />
 
                     {/* Amount + consumption */}
                     <View style={styles.row2}>
@@ -856,20 +835,13 @@ export default function BillsScreen() {
                         </TouchableOpacity>
                       ) : null}
                     </TouchableOpacity>
-                    {showDueDatePicker && (
-                      <DateTimePicker
-                        value={newDueDate ? new Date(newDueDate) : new Date()}
-                        mode="date"
-                        display="spinner"
-                        minimumDate={new Date()}
-                        onChange={(_, d) => { if (Platform.OS === 'android') setShowDueDatePicker(false); if (d) setNewDueDate(toDateStr(d)); }}
-                      />
-                    )}
-                    {showDueDatePicker && Platform.OS === 'ios' && (
-                      <TouchableOpacity style={styles.datePickerDone} onPress={() => setShowDueDatePicker(false)}>
-                        <Text style={styles.datePickerDoneText}>Gotovo</Text>
-                      </TouchableOpacity>
-                    )}
+                    <DatePickerSheet
+                      visible={showDueDatePicker}
+                      value={newDueDate ? new Date(newDueDate) : new Date()}
+                      minimumDate={new Date()}
+                      onChange={(d) => setNewDueDate(toDateStr(d))}
+                      onClose={() => setShowDueDatePicker(false)}
+                    />
                   </>
                 )}
               </ScrollView>

@@ -22,7 +22,7 @@ import { getTasks, getMyTasks, updateTaskStatus, createTask } from '@/lib/api/ta
 import { getMeters } from '@/lib/api/meters';
 import { getUsersByUtility } from '@/lib/api/users';
 import { supabase } from '@/lib/supabase';
-import DateTimePicker from '@react-native-community/datetimepicker';
+import { DatePickerSheet } from '@/components/ui/DatePickerSheet';
 import { Task } from '@/types/user';
 import Colors from '@/constants/colors';
 
@@ -539,26 +539,13 @@ export default function TasksScreen() {
                   ) : null}
                 </TouchableOpacity>
 
-                {showDatePicker && (
-                  <DateTimePicker
-                    value={newDueDate ? new Date(newDueDate) : new Date()}
-                    mode="date"
-                    display="spinner"
-                    minimumDate={new Date()}
-                    onChange={(_, date) => {
-                      if (Platform.OS === 'android') setShowDatePicker(false);
-                      if (date) setNewDueDate(toDateStr(date));
-                    }}
-                  />
-                )}
-                {showDatePicker && Platform.OS === 'ios' && (
-                  <TouchableOpacity
-                    style={styles.datePickerDone}
-                    onPress={() => setShowDatePicker(false)}
-                  >
-                    <Text style={styles.datePickerDoneText}>Gotovo</Text>
-                  </TouchableOpacity>
-                )}
+                <DatePickerSheet
+                  visible={showDatePicker}
+                  value={newDueDate ? new Date(newDueDate) : new Date()}
+                  minimumDate={new Date()}
+                  onChange={(date) => setNewDueDate(toDateStr(date))}
+                  onClose={() => setShowDatePicker(false)}
+                />
 
                 <Text style={styles.filterLabel}>Tip:</Text>
                 <View style={styles.chipRow}>

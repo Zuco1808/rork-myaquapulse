@@ -9,6 +9,8 @@ const mapConnection = (c: any) => ({
   meter_type: c.meter_type,
   user_group: c.user_group,
   is_active: c.is_active,
+  latitude: c.latitude != null ? Number(c.latitude) : null,
+  longitude: c.longitude != null ? Number(c.longitude) : null,
   userId: c.user_id,
   userName: c.profiles?.full_name || '',
   userEmail: c.profiles?.email || '',
@@ -55,6 +57,8 @@ export const createMeter = async (meter: {
   meter_serial: string;
   meter_type?: string;
   user_group?: string;
+  latitude?: number | null;
+  longitude?: number | null;
 }) => {
   const { data, error } = await supabase
     .from('connections')
@@ -73,6 +77,8 @@ export const updateMeter = async (id: string, updates: Partial<{
   user_group: string;
   is_active: boolean;
   user_id: string;
+  latitude: number | null;
+  longitude: number | null;
 }>) => {
   const { data, error } = await supabase
     .from('connections')
