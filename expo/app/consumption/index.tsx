@@ -35,6 +35,7 @@ import {
   getReadingsByUser,
 } from '@/lib/api/readings';
 import Colors from '@/constants/colors';
+import { captureError } from '@/lib/sentry';
 
 const READ_TYPE_LABEL: Record<string, string> = {
   manual: 'Ručno',
@@ -97,7 +98,7 @@ export default function ConsumptionScreen() {
       }
       setReadings(data);
     } catch (err) {
-      console.error('Greška pri učitavanju očitanja:', err);
+      captureError(err, { screen: 'consumption', action: 'fetchReadings' });
     } finally {
       setLoading(false);
       setRefreshing(false);

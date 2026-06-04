@@ -20,6 +20,7 @@ import { usePermissions } from '@/lib/use-permissions';
 import Colors from '@/constants/colors';
 import { supabase } from '@/lib/supabase';
 import { Profile } from '@/types/user';
+import { captureError } from '@/lib/sentry';
 
 /* ── pure filter helper ──────────────────────────── */
 const filterUsers = (source: Profile[], q: string, role: string, status: string): Profile[] => {
@@ -85,7 +86,7 @@ export default function UsersScreen() {
       if (error) throw error;
       setUsers(data || []);
     } catch (err) {
-      console.error('Greška pri učitavanju korisnika:', err);
+      captureError(err, { screen: 'users', action: 'fetchUsers' });
     } finally {
       setLoading(false);
       setRefreshing(false);

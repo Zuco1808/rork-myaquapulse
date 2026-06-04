@@ -9,6 +9,7 @@ import { useAuthStore } from '@/store/auth-store';
 import { supabase } from '@/lib/supabase';
 import Colors from '@/constants/colors';
 import { WaterUtility } from '@/types/user';
+import { captureError } from '@/lib/sentry';
 
 export default function CompanyDetailScreen() {
   const router = useRouter();
@@ -36,7 +37,7 @@ export default function CompanyDetailScreen() {
       setUsersCount(usersRes.count || 0);
       setConnectionsCount(connectionsRes.count || 0);
     } catch (err) {
-      console.error(err);
+      captureError(err, { screen: 'company-detail', action: 'fetchData' });
     } finally {
       setIsLoading(false);
     }

@@ -27,6 +27,7 @@ import { usePermissions } from '@/lib/use-permissions';
 import { getMetersByUser } from '@/lib/api/meters';
 import { createTask } from '@/lib/api/tasks';
 import Colors from '@/constants/colors';
+import { captureError } from '@/lib/sentry';
 
 export default function ReportIssueScreen() {
   const router = useRouter();
@@ -65,7 +66,7 @@ export default function ReportIssueScreen() {
         setSelectedConnectionId(data[0].id);
       }
     } catch (e) {
-      console.error('Greška pri učitavanju priključaka:', e);
+      captureError(e, { screen: 'report-issue', action: 'fetchConnections' });
     } finally {
       setLoadingConnections(false);
     }

@@ -24,6 +24,7 @@ import { supabase } from '@/lib/supabase';
 import { usePermissions } from '@/lib/use-permissions';
 import { GpsCoords } from '@/lib/use-gps-location';
 import Colors from '@/constants/colors';
+import { captureError } from '@/lib/sentry';
 
 type MeterType = 'standard' | 'smart' | 'industrial';
 
@@ -93,7 +94,7 @@ export default function AddMeterScreen() {
       const { data: usersData } = await usersQ;
       setEndUsers(usersData || []);
     } catch (e) {
-      console.error('Greška pri učitavanju podataka za formu:', e);
+      captureError(e, { screen: 'meter-add', action: 'loadFormData' });
     } finally {
       setLoadingData(false);
     }

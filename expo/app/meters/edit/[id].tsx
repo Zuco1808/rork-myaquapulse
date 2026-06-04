@@ -25,6 +25,7 @@ import { supabase } from '@/lib/supabase';
 import { usePermissions } from '@/lib/use-permissions';
 import { GpsCoords } from '@/lib/use-gps-location';
 import Colors from '@/constants/colors';
+import { captureError } from '@/lib/sentry';
 
 type MeterType = 'standard' | 'smart' | 'industrial';
 
@@ -91,7 +92,7 @@ export default function EditMeterScreen() {
       const { data: usersData } = await query;
       setEndUsers(usersData || []);
     } catch (e) {
-      console.error('Greška pri učitavanju priključka:', e);
+      captureError(e, { screen: 'meter-edit', action: 'loadMeter' });
       Alert.alert('Greška', 'Učitavanje podataka nije uspjelo.');
     } finally {
       setLoadingData(false);

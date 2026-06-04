@@ -34,6 +34,7 @@ import {
 } from '@/lib/api/distributors';
 import { Distributor } from '@/types/user';
 import Colors from '@/constants/colors';
+import { captureError } from '@/lib/sentry';
 
 export default function DistributorsScreen() {
   const router = useRouter();
@@ -48,7 +49,7 @@ export default function DistributorsScreen() {
       const data = await getDistributors();
       setDistributors(data);
     } catch (err) {
-      console.error('Greška pri učitavanju distributera:', err);
+      captureError(err, { screen: 'distributors', action: 'fetchDistributors' });
     } finally {
       setLoading(false);
       setRefreshing(false);

@@ -27,6 +27,7 @@ import {
   updatePricingPeriod,
   deletePricingPeriod,
 } from '@/lib/api/pricing';
+import { captureError } from '@/lib/sentry';
 
 /* ── date helpers (DD.MM.YYYY ↔ Date) ─────────────────────────────── */
 const parseDMY = (s: string): Date => {
@@ -73,7 +74,7 @@ export default function PeriodsScreen() {
       const data = await getPricingPeriods(utilityId);
       setPeriods(data);
     } catch (e: any) {
-      console.error('Greška pri učitavanju perioda:', e.message);
+      captureError(e, { screen: 'pricing-periods', action: 'fetchPeriods' });
     } finally {
       setIsLoading(false);
     }

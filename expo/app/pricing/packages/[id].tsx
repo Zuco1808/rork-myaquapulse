@@ -30,6 +30,7 @@ import {
   deletePricingTier,
   getUserGroups,
 } from '@/lib/api/pricing';
+import { captureError } from '@/lib/sentry';
 
 export default function PackageDetailsScreen() {
   const router  = useRouter();
@@ -74,7 +75,7 @@ export default function PackageDetailsScreen() {
       setTiers(tierData);
       setUserGroups(ugs);
     } catch (e: any) {
-      console.error('Greška pri učitavanju paketa:', e.message);
+      captureError(e, { screen: 'pricing-package', action: 'fetchData' });
     } finally {
       setIsLoading(false);
     }

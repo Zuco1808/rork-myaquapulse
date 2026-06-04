@@ -35,6 +35,7 @@ import { usePermissions } from '@/lib/use-permissions';
 import { getTasks, getMyTasks, updateTaskStatus } from '@/lib/api/tasks';
 import { Task } from '@/types/user';
 import Colors from '@/constants/colors';
+import { captureError } from '@/lib/sentry';
 
 /* ── helpers ─────────────────────────────────────────── */
 type TaskStatus = Task['status'];
@@ -80,7 +81,7 @@ export default function AlertsScreen() {
       );
       setTasks(alerts);
     } catch (e: any) {
-      console.error('Greška pri učitavanju alarma:', e.message);
+      captureError(e, { screen: 'alerts', action: 'fetchAlerts' });
     } finally {
       setLoading(false);
       setRefreshing(false);

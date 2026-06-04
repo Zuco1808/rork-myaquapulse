@@ -25,6 +25,7 @@ import {
   updateUserGroup,
   deleteUserGroup,
 } from '@/lib/api/pricing';
+import { captureError } from '@/lib/sentry';
 
 const GROUP_TYPES: { type: UserGroupType; label: string }[] = [
   { type: 'household',   label: 'Domaćinstva' },
@@ -68,7 +69,7 @@ export default function UserGroupsScreen() {
       const data = await getUserGroups(utilityId);
       setUserGroups(data);
     } catch (e: any) {
-      console.error('Greška pri učitavanju grupa:', e.message);
+      captureError(e, { screen: 'user-groups', action: 'fetchGroups' });
     } finally {
       setIsLoading(false);
     }

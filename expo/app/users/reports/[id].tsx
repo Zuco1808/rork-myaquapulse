@@ -29,6 +29,7 @@ import { getReadings } from '@/lib/api/readings';
 import { supabase } from '@/lib/supabase';
 import { Profile } from '@/types/user';
 import Colors from '@/constants/colors';
+import { captureError } from '@/lib/sentry';
 
 /* ── role labels ─────────────────────────────────────── */
 const ROLE_LABEL: Record<string, string> = {
@@ -172,7 +173,7 @@ export default function UserReportsScreen() {
         });
       }
     } catch (e: any) {
-      console.error('Greška pri učitavanju izvještaja:', e.message);
+      captureError(e, { screen: 'user-reports', action: 'loadData' });
       router.back();
     } finally {
       setIsLoading(false);

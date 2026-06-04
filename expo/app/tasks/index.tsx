@@ -25,6 +25,7 @@ import { supabase } from '@/lib/supabase';
 import { DatePickerSheet } from '@/components/ui/DatePickerSheet';
 import { Task } from '@/types/user';
 import Colors from '@/constants/colors';
+import { captureError } from '@/lib/sentry';
 
 /* ─── pure date helper ────────────────────────────── */
 const toDateStr = (d: Date): string => {
@@ -135,7 +136,7 @@ export default function TasksScreen() {
         : await getTasks();
       setTasks(data);
     } catch (e: any) {
-      console.error('Greška pri učitavanju zadataka:', e.message);
+      captureError(e, { screen: 'tasks', action: 'fetchTasks' });
     } finally {
       setLoading(false);
       setRefreshing(false);

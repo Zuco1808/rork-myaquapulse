@@ -31,6 +31,7 @@ import { getReadings, createReading, verifyReading } from '@/lib/api/readings';
 import { getMeters } from '@/lib/api/meters';
 import Colors from '@/constants/colors';
 import { ReadingDisplay } from '@/types/user';
+import { captureError } from '@/lib/sentry';
 
 interface ExtendedReading extends ReadingDisplay {
   meterSerialNumber?: string;
@@ -110,7 +111,7 @@ export default function ReadingsScreen() {
         setSelectedMeterId(userMeters[0].id);
       }
     } catch (err) {
-      console.error('Greška pri učitavanju:', err);
+      captureError(err, { screen: 'readings', action: 'fetchData' });
     } finally {
       setLoading(false);
       setRefreshing(false);

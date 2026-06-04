@@ -31,6 +31,7 @@ import { useAuthStore } from '@/store/auth-store';
 import { supabase } from '@/lib/supabase';
 import Colors from '@/constants/colors';
 import { WaterUtility } from '@/types/user';
+import { captureError } from '@/lib/sentry';
 
 /* ── pure filter helper ──────────────────────────── */
 const filterUtilities = (source: WaterUtility[], q: string, status: string): WaterUtility[] => {
@@ -77,7 +78,7 @@ export default function CompaniesScreen() {
       if (error) throw error;
       setUtilities(data || []);
     } catch (err) {
-      console.error('Greška pri učitavanju vodovoda:', err);
+      captureError(err, { screen: 'companies', action: 'fetchUtilities' });
     } finally {
       setLoading(false);
       setRefreshing(false);

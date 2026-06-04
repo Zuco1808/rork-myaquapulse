@@ -48,6 +48,7 @@ import {
 import { getMeters } from '@/lib/api/meters';
 import { getReadingsByConnection } from '@/lib/api/readings';
 import Colors from '@/constants/colors';
+import { captureError } from '@/lib/sentry';
 
 type InvoiceStatus =
   | 'draft'
@@ -218,7 +219,7 @@ export default function BillsScreen() {
       }
       setBills(data);
     } catch (err) {
-      console.error('Greška pri učitavanju računa:', err);
+      captureError(err, { screen: 'bills', action: 'fetchBills' });
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -244,7 +245,7 @@ export default function BillsScreen() {
       const data = await getMeters();
       setConnList(data);
     } catch (e) {
-      console.error('Greška pri učitavanju priključaka:', e);
+      captureError(e, { screen: 'bills', action: 'fetchConnections' });
     } finally {
       setLoadingConns(false);
     }

@@ -26,6 +26,7 @@ import {
   getPricingPeriods,
   getUserGroups,
 } from '@/lib/api/pricing';
+import { captureError } from '@/lib/sentry';
 
 export default function PricingScreen() {
   const router  = useRouter();
@@ -69,7 +70,7 @@ export default function PricingScreen() {
       setPeriods(pds);
       setUserGroups(ugs);
     } catch (e: any) {
-      console.error('Greška pri učitavanju cijena:', e.message);
+      captureError(e, { screen: 'pricing', action: 'fetchAll' });
     } finally {
       setIsLoading(false);
     }

@@ -39,6 +39,7 @@ import {
 } from '@/lib/api/distributors';
 import { Distributor } from '@/types/user';
 import Colors from '@/constants/colors';
+import { captureError } from '@/lib/sentry';
 
 export default function DistributorDetailScreen() {
   const router = useRouter();
@@ -62,7 +63,7 @@ export default function DistributorDetailScreen() {
       setDistributor(dist);
       setUtilities(utils);
     } catch (err) {
-      console.error('Greška:', err);
+      captureError(err, { screen: 'distributor-detail', action: 'fetchData' });
     } finally {
       setLoading(false);
     }

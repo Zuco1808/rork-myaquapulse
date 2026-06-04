@@ -29,6 +29,7 @@ import { useAuthStore } from '@/store/auth-store';
 import { getMeters, getMetersByUser } from '@/lib/api/meters';
 import { usePermissions } from '@/lib/use-permissions';
 import Colors from '@/constants/colors';
+import { captureError } from '@/lib/sentry';
 
 export default function MetersScreen() {
   const router = useRouter();
@@ -48,7 +49,7 @@ export default function MetersScreen() {
           : await getMeters();
       setMeters(data);
     } catch (err) {
-      console.error('Greška pri učitavanju priključaka:', err);
+      captureError(err, { screen: 'meters', action: 'fetchMeters' });
     } finally {
       setLoading(false);
       setRefreshing(false);
