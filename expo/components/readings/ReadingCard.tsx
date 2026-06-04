@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
-import { FileText, AlertTriangle } from 'lucide-react-native';
+import { FileText, AlertTriangle, CheckCircle, XCircle, Edit3 } from 'lucide-react-native';
 import { Card } from '../ui/Card';
 import { StatusIndicator } from '../ui/StatusIndicator';
 import Colors from '@/constants/colors';
@@ -113,6 +113,41 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
             </Text>
           </View>
         )}
+
+        {(onVerify || onReject || onEdit) && (
+          <View style={styles.actions}>
+            {onEdit && (
+              <TouchableOpacity
+                style={styles.editBtn}
+                onPress={(e) => { e.stopPropagation?.(); onEdit(); }}
+                activeOpacity={0.8}
+              >
+                <Edit3 size={16} color="#fff" />
+                <Text style={styles.actionBtnText}>Uredi</Text>
+              </TouchableOpacity>
+            )}
+            {onVerify && (
+              <TouchableOpacity
+                style={styles.verifyBtn}
+                onPress={(e) => { e.stopPropagation?.(); onVerify(); }}
+                activeOpacity={0.8}
+              >
+                <CheckCircle size={16} color="#fff" />
+                <Text style={styles.actionBtnText}>Potvrdi</Text>
+              </TouchableOpacity>
+            )}
+            {onReject && (
+              <TouchableOpacity
+                style={styles.rejectBtn}
+                onPress={(e) => { e.stopPropagation?.(); onReject(); }}
+                activeOpacity={0.8}
+              >
+                <XCircle size={16} color="#fff" />
+                <Text style={styles.actionBtnText}>Odbij</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
       </Card>
     </TouchableOpacity>
   );
@@ -183,5 +218,46 @@ const styles = StyleSheet.create({
     marginLeft: 8,
     fontSize: 14,
     color: Colors.warning,
+  },
+  actions: {
+    flexDirection: 'row',
+    borderTopWidth: 1,
+    borderTopColor: Colors.border,
+  },
+  editBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    backgroundColor: Colors.primary,
+    gap: 6,
+    borderRightWidth: 1,
+    borderRightColor: 'rgba(255,255,255,0.3)',
+  },
+  verifyBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    backgroundColor: Colors.success,
+    gap: 6,
+  },
+  rejectBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    backgroundColor: Colors.error,
+    gap: 6,
+    borderLeftWidth: 1,
+    borderLeftColor: 'rgba(255,255,255,0.3)',
+  },
+  actionBtnText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
   },
 });
