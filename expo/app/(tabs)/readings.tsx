@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -28,7 +28,7 @@ import { OCRCameraView } from '@/components/ocr/CameraView';
 import { OCRResult } from '@/components/ocr/OCRResult';
 import { useAuthStore } from '@/store/auth-store';
 import { usePermissions } from '@/lib/use-permissions';
-import { getReadings, getReadingsByUser, createReading, verifyReading } from '@/lib/api/readings';
+import { getReadings, getReadingsByUser, createReading, verifyReading, type ReadingsOpts } from '@/lib/api/readings';
 import { getMeters, getMetersByUser } from '@/lib/api/meters';
 import Colors from '@/constants/colors';
 import { ReadingDisplay } from '@/types/user';
@@ -38,27 +38,6 @@ interface ExtendedReading extends ReadingDisplay {
   meterSerialNumber?: string;
   meterId: string;
 }
-
-/* ── Pure filter helper (no stale-closure risk) ─────────────────────────── */
-const filterReadings = (
-  source: ExtendedReading[],
-  query: string,
-  status: string,
-): ExtendedReading[] => {
-  let result = source;
-  if (query) {
-    const q = query.toLowerCase();
-    result = result.filter(
-      (r) =>
-        r.meterSerialNumber?.toLowerCase().includes(q) ||
-        r.value.toString().includes(q),
-    );
-  }
-  if (status !== 'all') {
-    result = result.filter((r) => r.status === status);
-  }
-  return result;
-};
 
 /* ════════════════════════════════════════════════════════════════════════ */
 export default function ReadingsScreen() {
@@ -83,12 +62,19 @@ export default function ReadingsScreen() {
   const [readings, setReadings] = useState<ExtendedReading[]>([]);
   const [showFilters, setShowFilters] = useState(false);
   const [filterStatus, setFilterStatus] = useState('all');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [readingError, setReadingError] = useState('');
+  const filterInitialized = useRef(false);
 
   const { canVerifyReadings: isStaff, canManageReadings, isWorker, isEndUser } = usePermissions();
 
-  /* ── Derived filtered list (never stale) ───────────────────────────────── */
-  const filteredReadings = filterReadings(readings, searchQuery, filterStatus);
+  /* ── Build API opts ────────────────────────────────────────────────────── */
+  const buildReadingsOpts = (offset: number): ReadingsOpts => ({
+    limit: PAGE_SIZE,
+    offset,
+    search: searchQuery.trim() || undefined,
+    status: filterStatus !== 'all' ? (filterStatus as ReadingsOpts['status']) : undefined,
+  });
 
   /* ── Fetch ─────────────────────────────────────────────────────────────── */
   const fetchData = async () => {
@@ -97,17 +83,18 @@ export default function ReadingsScreen() {
     setPageOffset(0);
     setHasMore(true);
     try {
+      const opts = buildReadingsOpts(0);
       let metersData: any[];
       let readingsData: any[];
       if (isEndUser) {
         [metersData, readingsData] = await Promise.all([
           getMetersByUser(user.id, { limit: 50 }),
-          getReadingsByUser(user.id, { limit: PAGE_SIZE, offset: 0 }),
+          getReadingsByUser(user.id, opts),
         ]);
       } else {
         [metersData, readingsData] = await Promise.all([
           getMeters({ limit: 200 }),
-          getReadings({ limit: PAGE_SIZE, offset: 0 }),
+          getReadings(opts),
         ]);
       }
       setAvailableMeters(metersData);
@@ -127,9 +114,10 @@ export default function ReadingsScreen() {
     if (loadingMore || !hasMore || !user) return;
     setLoadingMore(true);
     try {
+      const opts = buildReadingsOpts(pageOffset);
       const data = isEndUser
-        ? await getReadingsByUser(user.id, { limit: PAGE_SIZE, offset: pageOffset })
-        : await getReadings({ limit: PAGE_SIZE, offset: pageOffset });
+        ? await getReadingsByUser(user.id, opts)
+        : await getReadings(opts);
       setReadings(prev => [...prev, ...data]);
       setHasMore(data.length === PAGE_SIZE);
       setPageOffset(prev => prev + PAGE_SIZE);
@@ -141,6 +129,18 @@ export default function ReadingsScreen() {
   };
 
   useFreshFocus(fetchData);
+
+  /* ── Debounce search → debouncedSearch ─────────────────────────────────── */
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(searchQuery), 400);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  /* ── Re-fetch on filter / debounced search change ──────────────────────── */
+  useEffect(() => {
+    if (!filterInitialized.current) { filterInitialized.current = true; return; }
+    if (user) fetchData();
+  }, [debouncedSearch, filterStatus]);
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -309,7 +309,7 @@ export default function ReadingsScreen() {
         </View>
       ) : (
         <FlatList
-          data={filteredReadings}
+          data={readings}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.scrollContent}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}

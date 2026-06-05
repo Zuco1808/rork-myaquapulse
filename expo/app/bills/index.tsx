@@ -30,6 +30,8 @@ import {
   Send,
   AlertCircle,
   Ban,
+  CheckSquare,
+  Square,
 } from 'lucide-react-native';
 import { Header } from '@/components/layout/Header';
 import { Card } from '@/components/ui/Card';
@@ -44,6 +46,7 @@ import {
   getInvoicesByUser,
   createBill,
   updateBillStatus,
+  bulkUpdateBillStatus,
   calculateInvoice,
   type BillPeriodFilter,
 } from '@/lib/api/bills';
@@ -189,6 +192,13 @@ export default function BillsScreen() {
 
   const { canManageBilling: canManage, isEndUser } = usePermissions();
 
+  /* ── Bulk selection ────────────────────────────── */
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkSaving, setBulkSaving] = useState(false);
+  const [bulkStatus, setBulkStatus] = useState<InvoiceStatus | null>(null);
+  const [showBulkStatusSheet, setShowBulkStatusSheet] = useState(false);
+
   /* ── Fetch ─────────────────────────────────────── */
   const buildOpts = (offset: number) => ({
     limit: PAGE_SIZE,
@@ -252,6 +262,9 @@ export default function BillsScreen() {
   // Re-fetch when filters change (skip on first render — useFocusEffect handles that)
   useEffect(() => {
     if (!filterInitialized.current) { filterInitialized.current = true; return; }
+    setSelectionMode(false);
+    setSelectedIds(new Set());
+    setBulkStatus(null);
     if (user) fetchData();
   }, [filterStatus, filterPeriod]);
 
@@ -398,6 +411,52 @@ export default function BillsScreen() {
     }
   };
 
+  /* ── Bulk helpers ──────────────────────────────── */
+  const exitSelectionMode = () => {
+    setSelectionMode(false);
+    setSelectedIds(new Set());
+    setBulkStatus(null);
+  };
+
+  const toggleSelection = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handleBulkApply = async () => {
+    if (!bulkStatus || selectedIds.size === 0) {
+      Alert.alert('Greška', 'Odaberi status i barem jedan račun.');
+      return;
+    }
+    Alert.alert(
+      'Potvrdi promjenu',
+      `Promijeniti status ${selectedIds.size} račun(a) u "${STATUS_LABEL[bulkStatus]}"?`,
+      [
+        { text: 'Odustani', style: 'cancel' },
+        {
+          text: 'Primijeni',
+          onPress: async () => {
+            setBulkSaving(true);
+            try {
+              const paidAt = bulkStatus === 'paid' ? new Date().toISOString() : undefined;
+              await bulkUpdateBillStatus([...selectedIds], bulkStatus, paidAt);
+              await fetchData();
+              exitSelectionMode();
+            } catch (e) {
+              Alert.alert('Greška', 'Bulk promjena statusa nije uspjela.');
+            } finally {
+              setBulkSaving(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
   // Filtering is now server-side; bills already contains the filtered+paginated results
 
   /* ── Render helpers ────────────────────────────── */
@@ -421,17 +480,33 @@ export default function BillsScreen() {
     const status = item.status as InvoiceStatus;
     const color = STATUS_COLOR[status] || '#9E9E9E';
     const isOverdue = status === 'overdue';
+    const isSelected = selectedIds.has(item.id);
 
     return (
       <TouchableOpacity
         onPress={() => {
+          if (selectionMode) { toggleSelection(item.id); return; }
           setSelectedBill(item);
           setDetailVisible(true);
         }}
+        onLongPress={() => {
+          if (canManage && !selectionMode) {
+            setSelectionMode(true);
+            setSelectedIds(new Set([item.id]));
+          }
+        }}
         activeOpacity={0.8}
       >
-        <Card style={styles.billCard}>
+        <Card style={[styles.billCard, isSelected && styles.billCardSelected]}>
           <View style={styles.billTop}>
+            {selectionMode && (
+              <View style={styles.checkboxWrap}>
+                {isSelected
+                  ? <CheckSquare size={22} color={Colors.primary} />
+                  : <Square size={22} color={Colors.textLight} />
+                }
+              </View>
+            )}
             <View style={{ flex: 1 }}>
               <Text style={styles.billPeriod}>
                 {formatDate(item.period_from)} – {formatDate(item.period_to)}
@@ -899,6 +974,42 @@ export default function BillsScreen() {
     );
   };
 
+  /* ── Bulk status sheet ─────────────────────────── */
+  const renderBulkStatusSheet = () => (
+    <Modal
+      visible={showBulkStatusSheet}
+      transparent
+      animationType="slide"
+      onRequestClose={() => setShowBulkStatusSheet(false)}
+    >
+      <TouchableOpacity
+        style={styles.modalOverlay}
+        activeOpacity={1}
+        onPress={() => setShowBulkStatusSheet(false)}
+      >
+        <View style={[styles.modalBox, { maxHeight: 400 }]}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Novi status</Text>
+            <TouchableOpacity onPress={() => setShowBulkStatusSheet(false)}>
+              <X size={22} color={Colors.text} />
+            </TouchableOpacity>
+          </View>
+          {(['pending', 'sent', 'paid', 'overdue', 'cancelled'] as InvoiceStatus[]).map((s) => (
+            <TouchableOpacity
+              key={s}
+              style={[styles.statusSheetOption, bulkStatus === s && styles.statusSheetOptionActive]}
+              onPress={() => { setBulkStatus(s); setShowBulkStatusSheet(false); }}
+            >
+              <View style={[styles.statusDot, { backgroundColor: STATUS_COLOR[s] }]} />
+              <Text style={styles.statusSheetOptionText}>{STATUS_LABEL[s]}</Text>
+              {bulkStatus === s && <CheckSquare size={18} color={Colors.primary} />}
+            </TouchableOpacity>
+          ))}
+        </View>
+      </TouchableOpacity>
+    </Modal>
+  );
+
   /* ── Loading ───────────────────────────────────── */
   if (loading) {
     return (
@@ -984,7 +1095,7 @@ export default function BillsScreen() {
       />
 
       {/* FAB - create invoice */}
-      {canManage && !connectionId && (
+      {canManage && !connectionId && !selectionMode && (
         <TouchableOpacity
           style={styles.fab}
           onPress={openCreateModal}
@@ -996,6 +1107,44 @@ export default function BillsScreen() {
 
       {renderDetail()}
       {renderCreate()}
+      {renderBulkStatusSheet()}
+
+      {selectionMode && (
+        <View style={styles.bulkBar}>
+          <Text style={styles.bulkCount}>{selectedIds.size} odabrano</Text>
+          <TouchableOpacity
+            style={styles.bulkSelectAllBtn}
+            onPress={() => setSelectedIds(new Set(bills.map(b => b.id)))}
+          >
+            <Text style={styles.bulkSelectAllText}>Sve</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.bulkStatusPicker}
+            onPress={() => setShowBulkStatusSheet(true)}
+          >
+            <Text
+              style={[styles.bulkStatusPickerText, !bulkStatus && { color: Colors.textLight }]}
+              numberOfLines={1}
+            >
+              {bulkStatus ? STATUS_LABEL[bulkStatus] : 'Status'}
+            </Text>
+            <ChevronDown size={13} color={Colors.textLight} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.bulkApplyBtn, (!bulkStatus || selectedIds.size === 0) && { opacity: 0.4 }]}
+            onPress={handleBulkApply}
+            disabled={bulkSaving || !bulkStatus || selectedIds.size === 0}
+          >
+            {bulkSaving
+              ? <ActivityIndicator size="small" color="#fff" />
+              : <Text style={styles.bulkApplyBtnText}>Primijeni</Text>
+            }
+          </TouchableOpacity>
+          <TouchableOpacity onPress={exitSelectionMode}>
+            <X size={20} color={Colors.text} />
+          </TouchableOpacity>
+        </View>
+      )}
     </SafeAreaView>
   );
 }
@@ -1243,4 +1392,80 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   autoInfoText: { fontSize: 13, color: Colors.textLight, textAlign: 'center' },
+
+  /* Bulk selection */
+  billCardSelected: {
+    borderWidth: 2,
+    borderColor: Colors.primary,
+  },
+  checkboxWrap: {
+    marginRight: 10,
+    justifyContent: 'center',
+  },
+  bulkBar: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: '#fff',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingTop: 10,
+    paddingBottom: Platform.OS === 'android' ? 16 : 28,
+    gap: 6,
+    borderTopWidth: 1,
+    borderTopColor: Colors.border,
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 4,
+  },
+  bulkCount: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: Colors.text,
+    minWidth: 72,
+  },
+  bulkSelectAllBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: Colors.highlight,
+  },
+  bulkSelectAllText: { fontSize: 12, fontWeight: '600', color: Colors.primary },
+  bulkStatusPicker: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    gap: 4,
+  },
+  bulkStatusPickerText: { fontSize: 13, color: Colors.text, flex: 1 },
+  bulkApplyBtn: {
+    backgroundColor: Colors.primary,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 8,
+    minWidth: 82,
+    alignItems: 'center',
+  },
+  bulkApplyBtnText: { fontSize: 13, fontWeight: '700', color: '#fff' },
+  statusSheetOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    gap: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  statusSheetOptionActive: { backgroundColor: Colors.highlight },
+  statusSheetOptionText: { fontSize: 15, color: Colors.text, flex: 1 },
+  statusDot: { width: 10, height: 10, borderRadius: 5 },
 });

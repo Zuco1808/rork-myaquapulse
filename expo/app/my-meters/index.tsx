@@ -25,7 +25,7 @@ import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { useAuthStore } from '@/store/auth-store';
 import { getMetersByUser } from '@/lib/api/meters';
-import { getBillsByUser } from '@/lib/api/bills';
+import { getInvoicesByUser } from '@/lib/api/bills';
 import Colors from '@/constants/colors';
 
 // Bill statuses that count as outstanding debt for a citizen.
@@ -66,7 +66,7 @@ export default function CitizenPortalScreen() {
     try {
       const [metersData, billsData] = await Promise.all([
         getMetersByUser(user.id).catch(() => []),
-        getBillsByUser(user.id).catch(() => []),
+        getInvoicesByUser(user.id).catch(() => []),
       ]);
 
       const unpaid = (billsData as any[]).filter((b) => UNPAID_STATUSES.includes(b.status));

@@ -1,7 +1,8 @@
-import { getReadingsForBilling, getBills } from '@/lib/api/bills';
+import { getBills } from '@/lib/api/bills';
+import { getReadings } from '@/lib/api/readings';
 import { getUsers } from '@/lib/api/users';
 import { getAlerts } from '@/lib/api/alerts';
-import type { WaterAlert } from '@/types/location';
+import type { WaterAlert } from '@/types/user';
 
 export type ReportPeriod = 'day' | 'week' | 'month' | 'quarter' | 'year';
 
@@ -163,9 +164,9 @@ const aggregate = (
 export const getConsumptionReport = async (
   period: ReportPeriod,
 ): Promise<ChartReport> => {
-  const readings = await getReadingsForBilling();
+  const readings = await getReadings();
   return aggregate(
-    readings.map((r) => ({ ts: r.readingDate, value: r.consumption })),
+    readings.map((r: any) => ({ ts: r.readingDate, value: (r.consumption ?? r.value ?? 0) as number })),
     period,
   );
 };
@@ -175,7 +176,7 @@ export const getFinancialReport = async (
 ): Promise<ChartReport> => {
   const bills = await getBills();
   return aggregate(
-    bills.map((b) => ({ ts: b.issueDate ?? b.createdAt, value: b.amount ?? 0 })),
+    bills.map((b: any) => ({ ts: b.createdAt, value: (b.amount ?? 0) as number })),
     period,
   );
 };
@@ -200,23 +201,25 @@ const roleLabel = (role: string): string => {
 export const getUsersReport = async (): Promise<UsersReport> => {
   const [users, readings, bills] = await Promise.all([
     getUsers(),
-    getReadingsForBilling(),
+    getReadings(),
     getBills(),
   ]);
 
   const consumptionByUser = new Map<string, number>();
-  readings.forEach((r) => {
-    if (!r.userId) return;
-    consumptionByUser.set(r.userId, (consumptionByUser.get(r.userId) || 0) + r.consumption);
+  readings.forEach((r: any) => {
+    const uid: string = r.userId ?? '';
+    if (!uid) return;
+    consumptionByUser.set(uid, (consumptionByUser.get(uid) || 0) + ((r.consumption ?? r.value ?? 0) as number));
   });
 
   const billsByUser = new Map<string, { paid: number; total: number }>();
-  bills.forEach((b) => {
-    if (!b.userId) return;
-    const cur = billsByUser.get(b.userId) || { paid: 0, total: 0 };
+  bills.forEach((b: any) => {
+    const uid: string = b.userId ?? b.user_id ?? '';
+    if (!uid) return;
+    const cur = billsByUser.get(uid) || { paid: 0, total: 0 };
     cur.total += 1;
     if (b.status === 'paid') cur.paid += 1;
-    billsByUser.set(b.userId, cur);
+    billsByUser.set(uid, cur);
   });
 
   const allUsers = (users || []) as any[];

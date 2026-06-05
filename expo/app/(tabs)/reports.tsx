@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -8,16 +8,19 @@ import {
   Platform,
   ActivityIndicator,
   SafeAreaView,
+  Alert,
 } from 'react-native';
-import { useFocusEffect } from 'expo-router';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
 import {
-  BarChart3,
   ChevronDown,
   Droplet,
   DollarSign,
   Users,
   ClipboardList,
+  Download,
 } from 'lucide-react-native';
+import { useFreshFocus } from '@/lib/use-fresh-focus';
 import { Card } from '@/components/ui/Card';
 import { useAuthStore } from '@/store/auth-store';
 import { supabase } from '@/lib/supabase';
@@ -65,6 +68,7 @@ export default function ReportsScreen() {
   const [reportType, setReportType] = useState<ReportType>('consumption');
   const [showTypePicker, setShowTypePicker] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState(false);
 
   /* ── Consumption data ──────────────────────────── */
   const [consumptionData, setConsumptionData] = useState<BarItem[]>([]);
@@ -227,7 +231,69 @@ export default function ReportsScreen() {
     });
   };
 
-  useFocusEffect(useCallback(() => { fetchAll(); }, [user?.id]));
+  useFreshFocus(fetchAll);
+
+  /* ── CSV export ────────────────────────────────── */
+  const buildCSV = (): string => {
+    switch (reportType) {
+      case 'consumption': return [
+        'Mjesec,Potrošnja (m³)',
+        ...consumptionData.map((d) => `${d.label},${d.value}`),
+        `Ukupno,${totalConsumption}`,
+        `Prosjek/mj.,${avgConsumption}`,
+      ].join('\n');
+      case 'financial': return [
+        'Mjesec,Naplaćeno (KM)',
+        ...financialData.map((d) => `${d.label},${d.value}`),
+        `Ukupno naplaćeno,${totalRevenue}`,
+        `Na naplati,${pendingRevenue}`,
+      ].join('\n');
+      case 'users': return [
+        'Metrika,Vrijednost',
+        `Ukupno korisnika,${usersStats.total}`,
+        `Aktivnih,${usersStats.active}`,
+        `Radnika,${usersStats.workers}`,
+        `Krajnjih korisnika,${usersStats.endUsers}`,
+        `Priključaka,${usersStats.connections}`,
+      ].join('\n');
+      case 'tasks': {
+        const tot = tasksStats.open + tasksStats.inProgress + tasksStats.done + tasksStats.cancelled;
+        return [
+          'Status,Broj',
+          `Otvoreni,${tasksStats.open}`,
+          `U toku,${tasksStats.inProgress}`,
+          `Završeni,${tasksStats.done}`,
+          `Otkazani,${tasksStats.cancelled}`,
+          `Hitni (prioritet),${tasksStats.urgent}`,
+          `Ukupno,${tot}`,
+        ].join('\n');
+      }
+      default: return '';
+    }
+  };
+
+  const handleExport = async () => {
+    if (exporting || loading) return;
+    setExporting(true);
+    try {
+      const csv = buildCSV();
+      const label = REPORT_TYPES.find((r) => r.id === reportType)?.label ?? reportType;
+      const fileName = `aquapulse_${reportType}_${new Date().toISOString().slice(0, 10)}.csv`;
+      const filePath = `${FileSystem.cacheDirectory}${fileName}`;
+      await FileSystem.writeAsStringAsync(filePath, csv, {
+        encoding: FileSystem.EncodingType.UTF8,
+      });
+      await Sharing.shareAsync(filePath, {
+        mimeType: 'text/csv',
+        dialogTitle: `Izvezi — ${label}`,
+        UTI: 'public.comma-separated-values-text',
+      });
+    } catch {
+      Alert.alert('Greška', 'Izvoz nije uspio.');
+    } finally {
+      setExporting(false);
+    }
+  };
 
   /* ── Bar chart ─────────────────────────────────── */
   const renderBarChart = (data: BarItem[], unit: string, color: string) => {
@@ -427,9 +493,20 @@ export default function ReportsScreen() {
             </View>
           ) : (
             <>
-              <Text style={styles.reportTitle}>
-                {REPORT_TYPES.find((r) => r.id === reportType)?.label}
-              </Text>
+              <View style={styles.reportTitleRow}>
+                <Text style={styles.reportTitle}>
+                  {REPORT_TYPES.find((r) => r.id === reportType)?.label}
+                </Text>
+                <TouchableOpacity
+                  style={styles.exportBtn}
+                  onPress={handleExport}
+                  disabled={loading || exporting}
+                >
+                  {exporting
+                    ? <ActivityIndicator size="small" color={Colors.primary} />
+                    : <Download size={18} color={Colors.primary} />}
+                </TouchableOpacity>
+              </View>
               {renderContent()}
             </>
           )}
@@ -485,12 +562,24 @@ const styles = StyleSheet.create({
   /* Report card */
   reportCard: { padding: 16 },
   loadingBox: { height: 200, alignItems: 'center', justifyContent: 'center' },
+  reportTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 18,
+  },
   reportTitle: {
     fontSize: 17,
     fontWeight: 'bold',
     color: Colors.text,
-    marginBottom: 18,
-    textAlign: 'center',
+  },
+  exportBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    backgroundColor: Colors.highlight,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
   /* Bar chart */

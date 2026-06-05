@@ -133,6 +133,22 @@ export const updateBillStatus = async (
   return mapInvoice(data);
 };
 
+export const bulkUpdateBillStatus = async (
+  ids: string[],
+  status: 'draft' | 'pending' | 'sent' | 'paid' | 'overdue' | 'cancelled',
+  paid_at?: string
+) => {
+  const updates: any = { status };
+  if (paid_at) updates.paid_at = paid_at;
+
+  const { error } = await supabase
+    .from('invoices')
+    .update(updates)
+    .in('id', ids);
+
+  if (error) throw error;
+};
+
 /**
  * Poziva calculate-invoice Edge Function koja automatski:
  *  1. Kalkuliše potrošnju (to.value - from.value)

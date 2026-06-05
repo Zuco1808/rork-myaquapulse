@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabase';
-import type { WaterAlert } from '@/types/location';
+import type { WaterAlert } from '@/types/user';
 
 const ALERT_SELECT =
   '*, water_meters(serial_number, user_id, locations(name, address)), companies(name)';
