@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -10,7 +10,8 @@ import {
   Platform,
   ActivityIndicator,
 } from 'react-native';
-import { useRouter, useFocusEffect } from 'expo-router';
+import { useRouter } from 'expo-router';
+import { useFreshFocus } from '@/lib/use-fresh-focus';
 import {
   Droplet,
   MapPin,
@@ -83,11 +84,7 @@ export default function MetersScreen() {
     }
   };
 
-  useFocusEffect(
-    useCallback(() => {
-      fetchData();
-    }, [user?.id, user?.role]),
-  );
+  useFreshFocus(fetchData);
 
   const onRefresh = () => {
     setRefreshing(true);

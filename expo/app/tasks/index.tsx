@@ -4,7 +4,8 @@ import {
   TextInput, RefreshControl, Alert, SafeAreaView, Platform,
   Modal, ScrollView as RNScrollView, ActivityIndicator,
 } from 'react-native';
-import { useRouter, useFocusEffect } from 'expo-router';
+import { useRouter } from 'expo-router';
+import { useFreshFocus } from '@/lib/use-fresh-focus';
 import {
   ClipboardList, Search, Plus, Filter, ChevronRight,
   Calendar, Clock, User, Droplet, X, CheckCircle,
@@ -168,12 +169,10 @@ export default function TasksScreen() {
     }
   };
 
-  useFocusEffect(
-    useCallback(() => {
-      if (!user) { router.replace('/login'); return; }
-      fetchTasks();
-    }, [user])
-  );
+  useFreshFocus(() => {
+    if (!user) { router.replace('/login'); return; }
+    fetchTasks();
+  });
 
   const onRefresh = () => { setRefreshing(true); fetchTasks(); };
 
