@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -11,8 +11,11 @@ import {
   Modal,
   ScrollView,
   TouchableOpacity,
+  Dimensions,
 } from 'react-native';
-import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
+import { LineChart } from 'react-native-chart-kit';
+import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useFreshFocus } from '@/lib/use-fresh-focus';
 import {
   Droplet,
   Calendar,
@@ -139,11 +142,7 @@ export default function ConsumptionScreen() {
     }
   };
 
-  useFocusEffect(
-    useCallback(() => {
-      fetchData();
-    }, [user?.id, connectionId]),
-  );
+  useFreshFocus(fetchData);
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -154,11 +153,27 @@ export default function ConsumptionScreen() {
   const lastReading = readings[0];
   const totalReadings = readings.length;
 
-  const totalConsumption = (() => {
+  const totalConsumption = useMemo(() => {
     if (readings.length < 2) return null;
     const sorted = [...readings].sort((a, b) => a.readingDate - b.readingDate);
     return sorted[sorted.length - 1].value - sorted[0].value;
-  })();
+  }, [readings]);
+
+  /* ── Chart data (last 7 readings → 6 consumption intervals) ── */
+  const chartData = useMemo(() => {
+    if (readings.length < 2) return null;
+    const sorted = [...readings].sort((a, b) => a.readingDate - b.readingDate);
+    const slice  = sorted.slice(-7);
+    if (slice.length < 2) return null;
+    const labels: string[] = [];
+    const data:   number[] = [];
+    for (let i = 1; i < slice.length; i++) {
+      const consumption = Math.max(0, Number(slice[i].value) - Number(slice[i - 1].value));
+      labels.push(new Date(slice[i].readingDate).toLocaleDateString('bs-BA', { month: 'short', day: 'numeric' }));
+      data.push(Math.round(consumption * 10) / 10);
+    }
+    return { labels, datasets: [{ data }] };
+  }, [readings]);
 
   /* ── Card render ───────────────────────────────── */
   const renderCard = ({ item }: { item: any }) => (
@@ -320,6 +335,30 @@ export default function ConsumptionScreen() {
               <Text style={styles.statLabel}>Ukupno (period)</Text>
             </View>
           )}
+        </View>
+      )}
+
+      {/* Consumption chart */}
+      {chartData && (
+        <View style={styles.chartContainer}>
+          <Text style={styles.chartTitle}>Potrošnja po periodu (m³)</Text>
+          <LineChart
+            data={chartData}
+            width={Dimensions.get('window').width - 32}
+            height={160}
+            chartConfig={{
+              backgroundColor: '#fff',
+              backgroundGradientFrom: '#fff',
+              backgroundGradientTo: '#fff',
+              decimalPlaces: 1,
+              color: (opacity = 1) => `rgba(14, 165, 233, ${opacity})`,
+              labelColor: () => Colors.textLight,
+              propsForDots: { r: '4', strokeWidth: '2', stroke: Colors.primary },
+            }}
+            bezier
+            withInnerLines={false}
+            style={styles.chart}
+          />
         </View>
       )}
 
@@ -491,4 +530,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   closeBtnText: { fontSize: 15, fontWeight: '600', color: Colors.text },
+
+  chartContainer: {
+    marginHorizontal: 16,
+    marginBottom: 8,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  chartTitle: { fontSize: 13, fontWeight: '600', color: Colors.textLight, marginBottom: 8 },
+  chart: { borderRadius: 8, marginLeft: -12 },
 });

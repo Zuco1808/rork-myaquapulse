@@ -11,7 +11,8 @@ import {
   Platform,
   ActivityIndicator,
 } from 'react-native';
-import { useRouter, useFocusEffect } from 'expo-router';
+import { useRouter } from 'expo-router';
+import { useFreshFocus } from '@/lib/use-fresh-focus';
 import {
   Plus,
   Camera,
@@ -139,11 +140,7 @@ export default function ReadingsScreen() {
     }
   };
 
-  useFocusEffect(
-    useCallback(() => {
-      fetchData();
-    }, [user?.id, user?.role]),
-  );
+  useFreshFocus(fetchData);
 
   const onRefresh = () => {
     setRefreshing(true);

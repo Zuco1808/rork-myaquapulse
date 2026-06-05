@@ -118,7 +118,7 @@ const buildInvoiceHtml = (bill: any): string => `
   .footer{margin-top:28px;text-align:center;font-size:10px;color:#aaa;line-height:1.6;}
 </style></head><body>
 <div class="header">
-  <div><div class="co">JAVNO KOMUNALNO PREDUZEĆE</div><div class="co">"VODOVOD I KANALIZACIJA"</div><div class="sub">AquaPulse platforma</div></div>
+  <div><div class="co">${bill.utilityName ?? 'JAVNO KOMUNALNO PREDUZEĆE'}</div>${bill.utilityCity ? `<div class="sub">${bill.utilityCity}</div>` : ''}<div class="sub">AquaPulse platforma</div></div>
   <div style="text-align:right"><div class="sub">RAČUN</div><div class="bill-no">${bill.id.substring(0, 8).toUpperCase()}</div><div class="sub">za utrošenu vodu</div></div>
 </div>
 <div class="dates"><span>Datum: ${formatDate(bill.createdAt)}</span><span>Valuta: ${formatDate(bill.due_date)}</span></div>
@@ -390,8 +390,8 @@ export default function BillDetailsScreen() {
               {/* Company header */}
               <View style={styles.pdfDocHeader}>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.pdfCompanyName}>JAVNO KOMUNALNO PREDUZEĆE</Text>
-                  <Text style={styles.pdfCompanyName}>"VODOVOD I KANALIZACIJA"</Text>
+                  <Text style={styles.pdfCompanyName}>{bill.utilityName ?? 'JAVNO KOMUNALNO PREDUZEĆE'}</Text>
+                  {bill.utilityCity ? <Text style={styles.pdfCompanyAddr}>{bill.utilityCity}</Text> : null}
                   <Text style={styles.pdfCompanyAddr}>AquaPulse platforma</Text>
                 </View>
                 <View style={{ alignItems: 'flex-end' }}>

@@ -15,7 +15,8 @@ import {
   TextInput,
   KeyboardAvoidingView,
 } from 'react-native';
-import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useFreshFocus } from '@/lib/use-fresh-focus';
 import { DatePickerSheet } from '@/components/ui/DatePickerSheet';
 import {
   CreditCard,
@@ -246,11 +247,7 @@ export default function BillsScreen() {
     }
   };
 
-  useFocusEffect(
-    useCallback(() => {
-      fetchData();
-    }, [user?.id, connectionId]),
-  );
+  useFreshFocus(fetchData);
 
   // Re-fetch when filters change (skip on first render — useFocusEffect handles that)
   useEffect(() => {

@@ -81,12 +81,16 @@ export const getBillsByConnection = async (connectionId: string, opts?: BillsOpt
 export const getBillById = async (id: string) => {
   const { data, error } = await supabase
     .from('invoices')
-    .select('*, connections(meter_serial, address)')
+    .select('*, connections(meter_serial, address), water_utilities(name, city)')
     .eq('id', id)
     .single();
 
   if (error) throw error;
-  return mapInvoice(data);
+  return {
+    ...mapInvoice(data),
+    utilityName: (data as any).water_utilities?.name ?? null,
+    utilityCity: (data as any).water_utilities?.city ?? null,
+  };
 };
 
 export const createBill = async (bill: {
