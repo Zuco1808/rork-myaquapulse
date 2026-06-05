@@ -18,7 +18,8 @@ import { Card } from '@/components/ui/Card';
 import { ReadingCard } from '@/components/readings/ReadingCard';
 import { useAuthStore } from '@/store/auth-store';
 import { getMeterById } from '@/lib/api/meters';
-import { getReadingsByMeter, updateReadingStatus } from '@/lib/api/readings';
+import { getReadingsByConnection, updateReadingStatus } from '@/lib/api/readings';
+import { usePermissions } from '@/lib/use-permissions';
 import Colors from '@/constants/colors';
 
 const FILTER_LABELS: Record<string, string> = {
@@ -31,7 +32,7 @@ const FILTER_LABELS: Record<string, string> = {
 export default function MeterDetailScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { user } = useAuthStore();
+  const { canVerifyReadings: canVerify } = usePermissions();
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [meter, setMeter] = useState<any>(null);
   const [readings, setReadings] = useState<any[]>([]);
@@ -59,7 +60,7 @@ export default function MeterDetailScreen() {
     try {
       const [meterData, readingsData] = await Promise.all([
         getMeterById(meterId),
-        getReadingsByMeter(meterId),
+        getReadingsByConnection(meterId),
       ]);
       setMeter(meterData);
       setReadings(readingsData);
@@ -155,8 +156,6 @@ export default function MeterDetailScreen() {
     }
   };
 
-  const canVerify =
-    user?.role === 'admin' || user?.role === 'superadmin' || user?.role === 'finance';
 
   if (isLoading) {
     return (

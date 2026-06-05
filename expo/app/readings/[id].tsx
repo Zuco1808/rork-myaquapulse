@@ -29,12 +29,12 @@ import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { StatusIndicator } from '@/components/ui/StatusIndicator';
-import { useAuthStore } from '@/store/auth-store';
 import {
   getReadingById,
   updateReading,
   updateReadingStatus,
 } from '@/lib/api/readings';
+import { usePermissions } from '@/lib/use-permissions';
 import Colors from '@/constants/colors';
 
 interface DetailReading {
@@ -72,7 +72,7 @@ function formatDateTime(ts: number): string {
 export default function ReadingDetailScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { user } = useAuthStore();
+  const { canVerifyReadings: canManage } = usePermissions();
 
   const [reading, setReading] = useState<DetailReading | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -86,9 +86,6 @@ export default function ReadingDetailScreen() {
   // Reject
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
-
-  const canManage =
-    user?.role === 'admin' || user?.role === 'superadmin' || user?.role === 'finance';
 
   useEffect(() => {
     if (!id) return;

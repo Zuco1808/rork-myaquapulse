@@ -53,7 +53,7 @@ export default function CompanyProfileScreen() {
 
   useEffect(() => {
     if (!user) { router.replace('/login'); return; }
-    if (user.role !== 'admin' && user.role !== 'superadmin') {
+    if (user.role !== 'super_admin' && user.role !== 'utility_admin') {
       router.replace('/(tabs)'); return;
     }
     const cid = (user as any).companyId || (user as any).company_id;
