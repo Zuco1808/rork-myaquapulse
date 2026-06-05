@@ -17,6 +17,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { useAuthStore } from '@/store/auth-store';
+import { supabase } from '@/lib/supabase';
 import Colors from '@/constants/colors';
 
 const DEV_ACCOUNTS = __DEV__ ? [
@@ -35,6 +36,7 @@ export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [emailError, setEmailError] = useState('');
+  const [resetLoading, setResetLoading] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -64,6 +66,23 @@ export default function LoginScreen() {
 
   const handleRegister = () => {
     router.push('/register');
+  };
+
+  const handleForgotPassword = async () => {
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      Alert.alert('Email', 'Unesite email adresu u polje iznad, pa pritisnite ovaj link.');
+      return;
+    }
+    setResetLoading(true);
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email);
+      if (error) throw error;
+      Alert.alert('Email poslan', `Link za resetovanje lozinke je poslan na ${email}. Provjeri inbox.`);
+    } catch (e: any) {
+      Alert.alert('Greška', e?.message || 'Nije moguće poslati email za reset.');
+    } finally {
+      setResetLoading(false);
+    }
   };
 
   const loginWithDemoAccount = async (demoEmail: string, demoPassword: string) => {
@@ -126,6 +145,16 @@ export default function LoginScreen() {
             isPassword
             leftIcon={<Lock size={20} color={Colors.textLight} />}
           />
+
+          <TouchableOpacity
+            style={styles.forgotRow}
+            onPress={handleForgotPassword}
+            disabled={resetLoading}
+          >
+            <Text style={styles.forgotText}>
+              {resetLoading ? 'Slanje...' : 'Zaboravili ste lozinku?'}
+            </Text>
+          </TouchableOpacity>
 
           <Button
             title="Prijavi se"
@@ -222,6 +251,16 @@ const styles = StyleSheet.create({
   errorText: {
     color: Colors.error,
     fontSize: 14,
+  },
+  forgotRow: {
+    alignSelf: 'flex-end',
+    marginTop: 4,
+    marginBottom: 4,
+  },
+  forgotText: {
+    fontSize: 13,
+    color: Colors.primary,
+    fontWeight: '500',
   },
   loginButton: {
     marginTop: 8,

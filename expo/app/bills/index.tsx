@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -44,6 +44,7 @@ import {
   createBill,
   updateBillStatus,
   calculateInvoice,
+  type BillPeriodFilter,
 } from '@/lib/api/bills';
 import { getMeters } from '@/lib/api/meters';
 import { getReadingsByConnection } from '@/lib/api/readings';
@@ -97,35 +98,11 @@ const formatFullDate = (dateStr: string | undefined | null) => {
   return d.toLocaleDateString('de-DE');
 };
 
-// Relative period filters
-type PeriodFilter = 'all' | 'this_month' | 'last_3' | 'this_year';
-const PERIOD_LABELS: Record<PeriodFilter, string> = {
+const PERIOD_LABELS: Record<BillPeriodFilter, string> = {
   all: 'Svi',
   this_month: 'Ovaj mj.',
   last_3: 'Zadnja 3 mj.',
   this_year: 'Ova god.',
-};
-
-const applyPeriodFilter = (bills: any[], filter: PeriodFilter): any[] => {
-  if (filter === 'all') return bills;
-  const now = new Date();
-  const thisYear = now.getFullYear();
-  const thisYearMonth = `${thisYear}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-  const threeMonthsAgo = new Date(now);
-  threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
-
-  return bills.filter((b) => {
-    if (!b.period_from) return false;
-    const d = new Date(b.period_from);
-    if (isNaN(d.getTime())) return false;
-    if (filter === 'this_month') {
-      const ym = b.period_from.slice(0, 7);
-      return ym === thisYearMonth;
-    }
-    if (filter === 'last_3') return d >= threeMonthsAgo;
-    if (filter === 'this_year') return d.getFullYear() === thisYear;
-    return true;
-  });
 };
 
 /* ── Status action helpers ─────────────────────── */
@@ -165,14 +142,19 @@ export default function BillsScreen() {
   const { connectionId } = useLocalSearchParams<{ connectionId?: string }>();
 
   /* ── Data ──────────────────────────────────────── */
+  const PAGE_SIZE = 30;
   const [bills, setBills] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [fetchError, setFetchError] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const [pageOffset, setPageOffset] = useState(0);
 
   /* ── Filters ───────────────────────────────────── */
   const [filterStatus, setFilterStatus] = useState<InvoiceStatus | 'all'>('all');
-  const [filterPeriod, setFilterPeriod] = useState<PeriodFilter>('all');
+  const [filterPeriod, setFilterPeriod] = useState<BillPeriodFilter>('all');
+  const filterInitialized = useRef(false);
 
   /* ── Detail modal ──────────────────────────────── */
   const [selectedBill, setSelectedBill] = useState<any>(null);
@@ -207,19 +189,31 @@ export default function BillsScreen() {
   const { canManageBilling: canManage, isEndUser } = usePermissions();
 
   /* ── Fetch ─────────────────────────────────────── */
+  const buildOpts = (offset: number) => ({
+    limit: PAGE_SIZE,
+    offset,
+    status: filterStatus !== 'all' ? filterStatus : undefined,
+    periodFilter: filterPeriod !== 'all' ? filterPeriod : undefined,
+  });
+
   const fetchData = async () => {
     if (!user) return;
     setFetchError(false);
+    setPageOffset(0);
+    setHasMore(true);
     try {
+      const opts = buildOpts(0);
       let data: any[];
       if (connectionId) {
-        data = await getBillsByConnection(connectionId);
+        data = await getBillsByConnection(connectionId, opts);
       } else if (isEndUser) {
-        data = await getInvoicesByUser(user.id);
+        data = await getInvoicesByUser(user.id, opts);
       } else {
-        data = await getBills();
+        data = await getBills(opts);
       }
       setBills(data);
+      setHasMore(data.length === PAGE_SIZE);
+      setPageOffset(PAGE_SIZE);
     } catch (err) {
       captureError(err, { screen: 'bills', action: 'fetchBills' });
       setFetchError(true);
@@ -229,11 +223,40 @@ export default function BillsScreen() {
     }
   };
 
+  const loadMore = async () => {
+    if (loadingMore || !hasMore || !user) return;
+    setLoadingMore(true);
+    try {
+      const opts = buildOpts(pageOffset);
+      let data: any[];
+      if (connectionId) {
+        data = await getBillsByConnection(connectionId, opts);
+      } else if (isEndUser) {
+        data = await getInvoicesByUser(user.id, opts);
+      } else {
+        data = await getBills(opts);
+      }
+      setBills(prev => [...prev, ...data]);
+      setHasMore(data.length === PAGE_SIZE);
+      setPageOffset(prev => prev + PAGE_SIZE);
+    } catch (err) {
+      captureError(err, { screen: 'bills', action: 'loadMore' });
+    } finally {
+      setLoadingMore(false);
+    }
+  };
+
   useFocusEffect(
     useCallback(() => {
       fetchData();
     }, [user?.id, connectionId]),
   );
+
+  // Re-fetch when filters change (skip on first render — useFocusEffect handles that)
+  useEffect(() => {
+    if (!filterInitialized.current) { filterInitialized.current = true; return; }
+    if (user) fetchData();
+  }, [filterStatus, filterPeriod]);
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -378,13 +401,7 @@ export default function BillsScreen() {
     }
   };
 
-  /* ── Computed filtered list ────────────────────── */
-  const filtered = applyPeriodFilter(
-    filterStatus === 'all'
-      ? bills
-      : bills.filter((b) => b.status === filterStatus),
-    filterPeriod,
-  );
+  // Filtering is now server-side; bills already contains the filtered+paginated results
 
   /* ── Render helpers ────────────────────────────── */
   const renderFilterChip = (
@@ -929,7 +946,7 @@ export default function BillsScreen() {
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={[styles.chips, { paddingTop: 0 }]}
       >
-        {(Object.keys(PERIOD_LABELS) as PeriodFilter[]).map((p) =>
+        {(Object.keys(PERIOD_LABELS) as BillPeriodFilter[]).map((p) =>
           renderFilterChip(
             p,
             PERIOD_LABELS[p],
@@ -942,10 +959,13 @@ export default function BillsScreen() {
 
       {/* Bills list */}
       <FlatList
-        data={filtered}
+        data={bills}
         renderItem={renderBillCard}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.list}
+        onEndReached={loadMore}
+        onEndReachedThreshold={0.3}
+        ListFooterComponent={loadingMore ? <ActivityIndicator size="small" color={Colors.primary} style={{ marginVertical: 16 }} /> : null}
         ListEmptyComponent={
           fetchError
             ? <EmptyState

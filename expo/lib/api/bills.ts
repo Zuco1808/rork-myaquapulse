@@ -1,5 +1,15 @@
 import { supabase } from '@/lib/supabase';
 
+export type BillPeriodFilter = 'all' | 'this_month' | 'last_3' | 'this_year';
+
+function periodToGte(f: BillPeriodFilter): string | null {
+  const now = new Date();
+  if (f === 'this_month') return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`;
+  if (f === 'last_3') { const d = new Date(now); d.setMonth(d.getMonth()-3); return d.toISOString().split('T')[0]; }
+  if (f === 'this_year') return `${now.getFullYear()}-01-01`;
+  return null;
+}
+
 const mapInvoice = (b: any) => ({
   id: b.id,
   connection_id: b.connection_id,
@@ -24,29 +34,46 @@ const mapInvoice = (b: any) => ({
   createdAt: new Date(b.created_at).getTime(),
 });
 
-export const getBills = async (opts?: { limit?: number; offset?: number }) => {
-  const limit  = opts?.limit  ?? 100;
+export interface BillsOpts {
+  limit?: number;
+  offset?: number;
+  status?: string;
+  periodFilter?: BillPeriodFilter;
+}
+
+export const getBills = async (opts?: BillsOpts) => {
+  const limit  = opts?.limit  ?? 30;
   const offset = opts?.offset ?? 0;
-  const { data, error } = await supabase
+  let q = supabase
     .from('invoices')
     .select('*, connections(meter_serial, address)')
     .order('created_at', { ascending: false })
     .range(offset, offset + limit - 1);
 
+  if (opts?.status && opts.status !== 'all') q = q.eq('status', opts.status);
+  const gte = opts?.periodFilter ? periodToGte(opts.periodFilter) : null;
+  if (gte) q = q.gte('period_from', gte);
+
+  const { data, error } = await q;
   if (error) throw error;
   return (data || []).map(mapInvoice);
 };
 
-export const getBillsByConnection = async (connectionId: string, opts?: { limit?: number; offset?: number }) => {
-  const limit  = opts?.limit  ?? 100;
+export const getBillsByConnection = async (connectionId: string, opts?: BillsOpts) => {
+  const limit  = opts?.limit  ?? 30;
   const offset = opts?.offset ?? 0;
-  const { data, error } = await supabase
+  let q = supabase
     .from('invoices')
     .select('*, connections(meter_serial, address)')
     .eq('connection_id', connectionId)
     .order('created_at', { ascending: false })
     .range(offset, offset + limit - 1);
 
+  if (opts?.status && opts.status !== 'all') q = q.eq('status', opts.status);
+  const gte = opts?.periodFilter ? periodToGte(opts.periodFilter) : null;
+  if (gte) q = q.gte('period_from', gte);
+
+  const { data, error } = await q;
   if (error) throw error;
   return (data || []).map(mapInvoice);
 };
@@ -125,8 +152,8 @@ export const calculateInvoice = async (params: {
   return mapInvoice(data.invoice);
 };
 
-export const getInvoicesByUser = async (userId: string, opts?: { limit?: number; offset?: number }) => {
-  const limit  = opts?.limit  ?? 100;
+export const getInvoicesByUser = async (userId: string, opts?: BillsOpts) => {
+  const limit  = opts?.limit  ?? 30;
   const offset = opts?.offset ?? 0;
 
   const { data: conns, error: connsError } = await supabase
@@ -139,13 +166,18 @@ export const getInvoicesByUser = async (userId: string, opts?: { limit?: number;
 
   const ids = conns.map((c: any) => c.id);
 
-  const { data, error } = await supabase
+  let q = supabase
     .from('invoices')
     .select('*, connections(meter_serial, address)')
     .in('connection_id', ids)
     .order('created_at', { ascending: false })
     .range(offset, offset + limit - 1);
 
+  if (opts?.status && opts.status !== 'all') q = q.eq('status', opts.status);
+  const gte = opts?.periodFilter ? periodToGte(opts.periodFilter) : null;
+  if (gte) q = q.gte('period_from', gte);
+
+  const { data, error } = await q;
   if (error) throw error;
   return (data || []).map(mapInvoice);
 };

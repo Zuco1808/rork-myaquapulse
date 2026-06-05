@@ -25,12 +25,15 @@ import {
   Clock,
   FileText,
 } from 'lucide-react-native';
+import * as Print from 'expo-print';
+import * as Sharing from 'expo-sharing';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Header } from '@/components/layout/Header';
 import { useAuthStore } from '@/store/auth-store';
 import { usePermissions } from '@/lib/use-permissions';
 import { getBillById, updateBillStatus } from '@/lib/api/bills';
+import { captureError } from '@/lib/sentry';
 import Colors from '@/constants/colors';
 
 /* ── types ───────────────────────────────────────── */
@@ -96,6 +99,47 @@ const formatPeriod = (from: string, to: string) => {
   return `${f.toLocaleDateString('bs-BA')} – ${t.toLocaleDateString('bs-BA')}`;
 };
 
+const buildInvoiceHtml = (bill: any): string => `
+<!DOCTYPE html><html><head><meta charset="utf-8"/>
+<style>
+  body{font-family:Arial,sans-serif;padding:30px;color:#333;font-size:13px;}
+  .header{display:flex;justify-content:space-between;border-bottom:2px solid #003366;padding-bottom:14px;margin-bottom:14px;}
+  .co{font-weight:700;color:#003366;font-size:13px;line-height:1.5;}
+  .bill-no{font-size:20px;font-weight:800;color:#0ea5e9;}
+  .sub{font-size:11px;color:#999;}
+  .dates{display:flex;justify-content:space-between;margin-bottom:12px;}
+  .cbox{display:flex;justify-content:space-between;border:1px solid #eee;border-radius:6px;padding:12px;margin:12px 0;}
+  .lbl{font-size:10px;color:#999;margin-bottom:2px;}
+  .sec{background:#f0f7ff;padding:7px 12px;font-weight:700;color:#003366;margin:14px 0 2px;border-radius:3px;}
+  .row{display:flex;justify-content:space-between;padding:7px 12px;border-bottom:1px solid #f0f0f0;}
+  .rl{color:#666;}
+  .total{display:flex;justify-content:space-between;padding:12px;background:#f0f7ff;font-size:15px;font-weight:700;border-radius:3px;margin-top:2px;}
+  .tv{color:#0ea5e9;}
+  .footer{margin-top:28px;text-align:center;font-size:10px;color:#aaa;line-height:1.6;}
+</style></head><body>
+<div class="header">
+  <div><div class="co">JAVNO KOMUNALNO PREDUZEĆE</div><div class="co">"VODOVOD I KANALIZACIJA"</div><div class="sub">AquaPulse platforma</div></div>
+  <div style="text-align:right"><div class="sub">RAČUN</div><div class="bill-no">${bill.id.substring(0, 8).toUpperCase()}</div><div class="sub">za utrošenu vodu</div></div>
+</div>
+<div class="dates"><span>Datum: ${formatDate(bill.createdAt)}</span><span>Valuta: ${formatDate(bill.due_date)}</span></div>
+<div class="cbox">
+  <div><div class="lbl">Korisnik / Adresa</div><div>${bill.address || '—'}</div></div>
+  <div style="text-align:right"><div class="lbl">Vodomjer</div><div>${bill.meterSerial || '—'}</div></div>
+</div>
+<div class="sec">Podaci o obračunu</div>
+<div class="row"><span class="rl">Period</span><span>${formatPeriod(bill.period_from, bill.period_to)}</span></div>
+${bill.consumption_m3 != null ? `<div class="row"><span class="rl">Potrošnja (m³)</span><span>${bill.consumption_m3}</span></div>` : ''}
+<div class="sec">Obračun</div>
+<div class="row"><span class="rl">Usluga vodovoda</span><span>${(bill.amount * 0.85).toFixed(2)} BAM</span></div>
+<div class="row"><span class="rl">PDV (17%)</span><span>${(bill.amount * 0.15).toFixed(2)} BAM</span></div>
+<div class="total"><span>UKUPNO (s PDV)</span><span class="tv">${bill.amount?.toFixed(2)} BAM</span></div>
+<div class="sec" style="margin-top:18px">UPLATNI NALOG</div>
+<div class="row"><span class="rl">Iznos</span><span><strong>${bill.amount?.toFixed(2)} BAM</strong></span></div>
+<div class="row"><span class="rl">Rok plaćanja</span><span>${formatDate(bill.due_date)}</span></div>
+<div class="footer">Račun je generisan elektronski putem AquaPulse platforme i punovažan je bez potpisa.</div>
+</body></html>
+`;
+
 /* ── component ───────────────────────────────────── */
 export default function BillDetailsScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -106,6 +150,7 @@ export default function BillDetailsScreen() {
   const [loading, setLoading]         = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [pdfVisible, setPdfVisible]   = useState(false);
+  const [pdfLoading, setPdfLoading]   = useState(false);
 
   const { canManageBilling: canManageStatus, isEndUser } = usePermissions();
   const canPay = isEndUser && bill && ['pending', 'sent', 'overdue'].includes(bill.status);
@@ -138,6 +183,40 @@ export default function BillDetailsScreen() {
       Alert.alert('Greška', e?.message || 'Promjena statusa nije uspjela.');
     } finally {
       setActionLoading(false);
+    }
+  };
+
+  /* ── PDF / Print ────────────────────────────── */
+  const handleDownloadPdf = async () => {
+    if (!bill) return;
+    if (Platform.OS === 'web') { handlePrint(); return; }
+    setPdfLoading(true);
+    try {
+      const html = buildInvoiceHtml(bill);
+      const { uri } = await Print.printToFileAsync({ html });
+      await Sharing.shareAsync(uri, {
+        mimeType: 'application/pdf',
+        dialogTitle: `Račun ${bill.id.substring(0, 8).toUpperCase()}`,
+        UTI: 'com.adobe.pdf',
+      });
+    } catch (e: any) {
+      captureError(e, { screen: 'bill-detail', action: 'downloadPdf' });
+      Alert.alert('Greška', e?.message || 'Nije moguće generisati PDF.');
+    } finally {
+      setPdfLoading(false);
+    }
+  };
+
+  const handlePrint = async () => {
+    if (!bill) return;
+    setPdfLoading(true);
+    try {
+      await Print.printAsync({ html: buildInvoiceHtml(bill) });
+    } catch (e: any) {
+      captureError(e, { screen: 'bill-detail', action: 'print' });
+      Alert.alert('Greška', e?.message || 'Štampanje nije uspjelo.');
+    } finally {
+      setPdfLoading(false);
     }
   };
 
@@ -266,15 +345,19 @@ export default function BillDetailsScreen() {
             <Text style={styles.utilBtnText}>Pregled</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={styles.utilBtn}
-            onPress={() => Alert.alert('PDF', 'PDF preuzimanje će biti implementirano.')}
+            style={[styles.utilBtn, pdfLoading && { opacity: 0.6 }]}
+            onPress={handleDownloadPdf}
+            disabled={pdfLoading}
           >
-            <Download size={18} color={Colors.primary} />
+            {pdfLoading
+              ? <ActivityIndicator size="small" color={Colors.primary} />
+              : <Download size={18} color={Colors.primary} />}
             <Text style={styles.utilBtnText}>Preuzmi PDF</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={styles.utilBtn}
-            onPress={() => Alert.alert('Štampa', 'Štampanje će biti implementirano.')}
+            style={[styles.utilBtn, pdfLoading && { opacity: 0.6 }]}
+            onPress={handlePrint}
+            disabled={pdfLoading}
           >
             <Printer size={18} color={Colors.primary} />
             <Text style={styles.utilBtnText}>Štampaj</Text>
@@ -292,10 +375,13 @@ export default function BillDetailsScreen() {
             </TouchableOpacity>
             <Text style={styles.pdfHeaderTitle}>Račun</Text>
             <TouchableOpacity
-              onPress={() => Alert.alert('PDF', 'PDF preuzimanje će biti implementirano.')}
+              onPress={handleDownloadPdf}
               style={styles.pdfClose}
+              disabled={pdfLoading}
             >
-              <Download size={22} color={Colors.primary} />
+              {pdfLoading
+                ? <ActivityIndicator size="small" color={Colors.primary} />
+                : <Download size={22} color={Colors.primary} />}
             </TouchableOpacity>
           </View>
 
