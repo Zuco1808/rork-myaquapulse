@@ -10,6 +10,7 @@ import { useNotificationStore } from '@/store/notification-store';
 import { registerPushToken, clearPushToken } from '@/lib/push-notifications';
 import { deepLinkForNotification } from '@/lib/notification-routing';
 import { initSentry, Sentry } from '@/lib/sentry';
+import { OfflineBanner } from '@/components/ui/OfflineBanner';
 
 // Inicijalizacija što ranije — prije renderinga bilo čega
 initSentry();
@@ -107,6 +108,7 @@ function RootLayoutNav() {
   }, []);
 
   return (
+    <>
     <Stack
       screenOptions={{
         headerShown: false,
@@ -179,5 +181,7 @@ function RootLayoutNav() {
       <Stack.Screen name="support/guides" />
       <Stack.Screen name="support/emergency" />
     </Stack>
+    <OfflineBanner />
+    </>
   );
 }

@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
   TextInput, RefreshControl, Alert, SafeAreaView, Platform,
   ActivityIndicator,
 } from 'react-native';
-import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useFreshFocus } from '@/lib/use-fresh-focus';
 import {
   Users, Search, Plus, Filter, ChevronRight,
   Mail, Phone, Edit, Trash2
@@ -62,11 +63,7 @@ export default function UsersScreen() {
     }
   }, [user, canManageUsers]);
 
-  useFocusEffect(
-    useCallback(() => {
-      if (user) fetchUsers();
-    }, [user, utilityId])
-  );
+  useFreshFocus(() => { if (user) fetchUsers(); });
 
   const fetchUsers = async () => {
     setLoading(true);

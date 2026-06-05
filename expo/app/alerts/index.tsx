@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -12,7 +12,8 @@ import {
   TextInput,
   ActivityIndicator,
 } from 'react-native';
-import { useRouter, useFocusEffect } from 'expo-router';
+import { useRouter } from 'expo-router';
+import { useFreshFocus } from '@/lib/use-fresh-focus';
 import {
   AlertTriangle,
   Search,
@@ -88,7 +89,7 @@ export default function AlertsScreen() {
     }
   };
 
-  useFocusEffect(useCallback(() => { fetchAlerts(); }, [user?.id]));
+  useFreshFocus(fetchAlerts);
   const onRefresh = () => { setRefreshing(true); fetchAlerts(); };
 
   /* ── quick actions ───────────────────────────────── */

@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -12,7 +12,8 @@ import {
   Alert,
   TextInput,
 } from 'react-native';
-import { useRouter, useFocusEffect } from 'expo-router';
+import { useRouter } from 'expo-router';
+import { useFreshFocus } from '@/lib/use-fresh-focus';
 import {
   Building2,
   Plus,
@@ -56,7 +57,7 @@ export default function DistributorsScreen() {
     }
   };
 
-  useFocusEffect(useCallback(() => { fetchData(); }, []));
+  useFreshFocus(fetchData);
 
   const onRefresh = () => { setRefreshing(true); fetchData(); };
 

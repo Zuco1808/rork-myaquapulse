@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -12,7 +12,8 @@ import {
   Platform,
   ActivityIndicator,
 } from 'react-native';
-import { useRouter, useFocusEffect } from 'expo-router';
+import { useRouter } from 'expo-router';
+import { useFreshFocus } from '@/lib/use-fresh-focus';
 import {
   Building,
   Search,
@@ -57,15 +58,13 @@ export default function CompaniesScreen() {
 
   const filtered = filterUtilities(utilities, searchQuery, filterStatus);
 
-  useFocusEffect(
-    useCallback(() => {
-      if (!user || !['super_admin', 'distributor_admin'].includes(user.role)) {
-        router.replace('/(tabs)');
-        return;
-      }
-      fetchUtilities();
-    }, [user])
-  );
+  useFreshFocus(() => {
+    if (!user || !['super_admin', 'distributor_admin'].includes(user.role)) {
+      router.replace('/(tabs)');
+      return;
+    }
+    fetchUtilities();
+  });
 
   const fetchUtilities = async () => {
     setLoading(true);
