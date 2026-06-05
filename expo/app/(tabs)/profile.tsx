@@ -33,9 +33,11 @@ import { Avatar } from '@/components/ui/Avatar';
 import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
+import * as ImagePicker from 'expo-image-picker';
 import { useAuthStore } from '@/store/auth-store';
 import { supabase } from '@/lib/supabase';
 import { registerPushToken, clearPushToken } from '@/lib/push-notifications';
+import { captureError } from '@/lib/sentry';
 import Colors from '@/constants/colors';
 
 export default function ProfileScreen() {
@@ -59,6 +61,7 @@ export default function ProfileScreen() {
   const [avatarUrl, setAvatarUrl]         = useState(user?.avatar_url || '');
   const [nameError, setNameError]         = useState('');
   const [isSaving, setIsSaving]           = useState(false);
+  const [avatarUploading, setAvatarUploading] = useState(false);
 
   /* ── Password change modal ───────────────────────────────────────────────── */
   const [showPasswordModal, setShowPasswordModal] = useState(false);
@@ -171,17 +174,54 @@ export default function ProfileScreen() {
     }
   };
 
-  const handleTakePhoto  = () => Alert.alert('Funkcionalnost u razvoju', 'Ova funkcionalnost će biti dostupna uskoro.');
-  const handleChoosePhoto = () => Alert.alert('Funkcionalnost u razvoju', 'Ova funkcionalnost će biti dostupna uskoro.');
+  const uploadAvatarUri = async (uri: string): Promise<string> => {
+    const ext = uri.split('.').pop()?.toLowerCase().replace(/\?.*/, '') || 'jpg';
+    const mime = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
+    const fileName = `${user!.id}/avatar.${ext}`;
 
-  const sampleAvatars = [
-    'https://i.pravatar.cc/150?img=1',
-    'https://i.pravatar.cc/150?img=2',
-    'https://i.pravatar.cc/150?img=3',
-    'https://i.pravatar.cc/150?img=4',
-    'https://i.pravatar.cc/150?img=5',
-    'https://i.pravatar.cc/150?img=6',
-  ];
+    const response = await fetch(uri);
+    const blob = await response.blob();
+
+    const { data, error } = await supabase.storage
+      .from('avatars')
+      .upload(fileName, blob, { upsert: true, contentType: mime });
+
+    if (error) throw error;
+
+    const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(data.path);
+    return `${urlData.publicUrl}?t=${Date.now()}`; // cache-bust
+  };
+
+  const pickAndUpload = async (fromCamera: boolean) => {
+    const perm = fromCamera
+      ? await ImagePicker.requestCameraPermissionsAsync()
+      : await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+    if (perm.status !== 'granted') {
+      Alert.alert('Dozvola odbijena', `Molimo dozvolite pristup ${fromCamera ? 'kameri' : 'galeriji'} u postavkama.`);
+      return;
+    }
+
+    const result = fromCamera
+      ? await ImagePicker.launchCameraAsync({ allowsEditing: true, aspect: [1, 1], quality: 0.7 })
+      : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, aspect: [1, 1], quality: 0.7 });
+
+    if (result.canceled) return;
+
+    setAvatarUploading(true);
+    try {
+      const url = await uploadAvatarUri(result.assets[0].uri);
+      setAvatarUrl(url);
+    } catch (e: any) {
+      captureError(e, { screen: 'profile', action: 'uploadAvatar' });
+      Alert.alert('Greška', e?.message || 'Upload slike nije uspio.');
+    } finally {
+      setAvatarUploading(false);
+    }
+  };
+
+  const handleTakePhoto   = () => pickAndUpload(true);
+  const handleChoosePhoto = () => pickAndUpload(false);
 
   /* ── Password change ─────────────────────────────────────────────────────── */
   const openPasswordModal = () => {
@@ -406,18 +446,12 @@ export default function ProfileScreen() {
                   />
                 </View>
 
-                <Text style={styles.sampleAvatarsTitle}>Odaberi avatar:</Text>
-                <View style={styles.sampleAvatars}>
-                  {sampleAvatars.map((url, index) => (
-                    <TouchableOpacity
-                      key={index}
-                      style={[styles.sampleAvatarButton, avatarUrl === url && styles.selectedAvatarButton]}
-                      onPress={() => setAvatarUrl(url)}
-                    >
-                      <Image source={{ uri: url }} style={styles.sampleAvatar} />
-                    </TouchableOpacity>
-                  ))}
-                </View>
+                {avatarUploading && (
+                  <View style={{ alignItems: 'center', marginTop: 8 }}>
+                    <ActivityIndicator size="small" color={Colors.primary} />
+                    <Text style={{ fontSize: 12, color: Colors.textLight, marginTop: 4 }}>Učitavanje slike...</Text>
+                  </View>
+                )}
               </View>
 
               <Input

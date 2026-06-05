@@ -3,7 +3,7 @@ import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
+  FlatList,
   TouchableOpacity,
   RefreshControl,
   Modal,
@@ -64,8 +64,12 @@ export default function ReadingsScreen() {
   const router  = useRouter();
   const { user } = useAuthStore();
 
+  const PAGE_SIZE = 40;
   const [loading, setLoading]   = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const [pageOffset, setPageOffset] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
   const [showCamera, setShowCamera] = useState(false);
   const [showOCRResult, setShowOCRResult] = useState(false);
@@ -87,35 +91,51 @@ export default function ReadingsScreen() {
 
   /* ── Fetch ─────────────────────────────────────────────────────────────── */
   const fetchData = async () => {
-    if (!user) {
-      router.replace('/login' as any);
-      return;
-    }
+    if (!user) { router.replace('/login' as any); return; }
     setLoading(true);
+    setPageOffset(0);
+    setHasMore(true);
     try {
       let metersData: any[];
       let readingsData: any[];
       if (isEndUser) {
         [metersData, readingsData] = await Promise.all([
           getMetersByUser(user.id, { limit: 50 }),
-          getReadingsByUser(user.id, { limit: 100 }),
+          getReadingsByUser(user.id, { limit: PAGE_SIZE, offset: 0 }),
         ]);
       } else {
         [metersData, readingsData] = await Promise.all([
           getMeters({ limit: 200 }),
-          getReadings({ limit: 100 }),
+          getReadings({ limit: PAGE_SIZE, offset: 0 }),
         ]);
       }
       setAvailableMeters(metersData);
       setReadings(readingsData);
-      if (metersData.length > 0 && !selectedMeterId) {
-        setSelectedMeterId(metersData[0].id);
-      }
+      setHasMore(readingsData.length === PAGE_SIZE);
+      setPageOffset(PAGE_SIZE);
+      if (metersData.length > 0 && !selectedMeterId) setSelectedMeterId(metersData[0].id);
     } catch (err) {
       captureError(err, { screen: 'readings', action: 'fetchData' });
     } finally {
       setLoading(false);
       setRefreshing(false);
+    }
+  };
+
+  const loadMore = async () => {
+    if (loadingMore || !hasMore || !user) return;
+    setLoadingMore(true);
+    try {
+      const data = isEndUser
+        ? await getReadingsByUser(user.id, { limit: PAGE_SIZE, offset: pageOffset })
+        : await getReadings({ limit: PAGE_SIZE, offset: pageOffset });
+      setReadings(prev => [...prev, ...data]);
+      setHasMore(data.length === PAGE_SIZE);
+      setPageOffset(prev => prev + PAGE_SIZE);
+    } catch (err) {
+      captureError(err, { screen: 'readings', action: 'loadMore' });
+    } finally {
+      setLoadingMore(false);
     }
   };
 
@@ -286,18 +306,28 @@ export default function ReadingsScreen() {
         </View>
       )}
 
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-      >
-        {loading ? (
-          <View style={styles.emptyContainer}>
-            <ActivityIndicator size="large" color={Colors.primary} />
-          </View>
-        ) : filteredReadings.length > 0 ? (
-          filteredReadings.map((reading) => (
+      {loading && readings.length === 0 ? (
+        <View style={styles.emptyContainer}>
+          <ActivityIndicator size="large" color={Colors.primary} />
+        </View>
+      ) : (
+        <FlatList
+          data={filteredReadings}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.scrollContent}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+          onEndReached={loadMore}
+          onEndReachedThreshold={0.3}
+          ListFooterComponent={loadingMore
+            ? <ActivityIndicator size="small" color={Colors.primary} style={{ marginVertical: 16 }} />
+            : null}
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <Text style={styles.emptyText}>Nema pronađenih očitanja</Text>
+            </View>
+          }
+          renderItem={({ item: reading }) => (
             <ReadingCard
-              key={reading.id}
               reading={reading}
               showMeterInfo={true}
               meterSerialNumber={reading.meterSerialNumber}
@@ -312,13 +342,9 @@ export default function ReadingsScreen() {
                   : undefined
               }
             />
-          ))
-        ) : (
-          <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>Nema pronađenih očitanja</Text>
-          </View>
-        )}
-      </ScrollView>
+          )}
+        />
+      )}
 
       {canAddReadings && (
         <TouchableOpacity
@@ -491,7 +517,7 @@ const styles = StyleSheet.create({
   filterOptionActive: { backgroundColor: Colors.primary },
   filterOptionText: { fontSize: 12, color: Colors.text },
   filterOptionTextActive: { color: '#fff' },
-  scrollContent: { padding: 16, paddingBottom: 80 },
+  scrollContent: { padding: 16, paddingBottom: Platform.OS === 'android' ? 100 : 80, flexGrow: 1 },
   emptyContainer: { alignItems: 'center', justifyContent: 'center', padding: 32 },
   emptyText: { fontSize: 16, color: Colors.textLight, textAlign: 'center' },
   fab: {
