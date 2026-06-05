@@ -25,29 +25,54 @@ const mapReading = (r: any) => ({
   createdAt: new Date(r.created_at).getTime(),
 });
 
-export const getReadings = async (opts?: { limit?: number; offset?: number }) => {
+export interface ReadingsOpts {
+  limit?: number;
+  offset?: number;
+  search?: string;
+  status?: 'pending' | 'verified' | 'rejected';
+}
+
+const applyReadingFilters = (q: any, opts?: ReadingsOpts) => {
+  if (opts?.search) q = q.ilike('connections.meter_serial', `%${opts.search}%`);
+  if (opts?.status === 'verified') q = q.eq('is_verified', true);
+  else if (opts?.status === 'rejected') q = q.eq('is_verified', false).not('verified_at', 'is', null);
+  else if (opts?.status === 'pending') q = q.eq('is_verified', false).is('verified_at', null);
+  return q;
+};
+
+export const getReadings = async (opts?: ReadingsOpts) => {
   const limit  = opts?.limit  ?? 40;
   const offset = opts?.offset ?? 0;
-  const { data, error } = await supabase
+  const sel = opts?.search
+    ? '*, connections!inner(meter_serial, address)'
+    : '*, connections(meter_serial, address)';
+  let q = supabase
     .from('meter_readings')
-    .select('*, connections(meter_serial, address)')
+    .select(sel)
     .order('reading_date', { ascending: false })
     .range(offset, offset + limit - 1);
 
+  q = applyReadingFilters(q, opts);
+  const { data, error } = await q;
   if (error) throw error;
   return (data || []).map(mapReading);
 };
 
-export const getReadingsByConnection = async (connectionId: string, opts?: { limit?: number; offset?: number }) => {
+export const getReadingsByConnection = async (connectionId: string, opts?: ReadingsOpts) => {
   const limit  = opts?.limit  ?? 40;
   const offset = opts?.offset ?? 0;
-  const { data, error } = await supabase
+  const sel = opts?.search
+    ? '*, connections!inner(meter_serial, address)'
+    : '*, connections(meter_serial, address)';
+  let q = supabase
     .from('meter_readings')
-    .select('*, connections(meter_serial, address)')
+    .select(sel)
     .eq('connection_id', connectionId)
     .order('reading_date', { ascending: false })
     .range(offset, offset + limit - 1);
 
+  q = applyReadingFilters(q, opts);
+  const { data, error } = await q;
   if (error) throw error;
   return (data || []).map(mapReading);
 };
@@ -75,7 +100,7 @@ export const createReading = async (reading: {
   return mapReading(data);
 };
 
-export const getReadingsByUser = async (userId: string, opts?: { limit?: number; offset?: number }) => {
+export const getReadingsByUser = async (userId: string, opts?: ReadingsOpts) => {
   const limit  = opts?.limit  ?? 40;
   const offset = opts?.offset ?? 0;
 
@@ -88,14 +113,18 @@ export const getReadingsByUser = async (userId: string, opts?: { limit?: number;
   if (!conns || conns.length === 0) return [];
 
   const ids = conns.map((c: any) => c.id);
-
-  const { data, error } = await supabase
+  const sel = opts?.search
+    ? '*, connections!inner(meter_serial, address)'
+    : '*, connections(meter_serial, address)';
+  let q = supabase
     .from('meter_readings')
-    .select('*, connections(meter_serial, address)')
+    .select(sel)
     .in('connection_id', ids)
     .order('reading_date', { ascending: false })
     .range(offset, offset + limit - 1);
 
+  q = applyReadingFilters(q, opts);
+  const { data, error } = await q;
   if (error) throw error;
   return (data || []).map(mapReading);
 };
