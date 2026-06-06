@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -8,18 +8,15 @@ import {
   ActivityIndicator,
   RefreshControl,
 } from 'react-native';
-import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import {
   ArrowLeft,
   FileText,
-  Droplet,
   CreditCard,
   ClipboardList,
   TrendingUp,
-  Calendar,
-  Download,
-  Filter,
 } from 'lucide-react-native';
+import { useFreshFocus } from '@/lib/use-fresh-focus';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Avatar } from '@/components/ui/Avatar';
@@ -51,13 +48,6 @@ interface Stats {
   completedTasks:   number;
   pendingTasks:     number;
 }
-
-/* ── mock reports list (PDF generation is a future feature) ── */
-const SAMPLE_REPORTS = [
-  { id: '1', title: 'Mjesečni izvještaj aktivnosti', description: 'Detaljan pregled aktivnosti korisnika za tekući mjesec.', date: 'Uskoro' },
-  { id: '2', title: 'Izvještaj o potrošnji',         description: 'Pregled potrošnje vode po mjesecima.',                   date: 'Uskoro' },
-  { id: '3', title: 'Finansijski izvještaj',          description: 'Pregled naplate i dugovanja.',                          date: 'Uskoro' },
-];
 
 /* ════════════════════════════════════════════════════
    Component
@@ -132,9 +122,10 @@ export default function UserReportsScreen() {
 
         /* bills */
         const bills = await getInvoicesByUser(id);
+        const totalConsumed = bills.reduce((s, b) => s + (b.consumption_m3 ?? 0), 0);
         setStats({
           totalReadings:    readingCount,
-          totalConsumption: 0,
+          totalConsumption: Math.round(totalConsumed * 10) / 10,
           totalBills:       bills.length,
           totalPaid:        bills.filter((b) => b.status === 'paid').length,
           totalUnpaid:      bills.filter((b) => b.status === 'pending' || b.status === 'overdue').length,
@@ -181,7 +172,7 @@ export default function UserReportsScreen() {
     }
   };
 
-  useFocusEffect(useCallback(() => { loadData(); }, [id]));
+  useFreshFocus(loadData);
 
   const onRefresh = () => { setRefreshing(true); loadData(); };
 
@@ -356,44 +347,6 @@ export default function UserReportsScreen() {
     );
   };
 
-  const renderReportsList = () => (
-    <View style={styles.reportsContainer}>
-      <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>Izvještaji</Text>
-        <TouchableOpacity style={styles.filterButton} activeOpacity={0.7}>
-          <Filter size={20} color={Colors.text} />
-        </TouchableOpacity>
-      </View>
-      {SAMPLE_REPORTS.map((report) => (
-        <Card key={report.id} style={styles.reportCard}>
-          <View style={styles.reportHeader}>
-            <FileText size={24} color={Colors.primary} />
-            <View style={styles.reportTitleContainer}>
-              <Text style={styles.reportTitle}>{report.title}</Text>
-              <Text style={styles.reportDate}>{report.date}</Text>
-            </View>
-          </View>
-          <Text style={styles.reportDescription}>{report.description}</Text>
-          <View style={styles.reportActions}>
-            <Button
-              title="Preuzmi PDF"
-              variant="outline"
-              size="small"
-              leftIcon={<Download size={16} color={Colors.primary} />}
-              style={styles.reportButton}
-              onPress={() => {}}
-            />
-            <Button
-              title="Pregled"
-              size="small"
-              style={styles.reportButton}
-              onPress={() => {}}
-            />
-          </View>
-        </Card>
-      ))}
-    </View>
-  );
 
   /* ── full loading screen ────────────────────────── */
   if (isLoading && !refreshing) {
@@ -427,7 +380,6 @@ export default function UserReportsScreen() {
         {renderReadingsStats()}
         {renderBillingStats()}
         {renderTasksStats()}
-        {renderReportsList()}
       </ScrollView>
     </View>
   );
@@ -490,18 +442,4 @@ const styles = StyleSheet.create({
   statDivider: { width: 1, backgroundColor: Colors.border, marginVertical: 4 },
   statsButton: { marginTop: 4 },
 
-  /* reports list */
-  reportsContainer: { marginTop: 8 },
-  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
-  sectionTitle:  { fontSize: 18, fontWeight: 'bold', color: Colors.text },
-  filterButton:  { padding: 8, backgroundColor: Colors.highlight, borderRadius: 8 },
-
-  reportCard:       { marginBottom: 16, padding: 16 },
-  reportHeader:     { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 8 },
-  reportTitleContainer: { flex: 1, marginLeft: 12 },
-  reportTitle:      { fontSize: 15, fontWeight: 'bold', color: Colors.text, marginBottom: 4 },
-  reportDate:       { fontSize: 12, color: Colors.textLight },
-  reportDescription: { fontSize: 14, color: Colors.textLight, marginBottom: 12, lineHeight: 18 },
-  reportActions:    { flexDirection: 'row', gap: 8 },
-  reportButton:     { flex: 1 },
 });

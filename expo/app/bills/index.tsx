@@ -48,6 +48,7 @@ import {
   updateBillStatus,
   bulkUpdateBillStatus,
   calculateInvoice,
+  recalculateDraftInvoice,
   type BillPeriodFilter,
 } from '@/lib/api/bills';
 import { getMeters } from '@/lib/api/meters';
@@ -196,6 +197,7 @@ export default function BillsScreen() {
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkSaving, setBulkSaving] = useState(false);
+  const [bulkRecalculating, setBulkRecalculating] = useState(false);
   const [bulkStatus, setBulkStatus] = useState<InvoiceStatus | null>(null);
   const [showBulkStatusSheet, setShowBulkStatusSheet] = useState(false);
 
@@ -425,6 +427,32 @@ export default function BillsScreen() {
       else next.add(id);
       return next;
     });
+  };
+
+  const handleBulkRecalculate = async () => {
+    if (selectedIds.size === 0) return;
+    Alert.alert(
+      'Potvrdi',
+      `Izračunati iznose za ${selectedIds.size} nacrt faktura?`,
+      [
+        { text: 'Odustani', style: 'cancel' },
+        {
+          text: 'Izračunaj',
+          onPress: async () => {
+            setBulkRecalculating(true);
+            try {
+              await Promise.all([...selectedIds].map(id => recalculateDraftInvoice(id)));
+              await fetchData();
+              exitSelectionMode();
+            } catch {
+              Alert.alert('Greška', 'Kalkulacija iznosa nije uspjela.');
+            } finally {
+              setBulkRecalculating(false);
+            }
+          },
+        },
+      ]
+    );
   };
 
   const handleBulkApply = async () => {
@@ -1130,6 +1158,18 @@ export default function BillsScreen() {
             </Text>
             <ChevronDown size={13} color={Colors.textLight} />
           </TouchableOpacity>
+          {[...selectedIds].every(id => bills.find(b => b.id === id)?.status === 'draft') && selectedIds.size > 0 && (
+            <TouchableOpacity
+              style={[styles.bulkRecalcBtn, bulkRecalculating && { opacity: 0.5 }]}
+              onPress={handleBulkRecalculate}
+              disabled={bulkRecalculating}
+            >
+              {bulkRecalculating
+                ? <ActivityIndicator size="small" color={Colors.primary} />
+                : <Text style={styles.bulkRecalcText}>Izračunaj iznos</Text>
+              }
+            </TouchableOpacity>
+          )}
           <TouchableOpacity
             style={[styles.bulkApplyBtn, (!bulkStatus || selectedIds.size === 0) && { opacity: 0.4 }]}
             onPress={handleBulkApply}
@@ -1456,6 +1496,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   bulkApplyBtnText: { fontSize: 13, fontWeight: '700', color: '#fff' },
+  bulkRecalcBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: Colors.primary,
+    alignItems: 'center',
+    minWidth: 82,
+  },
+  bulkRecalcText: { fontSize: 12, fontWeight: '700', color: Colors.primary },
   statusSheetOption: {
     flexDirection: 'row',
     alignItems: 'center',

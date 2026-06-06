@@ -26,7 +26,6 @@ import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { useAuthStore } from '@/store/auth-store';
 import { getCompanyById, updateCompany } from '@/lib/api/companies';
-import { mockCompanies } from '@/mocks/companies';
 import Colors from '@/constants/colors';
 
 export default function CompanyProfileScreen() {
@@ -56,14 +55,11 @@ export default function CompanyProfileScreen() {
     if (user.role !== 'super_admin' && user.role !== 'utility_admin') {
       router.replace('/(tabs)'); return;
     }
-    const cid = (user as any).companyId || (user as any).company_id;
+    const cid = user.utility_id;
     if (cid) {
       setCompanyId(cid);
       loadCompany(cid);
     } else {
-      // Fallback to first mock company for demo
-      const mock = mockCompanies[0];
-      if (mock) fillForm(mock);
       setIsLoading(false);
     }
   }, [user]);
@@ -74,9 +70,7 @@ export default function CompanyProfileScreen() {
       const data = await getCompanyById(id);
       fillForm(data);
     } catch {
-      // Fallback to mock
-      const mock = mockCompanies.find(c => c.id === id) || mockCompanies[0];
-      if (mock) fillForm(mock);
+      Alert.alert('Greška', 'Nije moguće učitati podatke o vodovodu.');
     } finally {
       setIsLoading(false);
     }

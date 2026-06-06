@@ -172,6 +172,81 @@ export const calculateInvoice = async (params: {
   return mapInvoice(data.invoice);
 };
 
+/* ── Tiered pricing helper ─────────────────────────────── */
+function applyTiers(tiers: any[], consumption: number): number {
+  if (!tiers.length || consumption <= 0) return 0;
+  const sorted = [...tiers].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+  let total = 0;
+  let remaining = consumption;
+  for (const t of sorted) {
+    if (remaining <= 0) break;
+    const inTier = Math.min(remaining, (t.max_consumption ?? Infinity) - t.min_consumption);
+    if (inTier > 0) { total += inTier * (t.price_per_unit ?? 0); remaining -= inTier; }
+  }
+  return Math.round(total * 100) / 100;
+}
+
+/**
+ * Recalculates amount_bam for an existing draft invoice using the utility's
+ * tiered pricing packages. Falls back to 0 if no pricing is configured.
+ */
+export const recalculateDraftInvoice = async (invoiceId: string) => {
+  const { data: inv, error: invErr } = await supabase
+    .from('invoices')
+    .select('*, connections(user_group, utility_id)')
+    .eq('id', invoiceId)
+    .single();
+  if (invErr) throw invErr;
+
+  const consumption = Number(inv.consumption_m3 ?? 0);
+  const userGroup   = (inv as any).connections?.user_group ?? 'residential';
+  const utilityId   = inv.utility_id;
+
+  // 1. Find user_group record matching connection's user_group type
+  const { data: ugRows } = await supabase
+    .from('user_groups')
+    .select('id')
+    .eq('utility_id', utilityId)
+    .eq('type', userGroup)
+    .limit(1);
+
+  // 2. Find pricing package — by user_group or default
+  let tiers: any[] = [];
+  const ugId = ugRows?.[0]?.id;
+  const pkgQuery = supabase
+    .from('pricing_packages')
+    .select('id, pricing_tiers(*)')
+    .eq('utility_id', utilityId);
+
+  const { data: pkgs } = ugId
+    ? await pkgQuery.contains('user_group_ids', [ugId]).limit(1)
+    : await pkgQuery.eq('is_default', true).limit(1);
+
+  if (pkgs?.length) {
+    tiers = (pkgs[0] as any).pricing_tiers ?? [];
+  } else {
+    // Last resort: default package
+    const { data: defaults } = await supabase
+      .from('pricing_packages')
+      .select('id, pricing_tiers(*)')
+      .eq('utility_id', utilityId)
+      .eq('is_default', true)
+      .limit(1);
+    tiers = (defaults?.[0] as any)?.pricing_tiers ?? [];
+  }
+
+  const amount = applyTiers(tiers, consumption);
+
+  const { data, error } = await supabase
+    .from('invoices')
+    .update({ amount_bam: amount })
+    .eq('id', invoiceId)
+    .select('*, connections(meter_serial, address)')
+    .single();
+  if (error) throw error;
+  return mapInvoice(data);
+};
+
 export const getInvoicesByUser = async (userId: string, opts?: BillsOpts) => {
   const limit  = opts?.limit  ?? 30;
   const offset = opts?.offset ?? 0;
