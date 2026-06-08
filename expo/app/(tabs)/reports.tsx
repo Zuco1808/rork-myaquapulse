@@ -96,6 +96,9 @@ export default function ReportsScreen() {
     done: 0,
     cancelled: 0,
     urgent: 0,
+    materialCost: 0,
+    laborCost: 0,
+    maintenanceCost: 0,
   });
 
   /* ── Fetch ─────────────────────────────────────── */
@@ -219,15 +222,24 @@ export default function ReportsScreen() {
   const fetchTasks = async () => {
     const { data } = await supabase
       .from('tasks')
-      .select('status, priority');
+      .select('status, priority, material_cost, labor_cost');
 
     const tasks = data || [];
+    // Troškovi održavanja se broje samo za završene naloge
+    const doneTasks = tasks.filter((t: any) => t.status === 'done');
+    const materialCost = doneTasks.reduce((s: number, t: any) => s + (Number(t.material_cost) || 0), 0);
+    const laborCost    = doneTasks.reduce((s: number, t: any) => s + (Number(t.labor_cost)    || 0), 0);
+    const round2 = (n: number) => Math.round(n * 100) / 100;
+
     setTasksStats({
       open: tasks.filter((t: any) => t.status === 'open').length,
       inProgress: tasks.filter((t: any) => t.status === 'in_progress').length,
-      done: tasks.filter((t: any) => t.status === 'done').length,
+      done: doneTasks.length,
       cancelled: tasks.filter((t: any) => t.status === 'cancelled').length,
       urgent: tasks.filter((t: any) => t.priority === 'urgent').length,
+      materialCost: round2(materialCost),
+      laborCost: round2(laborCost),
+      maintenanceCost: round2(materialCost + laborCost),
     });
   };
 
@@ -266,6 +278,11 @@ export default function ReportsScreen() {
           `Otkazani,${tasksStats.cancelled}`,
           `Hitni (prioritet),${tasksStats.urgent}`,
           `Ukupno,${tot}`,
+          '',
+          'Troškovi održavanja (završeni nalozi),BAM',
+          `Materijal,${tasksStats.materialCost.toFixed(2)}`,
+          `Rad,${tasksStats.laborCost.toFixed(2)}`,
+          `Ukupno troškovi,${tasksStats.maintenanceCost.toFixed(2)}`,
         ].join('\n');
       }
       default: return '';
@@ -419,6 +436,24 @@ export default function ReportsScreen() {
           {renderStatBox(total, 'Ukupno zadataka')}
           {renderStatBox(tasksStats.open + tasksStats.inProgress, 'Aktivnih')}
           {renderStatBox(tasksStats.urgent, 'Hitnih')}
+        </View>
+
+        {/* Troškovi održavanja (završeni nalozi) */}
+        <View style={styles.maintBox}>
+          <Text style={styles.maintTitle}>Troškovi održavanja</Text>
+          <Text style={styles.maintSub}>na osnovu {tasksStats.done} završenih naloga</Text>
+          <View style={styles.maintRow}>
+            <Text style={styles.maintLabel}>Materijal</Text>
+            <Text style={styles.maintValue}>{tasksStats.materialCost.toFixed(2)} BAM</Text>
+          </View>
+          <View style={styles.maintRow}>
+            <Text style={styles.maintLabel}>Rad</Text>
+            <Text style={styles.maintValue}>{tasksStats.laborCost.toFixed(2)} BAM</Text>
+          </View>
+          <View style={[styles.maintRow, styles.maintTotalRow]}>
+            <Text style={styles.maintTotalLabel}>Ukupno</Text>
+            <Text style={styles.maintTotalValue}>{tasksStats.maintenanceCost.toFixed(2)} BAM</Text>
+          </View>
         </View>
       </View>
     );
@@ -684,4 +719,17 @@ const styles = StyleSheet.create({
   },
   taskBar: { height: '100%', borderRadius: 5, minWidth: 4 },
   taskCount: { width: 30, fontSize: 13, fontWeight: 'bold', textAlign: 'right' },
+
+  maintBox: {
+    marginTop: 16, padding: 14, borderRadius: 10,
+    backgroundColor: '#fff', borderWidth: 1, borderColor: Colors.border,
+  },
+  maintTitle: { fontSize: 15, fontWeight: '700', color: Colors.text },
+  maintSub:   { fontSize: 11, color: Colors.textLight, marginBottom: 10 },
+  maintRow:   { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6 },
+  maintLabel: { fontSize: 13, color: Colors.textLight },
+  maintValue: { fontSize: 13, color: Colors.text, fontWeight: '500' },
+  maintTotalRow:   { borderTopWidth: 1, borderTopColor: Colors.border, marginTop: 4, paddingTop: 10 },
+  maintTotalLabel: { fontSize: 14, fontWeight: '700', color: Colors.text },
+  maintTotalValue: { fontSize: 15, fontWeight: '800', color: Colors.primary },
 });
