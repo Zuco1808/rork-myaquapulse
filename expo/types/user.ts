@@ -250,6 +250,8 @@ export interface Task {
   status: 'open' | 'in_progress' | 'done' | 'cancelled';
   due_date?: string;
   completed_at?: string;
+  material_cost?: number;
+  labor_cost?: number;
   created_at: string;
   updated_at: string;
   // joined

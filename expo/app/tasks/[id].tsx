@@ -19,6 +19,8 @@ import {
   PlayCircle,
   CheckCircle,
   XCircle,
+  DollarSign,
+  Wrench,
 } from 'lucide-react-native';
 import { Header } from '@/components/layout/Header';
 import { Card } from '@/components/ui/Card';
@@ -27,7 +29,7 @@ import { Badge } from '@/components/ui/Badge';
 import { Input } from '@/components/ui/Input';
 import { useAuthStore } from '@/store/auth-store';
 import { usePermissions } from '@/lib/use-permissions';
-import { getTaskById, updateTaskStatus } from '@/lib/api/tasks';
+import { getTaskById, updateTaskStatus, updateTaskCosts } from '@/lib/api/tasks';
 import { Task } from '@/types/user';
 import Colors from '@/constants/colors';
 
@@ -69,6 +71,11 @@ export default function TaskDetailScreen() {
   const [actionLoading, setActionLoading] = useState(false);
   const [cancelNote, setCancelNote]       = useState('');
   const [showCancelForm, setShowCancelForm] = useState(false);
+  const { canManageTasks } = usePermissions();
+  const [editCosts, setEditCosts]   = useState(false);
+  const [materialInput, setMaterialInput] = useState('');
+  const [laborInput, setLaborInput]       = useState('');
+  const [costSaving, setCostSaving]       = useState(false);
 
   /* ── Fetch ──────────────────────────────────────────── */
   useFocusEffect(
@@ -144,6 +151,33 @@ export default function TaskDetailScreen() {
       Alert.alert('Greška', e.message);
     } finally {
       setActionLoading(false);
+    }
+  };
+
+  const openCostEditor = () => {
+    if (!task) return;
+    setMaterialInput(String(task.material_cost ?? 0));
+    setLaborInput(String(task.labor_cost ?? 0));
+    setEditCosts(true);
+  };
+
+  const handleSaveCosts = async () => {
+    if (!task) return;
+    const material = parseFloat(materialInput.replace(',', '.'));
+    const labor    = parseFloat(laborInput.replace(',', '.'));
+    if (isNaN(material) || isNaN(labor) || material < 0 || labor < 0) {
+      Alert.alert('Greška', 'Unesite ispravne iznose (≥ 0).');
+      return;
+    }
+    setCostSaving(true);
+    try {
+      const updated = await updateTaskCosts(task.id, material, labor);
+      setTask(updated);
+      setEditCosts(false);
+    } catch (e: any) {
+      Alert.alert('Greška', e.message || 'Spremanje troškova nije uspjelo.');
+    } finally {
+      setCostSaving(false);
     }
   };
 
@@ -223,6 +257,77 @@ export default function TaskDetailScreen() {
           <Row icon={<Clock size={16} color={Colors.textLight} />}
             label="Kreirano" value={task.created_at.split('T')[0]} />
         </Card>
+
+        {/* Troškovi servisa */}
+        {(() => {
+          const material = task.material_cost ?? 0;
+          const labor    = task.labor_cost ?? 0;
+          const total    = material + labor;
+          const canEdit  = canManageTasks || (isWorker && task.assigned_to === user?.id);
+          if (total === 0 && !canEdit) return null;
+          return (
+            <Card style={styles.card}>
+              <View style={styles.costHeader}>
+                <View style={styles.costTitleRow}>
+                  <Wrench size={18} color={Colors.primary} />
+                  <Text style={styles.sectionTitleInline}>Troškovi servisa</Text>
+                </View>
+                {total > 0 && (
+                  <Text style={styles.costTotal}>{total.toFixed(2)} BAM</Text>
+                )}
+              </View>
+
+              {!editCosts ? (
+                <>
+                  <Row icon={<DollarSign size={16} color={Colors.textLight} />}
+                    label="Materijal" value={`${material.toFixed(2)} BAM`} />
+                  <Row icon={<DollarSign size={16} color={Colors.textLight} />}
+                    label="Rad" value={`${labor.toFixed(2)} BAM`} />
+                  {canEdit && (
+                    <Button
+                      title={total > 0 ? 'Uredi troškove' : 'Dodaj troškove'}
+                      size="small"
+                      variant="outline"
+                      onPress={openCostEditor}
+                      style={{ marginTop: 8 }}
+                    />
+                  )}
+                </>
+              ) : (
+                <View>
+                  <Input
+                    label="Trošak materijala (BAM)"
+                    value={materialInput}
+                    onChangeText={setMaterialInput}
+                    keyboardType="decimal-pad"
+                    placeholder="0.00"
+                  />
+                  <Input
+                    label="Trošak rada (BAM)"
+                    value={laborInput}
+                    onChangeText={setLaborInput}
+                    keyboardType="decimal-pad"
+                    placeholder="0.00"
+                  />
+                  <View style={styles.cancelButtons}>
+                    <Button
+                      title="Odustani"
+                      variant="outline"
+                      onPress={() => setEditCosts(false)}
+                      style={styles.cancelFormBtn}
+                    />
+                    <Button
+                      title="Spremi"
+                      onPress={handleSaveCosts}
+                      isLoading={costSaving}
+                      style={styles.cancelFormBtn}
+                    />
+                  </View>
+                </View>
+              )}
+            </Card>
+          );
+        })()}
 
         {/* Actions */}
         {isActive && (
@@ -317,6 +422,11 @@ const styles = StyleSheet.create({
   ml8:          { marginLeft: 6 },
   description:  { fontSize: 14, color: Colors.text, lineHeight: 21, marginTop: 4 },
   sectionTitle: { fontSize: 15, fontWeight: '700', color: Colors.text, marginBottom: 14 },
+  sectionTitleInline: { fontSize: 15, fontWeight: '700', color: Colors.text },
+
+  costHeader:   { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  costTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  costTotal:    { fontSize: 15, fontWeight: '800', color: Colors.primary },
 
   actionBtn:   { marginBottom: 10 },
   cancelBtn:   { borderColor: Colors.error },
