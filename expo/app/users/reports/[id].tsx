@@ -81,8 +81,37 @@ export default function UserReportsScreen() {
         /* readings taken by this worker */
         const { data: readings } = await supabase
           .from('meter_readings')
-          .select('id')
+          .select('id, connection_id, reading_value, reading_date, created_at')
           .eq('worker_id', id);
+
+        /* Zabilježena potrošnja = suma delti (očitanje − prethodno) po priključku.
+           Dohvati sva očitanja za relevantne priključke da nađeš prethodne vrijednosti. */
+        let workerConsumption = 0;
+        const workerReadings = readings ?? [];
+        if (workerReadings.length > 0) {
+          const connIds = [...new Set(workerReadings.map((r: any) => r.connection_id))];
+          const { data: allR } = await supabase
+            .from('meter_readings')
+            .select('id, connection_id, reading_value, reading_date, created_at')
+            .in('connection_id', connIds)
+            .order('reading_date', { ascending: true })
+            .order('created_at', { ascending: true });
+
+          const byConn = new Map<string, any[]>();
+          for (const r of allR ?? []) {
+            const arr = byConn.get(r.connection_id) ?? [];
+            arr.push(r);
+            byConn.set(r.connection_id, arr);
+          }
+          for (const wr of workerReadings) {
+            const list = byConn.get(wr.connection_id) ?? [];
+            const idx = list.findIndex((r) => r.id === wr.id);
+            if (idx > 0) {
+              const delta = Number(wr.reading_value) - Number(list[idx - 1].reading_value);
+              if (delta > 0) workerConsumption += delta;
+            }
+          }
+        }
 
         /* tasks assigned to this worker (all statuses) */
         const { data: tasks } = await supabase
@@ -91,8 +120,8 @@ export default function UserReportsScreen() {
           .eq('assigned_to', id);
 
         setStats({
-          totalReadings:    readings?.length ?? 0,
-          totalConsumption: 0,
+          totalReadings:    workerReadings.length,
+          totalConsumption: Math.round(workerConsumption * 10) / 10,
           totalBills:       0,
           totalPaid:        0,
           totalUnpaid:      0,
