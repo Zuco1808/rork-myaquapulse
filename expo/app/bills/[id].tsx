@@ -30,9 +30,16 @@ import * as Sharing from 'expo-sharing';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Header } from '@/components/layout/Header';
+import { PaymentModal } from '@/components/bills/PaymentModal';
 import { useAuthStore } from '@/store/auth-store';
 import { usePermissions } from '@/lib/use-permissions';
 import { getBillById, updateBillStatus } from '@/lib/api/bills';
+import {
+  getPaymentsByInvoice,
+  deletePayment,
+  Payment,
+  PAYMENT_METHOD_LABEL,
+} from '@/lib/api/payments';
 import { captureError } from '@/lib/sentry';
 import Colors from '@/constants/colors';
 
@@ -151,16 +158,25 @@ export default function BillDetailsScreen() {
   const [actionLoading, setActionLoading] = useState(false);
   const [pdfVisible, setPdfVisible]   = useState(false);
   const [pdfLoading, setPdfLoading]   = useState(false);
+  const [payments, setPayments]       = useState<Payment[]>([]);
+  const [paymentModal, setPaymentModal] = useState(false);
 
   const { canManageBilling: canManageStatus, isEndUser } = usePermissions();
   const canPay = isEndUser && bill && ['pending', 'sent', 'overdue'].includes(bill.status);
+
+  const totalPaid = payments.reduce((s, p) => s + p.amount, 0);
+  const remaining = bill ? Math.max(0, (bill.amount ?? 0) - totalPaid) : 0;
 
   /* ── fetch ───────────────────────────────────── */
   const fetchBill = async () => {
     if (!id) return;
     try {
-      const data = await getBillById(id);
+      const [data, pays] = await Promise.all([
+        getBillById(id),
+        getPaymentsByInvoice(id).catch(() => []),
+      ]);
       setBill(data);
+      setPayments(pays);
     } catch {
       Alert.alert('Greška', 'Račun nije pronađen.');
       router.back();
@@ -170,6 +186,25 @@ export default function BillDetailsScreen() {
   };
 
   useFocusEffect(useCallback(() => { fetchBill(); }, [id]));
+
+  /* ── obriši uplatu ───────────────────────────── */
+  const handleDeletePayment = (paymentId: string) => {
+    Alert.alert('Brisanje uplate', 'Obrisati ovu uplatu?', [
+      { text: 'Otkaži', style: 'cancel' },
+      {
+        text: 'Obriši',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await deletePayment(paymentId);
+            await fetchBill();
+          } catch (e: any) {
+            Alert.alert('Greška', e?.message || 'Brisanje nije uspjelo.');
+          }
+        },
+      },
+    ]);
+  };
 
   /* ── status change ───────────────────────────── */
   const handleStatusChange = async (next: InvoiceStatus) => {
@@ -327,6 +362,51 @@ export default function BillDetailsScreen() {
           </Card>
         )}
 
+        {/* Payments / uplate */}
+        {canManageStatus && bill.status !== 'draft' && bill.status !== 'cancelled' && (
+          <Card style={styles.card}>
+            <View style={styles.payHeaderRow}>
+              <Text style={styles.actionsTitle}>Uplate</Text>
+              <View style={styles.payTotals}>
+                <Text style={styles.payTotalPaid}>{totalPaid.toFixed(2)} BAM</Text>
+                {remaining > 0 && (
+                  <Text style={styles.payRemaining}>preostalo {remaining.toFixed(2)} BAM</Text>
+                )}
+              </View>
+            </View>
+
+            {payments.length === 0 ? (
+              <Text style={styles.payEmpty}>Nema evidentiranih uplata.</Text>
+            ) : (
+              payments.map((p) => (
+                <View key={p.id} style={styles.payRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.payRowAmount}>{p.amount.toFixed(2)} BAM</Text>
+                    <Text style={styles.payRowMeta}>
+                      {PAYMENT_METHOD_LABEL[p.method]} · {formatDate(p.payment_date)}
+                      {p.reference_number ? ` · ${p.reference_number}` : ''}
+                    </Text>
+                  </View>
+                  <TouchableOpacity onPress={() => handleDeletePayment(p.id)} hitSlop={8}>
+                    <X size={18} color={Colors.error} />
+                  </TouchableOpacity>
+                </View>
+              ))
+            )}
+
+            {remaining > 0 && (
+              <Button
+                title="Evidentiraj uplatu"
+                size="small"
+                variant="outline"
+                leftIcon={<DollarSign size={16} color={Colors.primary} />}
+                onPress={() => setPaymentModal(true)}
+                style={{ marginTop: 12 }}
+              />
+            )}
+          </Card>
+        )}
+
         {/* End-user pay button */}
         {canPay && (
           <Button
@@ -476,6 +556,18 @@ export default function BillDetailsScreen() {
           </ScrollView>
         </SafeAreaView>
       </Modal>
+
+      {/* ── Payment Modal ── */}
+      {bill && (
+        <PaymentModal
+          visible={paymentModal}
+          invoiceId={bill.id}
+          utilityId={bill.utility_id}
+          remaining={remaining}
+          onClose={() => setPaymentModal(false)}
+          onSuccess={fetchBill}
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -525,6 +617,18 @@ const styles = StyleSheet.create({
   actionBtn:    { minWidth: 90 },
 
   payBtn: { marginBottom: 14 },
+
+  payHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 },
+  payTotals:      { alignItems: 'flex-end' },
+  payTotalPaid:   { fontSize: 15, fontWeight: '700', color: '#4CAF50' },
+  payRemaining:   { fontSize: 11, color: Colors.textLight, marginTop: 1 },
+  payEmpty:       { fontSize: 13, color: Colors.textLight, fontStyle: 'italic' },
+  payRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    paddingVertical: 10, borderTopWidth: 1, borderTopColor: Colors.border,
+  },
+  payRowAmount: { fontSize: 14, fontWeight: '600', color: Colors.text },
+  payRowMeta:   { fontSize: 11, color: Colors.textLight, marginTop: 2 },
 
   utilityRow: {
     flexDirection: 'row', gap: 10,
