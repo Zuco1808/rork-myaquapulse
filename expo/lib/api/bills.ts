@@ -172,6 +172,30 @@ export const calculateInvoice = async (params: {
   return mapInvoice(data.invoice);
 };
 
+/**
+ * Šalje fakturu e-mailom krajnjem korisniku preko send-invoice-email Edge
+ * Function (Resend). Postavlja status na 'sent' ako je bio draft/pending.
+ * Vraća e-mail na koji je poslano.
+ */
+export const sendInvoiceEmail = async (params: {
+  invoice_id: string;
+  recipient_email?: string;
+}): Promise<{ sent: boolean; email: string }> => {
+  const { data, error } = await supabase.functions.invoke<{ sent: boolean; email: string; error?: string }>(
+    'send-invoice-email',
+    { body: params },
+  );
+  if (error) {
+    // Edge Function vraća poruku u tijelu — pokušaj je izvući
+    const ctx = (error as any)?.context;
+    let msg = error.message;
+    try { const body = await ctx?.json?.(); if (body?.error) msg = body.error; } catch { /* ignore */ }
+    throw new Error(msg);
+  }
+  if (!data?.sent) throw new Error((data as any)?.error || 'Slanje e-maila nije uspjelo.');
+  return { sent: data.sent, email: data.email };
+};
+
 /* ── Tiered pricing helper ─────────────────────────────── */
 function applyTiers(tiers: any[], consumption: number): number {
   if (!tiers.length || consumption <= 0) return 0;

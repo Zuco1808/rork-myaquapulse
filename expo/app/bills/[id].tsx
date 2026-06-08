@@ -24,6 +24,7 @@ import {
   X,
   Clock,
   FileText,
+  Mail,
 } from 'lucide-react-native';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
@@ -33,7 +34,7 @@ import { Header } from '@/components/layout/Header';
 import { PaymentModal } from '@/components/bills/PaymentModal';
 import { useAuthStore } from '@/store/auth-store';
 import { usePermissions } from '@/lib/use-permissions';
-import { getBillById, updateBillStatus } from '@/lib/api/bills';
+import { getBillById, updateBillStatus, sendInvoiceEmail } from '@/lib/api/bills';
 import {
   getPaymentsByInvoice,
   deletePayment,
@@ -160,6 +161,7 @@ export default function BillDetailsScreen() {
   const [pdfLoading, setPdfLoading]   = useState(false);
   const [payments, setPayments]       = useState<Payment[]>([]);
   const [paymentModal, setPaymentModal] = useState(false);
+  const [emailLoading, setEmailLoading] = useState(false);
 
   const { canManageBilling: canManageStatus, isEndUser } = usePermissions();
   const canPay = isEndUser && bill && ['pending', 'sent', 'overdue'].includes(bill.status);
@@ -219,6 +221,34 @@ export default function BillDetailsScreen() {
     } finally {
       setActionLoading(false);
     }
+  };
+
+  /* ── Pošalji e-mailom ───────────────────────── */
+  const handleSendEmail = () => {
+    if (!bill) return;
+    Alert.alert(
+      'Slanje računa e-mailom',
+      'Poslati ovaj račun krajnjem korisniku na e-mail?',
+      [
+        { text: 'Otkaži', style: 'cancel' },
+        {
+          text: 'Pošalji',
+          onPress: async () => {
+            setEmailLoading(true);
+            try {
+              const { email } = await sendInvoiceEmail({ invoice_id: bill.id });
+              Alert.alert('Poslano', `Račun je poslan na ${email}.`);
+              fetchBill();
+            } catch (e: any) {
+              captureError(e, { screen: 'bill-detail', action: 'sendEmail' });
+              Alert.alert('Greška', e?.message || 'Slanje e-maila nije uspjelo.');
+            } finally {
+              setEmailLoading(false);
+            }
+          },
+        },
+      ],
+    );
   };
 
   /* ── PDF / Print ────────────────────────────── */
@@ -415,6 +445,18 @@ export default function BillDetailsScreen() {
             onPress={handlePayRequest}
             isLoading={actionLoading}
             style={styles.payBtn}
+          />
+        )}
+
+        {/* Pošalji e-mailom (finance/admin) */}
+        {canManageStatus && bill.status !== 'cancelled' && (
+          <Button
+            title="Pošalji račun e-mailom"
+            variant="outline"
+            leftIcon={<Mail size={18} color={Colors.primary} />}
+            onPress={handleSendEmail}
+            isLoading={emailLoading}
+            style={{ marginBottom: 14 }}
           />
         )}
 
