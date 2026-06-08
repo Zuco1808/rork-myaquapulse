@@ -26,6 +26,7 @@ import { Button } from '@/components/ui/Button';
 import { ReadingCard } from '@/components/readings/ReadingCard';
 import { OCRCameraView } from '@/components/ocr/CameraView';
 import { OCRResult } from '@/components/ocr/OCRResult';
+import { uploadMeterImage } from '@/lib/api/ocr';
 import { useAuthStore } from '@/store/auth-store';
 import { usePermissions } from '@/lib/use-permissions';
 import { getReadings, getReadingsByUser, createReading, verifyReading, getLastReadingValue, type ReadingsOpts } from '@/lib/api/readings';
@@ -227,14 +228,21 @@ export default function ReadingsScreen() {
     const meter = availableMeters.find((m) => m.id === selectedMeterId);
     if (!meter) return;
     try {
+      // Priloži fotografiju brojila uz očitanje (best-effort — ne blokira unos)
+      let photoUrl: string | undefined;
+      if (capturedImageBase64) {
+        photoUrl = (await uploadMeterImage(capturedImageBase64, selectedMeterId)) ?? undefined;
+      }
       await createReading({
         connection_id: selectedMeterId,
         utility_id:    meter.utility_id,
         reading_value: value,
         reading_type:  'ocr',
+        photo_url:     photoUrl,
       });
       setShowOCRResult(false);
       setCapturedImage(null);
+      setCapturedImageBase64('');
       Alert.alert('Uspjeh', 'OCR očitanje je uspješno dodano.');
       fetchData();
     } catch (err: any) {
