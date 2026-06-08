@@ -57,6 +57,7 @@
     "react-native-svg": "15.12.1",
     "react-native-url-polyfill": "^3.0.0",
     "react-native-web": "^0.21.0",
+    "react-native-webview": "^13.16.0",
     "superjson": "^2.2.2",
     "zod": "^3.25.32",
     "zustand": "^5.0.2"

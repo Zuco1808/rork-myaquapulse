@@ -151,6 +151,9 @@ function RootLayoutNav() {
       <Stack.Screen name="meters/add" />
       <Stack.Screen name="meters/edit/[id]" />
 
+      {/* ── Map / Mapa ────────────────────────────────────────────────── */}
+      <Stack.Screen name="map" />
+
       {/* ── Readings / Consumption ────────────────────────────────────── */}
       <Stack.Screen name="consumption" />
 
