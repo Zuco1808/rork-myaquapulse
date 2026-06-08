@@ -129,6 +129,30 @@ export const getReadingsByUser = async (userId: string, opts?: ReadingsOpts) => 
   return (data || []).map(mapReading);
 };
 
+/**
+ * Vraća vrijednost posljednjeg (hronološki) očitanja za priključak prije
+ * zadanog datuma, ili null ako nema prethodnog. Koristi se za validaciju i
+ * izračun potrošnje. Uvijek čita iz baze (ne iz učitane liste).
+ */
+export const getLastReadingValue = async (
+  connectionId: string,
+  beforeDate?: string,
+  excludeId?: string,
+): Promise<number | null> => {
+  let q = supabase
+    .from('meter_readings')
+    .select('reading_value, reading_date, created_at')
+    .eq('connection_id', connectionId)
+    .order('reading_date', { ascending: false })
+    .order('created_at', { ascending: false })
+    .limit(1);
+  if (beforeDate) q = q.lt('reading_date', beforeDate);
+  if (excludeId) q = q.neq('id', excludeId);
+  const { data, error } = await q;
+  if (error) throw error;
+  return data && data.length > 0 ? Number(data[0].reading_value) : null;
+};
+
 export const getReadingById = async (id: string) => {
   const { data, error } = await supabase
     .from('meter_readings')
@@ -136,12 +160,31 @@ export const getReadingById = async (id: string) => {
     .eq('id', id)
     .single();
   if (error) throw error;
+
+  // Prethodno očitanje (za istu vezu, prije ovog) → potrošnja
+  const { data: prevRows } = await supabase
+    .from('meter_readings')
+    .select('reading_value, reading_date, created_at')
+    .eq('connection_id', (data as any).connection_id)
+    .neq('id', id)
+    .or(
+      `reading_date.lt.${(data as any).reading_date},` +
+      `and(reading_date.eq.${(data as any).reading_date},created_at.lt.${(data as any).created_at})`,
+    )
+    .order('reading_date', { ascending: false })
+    .order('created_at', { ascending: false })
+    .limit(1);
+
+  const previousValue = prevRows && prevRows.length > 0 ? Number(prevRows[0].reading_value) : null;
+  const consumption =
+    previousValue != null ? Math.max(0, Number((data as any).reading_value) - previousValue) : null;
+
   return {
     ...mapReading(data),
     meterLocationAddress: (data as any).connections?.address ?? null,
     meterLocationName: null as string | null,
-    previousValue: null as number | null,
-    consumption: null as number | null,
+    previousValue,
+    consumption,
     readByName: null as string | null,
   };
 };
