@@ -2,7 +2,7 @@ import { supabase } from '@/lib/supabase';
 import { Task } from '@/types/user';
 
 type TaskStatus = 'open' | 'in_progress' | 'done' | 'cancelled';
-type TaskType  = 'reading' | 'worker' | 'inspection' | 'installation' | 'other';
+type TaskType  = 'reading' | 'maintenance' | 'inspection' | 'installation' | 'other';
 type Priority  = 'low' | 'normal' | 'high' | 'urgent';
 
 const mapTask = (t: any): Task => ({

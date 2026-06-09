@@ -246,7 +246,7 @@ export interface Task {
   connection_id?: string;
   title: string;
   description?: string;
-  task_type: 'reading' | 'worker' | 'inspection' | 'installation' | 'other';
+  task_type: 'reading' | 'maintenance' | 'inspection' | 'installation' | 'other';
   priority: 'low' | 'normal' | 'high' | 'urgent';
   status: 'open' | 'in_progress' | 'done' | 'cancelled';
   due_date?: string;

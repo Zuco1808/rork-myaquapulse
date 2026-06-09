@@ -42,11 +42,11 @@ type TaskType   = Task['task_type'];
 type Priority   = Task['priority'];
 
 const TYPE_LABELS: Record<TaskType, string> = {
-  reading: 'Očitanje', worker: 'Radni', inspection: 'Inspekcija',
+  reading: 'Očitanje', maintenance: 'Održavanje', inspection: 'Inspekcija',
   installation: 'Instalacija', other: 'Ostalo',
 };
 const TYPE_COLORS: Record<TaskType, string> = {
-  reading: Colors.primary, worker: '#9C27B0', inspection: '#4CAF50',
+  reading: Colors.primary, maintenance: '#9C27B0', inspection: '#4CAF50',
   installation: '#FF9800', other: '#9E9E9E',
 };
 const STATUS_LABELS: Record<TaskStatus, string> = {
@@ -85,14 +85,13 @@ const filterTasks = (
 export default function TasksScreen() {
   const router = useRouter();
   const { user } = useAuthStore();
-  const { isWorker } = usePermissions();
+  const { isWorker, canManageTasks } = usePermissions();
 
-  // Task creation requires a utility_id scope — super_admin has global read but no utility
-  // scope to assign a new task to, so they can view/update but not create.
-  // Radnici mogu kreirati zadatak, ali ide na odobravanje (admin/finance).
-  const canCreateTasks = (
-    ['utility_admin', 'finance', 'worker'].includes(user?.role ?? '') && !!user?.utility_id
-  );
+  // Task creation requires a utility_id scope. canManageTasks pokriva
+  // utility_admin / finance / worker; svi oni imaju utility_id. super_admin
+  // ima canManageTasks ali nema utility_id (globalni nivo) pa je isključen.
+  // Radnici mogu kreirati, ali zadatak ide na odobravanje (admin/finance).
+  const canCreateTasks = canManageTasks && !!user?.utility_id;
 
   const PAGE_SIZE = 40;
   const [tasks, setTasks]               = useState<Task[]>([]);
@@ -119,7 +118,7 @@ export default function TasksScreen() {
   const [showCreate, setShowCreate]       = useState(false);
   const [newTitle, setNewTitle]           = useState('');
   const [newDesc, setNewDesc]             = useState('');
-  const [newType, setNewType]             = useState<TaskType>('worker');
+  const [newType, setNewType]             = useState<TaskType>('maintenance');
   const [newPriority, setNewPriority]     = useState<Priority>('normal');
   const [newDueDate, setNewDueDate]       = useState('');
   const [newAssignedTo, setNewAssignedTo] = useState('');
@@ -241,7 +240,7 @@ export default function TasksScreen() {
     } catch (e: any) {
       captureError(e, { screen: 'tasks', action: 'openCreateModal' });
     }
-    setNewTitle(''); setNewDesc(''); setNewType('worker');
+    setNewTitle(''); setNewDesc(''); setNewType('maintenance');
     setNewPriority('normal'); setNewDueDate(''); setShowDatePicker(false);
     setNewAssignedTo(''); setNewConnectionId(''); setTitleError('');
     setShowCreate(true);
@@ -416,7 +415,7 @@ export default function TasksScreen() {
             </View>
             <Text style={styles.filterLabel}>Tip:</Text>
             <View style={styles.chipRow}>
-              {(['all', 'reading', 'worker', 'inspection', 'installation', 'other'] as const).map(v => (
+              {(['all', 'reading', 'maintenance', 'inspection', 'installation', 'other'] as const).map(v => (
                 <FilterChip key={v} value={v} label={v === 'all' ? 'Svi' : TYPE_LABELS[v as TaskType]} current={filterType} onSelect={setType} />
               ))}
             </View>
@@ -588,7 +587,7 @@ export default function TasksScreen() {
 
                 <Text style={styles.filterLabel}>Tip:</Text>
                 <View style={styles.chipRow}>
-                  {(['reading', 'worker', 'inspection', 'installation', 'other'] as TaskType[]).map(v => (
+                  {(['reading', 'maintenance', 'inspection', 'installation', 'other'] as TaskType[]).map(v => (
                     <FilterChip key={v} value={v} label={TYPE_LABELS[v]} current={newType} onSelect={v => setNewType(v as TaskType)} />
                   ))}
                 </View>

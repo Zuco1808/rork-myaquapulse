@@ -44,11 +44,11 @@ type TaskType   = Task['task_type'];
 type Priority   = Task['priority'];
 
 const TYPE_LABELS: Record<TaskType, string> = {
-  reading: 'Očitanje', worker: 'Radni', inspection: 'Inspekcija',
+  reading: 'Očitanje', maintenance: 'Održavanje', inspection: 'Inspekcija',
   installation: 'Instalacija', other: 'Ostalo',
 };
 const TYPE_COLORS: Record<TaskType, string> = {
-  reading: Colors.primary, worker: '#9C27B0', inspection: '#4CAF50',
+  reading: Colors.primary, maintenance: '#9C27B0', inspection: '#4CAF50',
   installation: '#FF9800', other: '#9E9E9E',
 };
 const STATUS_LABELS: Record<TaskStatus, string> = {
