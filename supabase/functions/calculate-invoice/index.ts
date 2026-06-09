@@ -152,10 +152,12 @@ serve(async (req) => {
       return json({ error: 'reading_to does not belong to specified connection' }, 400);
     }
 
-    // "from" must be chronologically before "to"
+    // "from" must not be chronologically after "to" (isti datum je dozvoljen —
+    // npr. inicijalno i korektivno očitanje istog dana; ispravnost vrijednosti
+    // pokriva provjera potrošnje ispod)
     const dateFrom = new Date(fromReading.reading_date);
     const dateTo   = new Date(toReading.reading_date);
-    if (dateFrom >= dateTo) {
+    if (dateFrom > dateTo) {
       return json({ error: 'reading_from must precede reading_to chronologically' }, 400);
     }
 
