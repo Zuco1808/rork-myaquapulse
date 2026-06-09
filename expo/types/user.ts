@@ -85,6 +85,7 @@ export const getPermissions = (role: UserRole): UserPermissions => {
       return { ...none,
         canReadMeters:     true,
         canVerifyReadings: true,   // finance approves readings for billing
+        canManageTasks:    true,   // finance can create/assign service tasks
         canViewReports:    true,
         canManageBilling:  true,
       };

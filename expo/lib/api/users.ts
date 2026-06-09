@@ -48,6 +48,20 @@ export const getUsersByUtility = async (utilityId: string) => {
   return (data || []).map(mapProfile);
 };
 
+/** Aktivni radnici unutar utility-ja (za dodjelu zadataka). */
+export const getWorkersByUtility = async (utilityId: string) => {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('utility_id', utilityId)
+    .eq('role', 'worker')
+    .eq('is_active', true)
+    .order('full_name');
+
+  if (error) throw error;
+  return (data || []).map(mapProfile);
+};
+
 export const updateUser = async (id: string, updates: Partial<{
   full_name: string;
   phone: string;

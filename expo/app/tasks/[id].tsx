@@ -8,6 +8,7 @@ import {
   SafeAreaView,
   Platform,
   ActivityIndicator,
+  TouchableOpacity,
 } from 'react-native';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import {
@@ -21,6 +22,8 @@ import {
   XCircle,
   DollarSign,
   Wrench,
+  UserPlus,
+  Check,
 } from 'lucide-react-native';
 import { Header } from '@/components/layout/Header';
 import { Card } from '@/components/ui/Card';
@@ -29,8 +32,9 @@ import { Badge } from '@/components/ui/Badge';
 import { Input } from '@/components/ui/Input';
 import { useAuthStore } from '@/store/auth-store';
 import { usePermissions } from '@/lib/use-permissions';
-import { getTaskById, updateTaskStatus, updateTaskCosts } from '@/lib/api/tasks';
-import { Task } from '@/types/user';
+import { getTaskById, updateTaskStatus, updateTaskCosts, assignTask } from '@/lib/api/tasks';
+import { getWorkersByUtility } from '@/lib/api/users';
+import { Task, Profile } from '@/types/user';
 import Colors from '@/constants/colors';
 
 /* ── helpers (same as tasks/index.tsx) ────────────────── */
@@ -76,6 +80,12 @@ export default function TaskDetailScreen() {
   const [materialInput, setMaterialInput] = useState('');
   const [laborInput, setLaborInput]       = useState('');
   const [costSaving, setCostSaving]       = useState(false);
+
+  // Dodjela radniku (finance / utility_admin / super_admin — ne radnik)
+  const canAssign = canManageTasks && !isWorker;
+  const [workers, setWorkers]       = useState<Profile[]>([]);
+  const [showAssign, setShowAssign] = useState(false);
+  const [assigning, setAssigning]   = useState(false);
 
   /* ── Fetch ──────────────────────────────────────────── */
   useFocusEffect(
@@ -181,6 +191,32 @@ export default function TaskDetailScreen() {
     }
   };
 
+  const openAssign = async () => {
+    if (!task) return;
+    setShowAssign(true);
+    if (workers.length === 0 && task.utility_id) {
+      try {
+        setWorkers(await getWorkersByUtility(task.utility_id));
+      } catch (e: any) {
+        Alert.alert('Greška', e.message || 'Učitavanje radnika nije uspjelo.');
+      }
+    }
+  };
+
+  const handleAssign = async (workerId: string) => {
+    if (!task) return;
+    setAssigning(true);
+    try {
+      const updated = await assignTask(task.id, workerId);
+      setTask(updated);
+      setShowAssign(false);
+    } catch (e: any) {
+      Alert.alert('Greška', e.message || 'Dodjela nije uspjela.');
+    } finally {
+      setAssigning(false);
+    }
+  };
+
   /* ── Loading ────────────────────────────────────────── */
   if (loading || !task) {
     return (
@@ -257,6 +293,66 @@ export default function TaskDetailScreen() {
           <Row icon={<Clock size={16} color={Colors.textLight} />}
             label="Kreirano" value={task.created_at.split('T')[0]} />
         </Card>
+
+        {/* Dodjela radniku (finance / admin) */}
+        {canAssign && task.status !== 'done' && task.status !== 'cancelled' && (
+          <Card style={styles.card}>
+            <View style={styles.costHeader}>
+              <View style={styles.costTitleRow}>
+                <UserPlus size={18} color={Colors.primary} />
+                <Text style={styles.sectionTitleInline}>Dodjela radniku</Text>
+              </View>
+            </View>
+
+            <Text style={styles.assignCurrent}>
+              {task.assigned_to_name
+                ? `Trenutno: ${task.assigned_to_name}`
+                : 'Trenutno nije dodijeljeno'}
+            </Text>
+
+            {!showAssign ? (
+              <Button
+                title={task.assigned_to ? 'Promijeni radnika' : 'Dodijeli radniku'}
+                size="small"
+                variant="outline"
+                leftIcon={<UserPlus size={16} color={Colors.primary} />}
+                onPress={openAssign}
+                style={{ marginTop: 10 }}
+              />
+            ) : (
+              <View style={{ marginTop: 8 }}>
+                {workers.length === 0 ? (
+                  <Text style={styles.assignEmpty}>Nema dostupnih radnika u vodovodu.</Text>
+                ) : (
+                  workers.map((w) => {
+                    const active = task.assigned_to === w.id;
+                    return (
+                      <TouchableOpacity
+                        key={w.id}
+                        style={[styles.workerRow, active && styles.workerRowActive]}
+                        onPress={() => handleAssign(w.id)}
+                        disabled={assigning}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={[styles.workerName, active && { color: Colors.primary, fontWeight: '700' }]}>
+                          {w.full_name || w.email}
+                        </Text>
+                        {active && <Check size={16} color={Colors.primary} />}
+                      </TouchableOpacity>
+                    );
+                  })
+                )}
+                <Button
+                  title="Zatvori"
+                  size="small"
+                  variant="outline"
+                  onPress={() => setShowAssign(false)}
+                  style={{ marginTop: 8 }}
+                />
+              </View>
+            )}
+          </Card>
+        )}
 
         {/* Troškovi servisa */}
         {(() => {
@@ -427,6 +523,16 @@ const styles = StyleSheet.create({
   costHeader:   { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
   costTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   costTotal:    { fontSize: 15, fontWeight: '800', color: Colors.primary },
+
+  assignCurrent: { fontSize: 13, color: Colors.text },
+  assignEmpty:   { fontSize: 13, color: Colors.textLight, fontStyle: 'italic' },
+  workerRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingVertical: 12, paddingHorizontal: 12, borderRadius: 8,
+    borderWidth: 1, borderColor: Colors.border, backgroundColor: '#fff', marginBottom: 8,
+  },
+  workerRowActive: { borderColor: Colors.primary, backgroundColor: Colors.primary + '0D' },
+  workerName:      { fontSize: 14, color: Colors.text },
 
   actionBtn:   { marginBottom: 10 },
   cancelBtn:   { borderColor: Colors.error },
