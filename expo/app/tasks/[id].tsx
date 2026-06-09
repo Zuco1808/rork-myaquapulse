@@ -24,6 +24,7 @@ import {
   Wrench,
   UserPlus,
   Check,
+  AlertTriangle,
 } from 'lucide-react-native';
 import { Header } from '@/components/layout/Header';
 import { Card } from '@/components/ui/Card';
@@ -32,7 +33,7 @@ import { Badge } from '@/components/ui/Badge';
 import { Input } from '@/components/ui/Input';
 import { useAuthStore } from '@/store/auth-store';
 import { usePermissions } from '@/lib/use-permissions';
-import { getTaskById, updateTaskStatus, updateTaskCosts, assignTask } from '@/lib/api/tasks';
+import { getTaskById, updateTaskStatus, updateTaskCosts, assignTask, approveTask } from '@/lib/api/tasks';
 import { getWorkersByUtility } from '@/lib/api/users';
 import { Task, Profile } from '@/types/user';
 import Colors from '@/constants/colors';
@@ -203,6 +204,42 @@ export default function TaskDetailScreen() {
     }
   };
 
+  const handleApprove = async () => {
+    if (!task) return;
+    setActionLoading(true);
+    try {
+      const updated = await approveTask(task.id);
+      setTask(updated);
+      Alert.alert('Odobreno', 'Zadatak je odobren.');
+    } catch (e: any) {
+      Alert.alert('Greška', e.message || 'Odobravanje nije uspjelo.');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleReject = () => {
+    if (!task) return;
+    Alert.alert('Odbij zadatak', 'Odbiti i otkazati ovaj zahtjev za zadatak?', [
+      { text: 'Otkaži', style: 'cancel' },
+      {
+        text: 'Odbij',
+        style: 'destructive',
+        onPress: async () => {
+          setActionLoading(true);
+          try {
+            const updated = await updateTaskStatus(task.id, 'cancelled', 'Zahtjev odbijen');
+            setTask(updated);
+          } catch (e: any) {
+            Alert.alert('Greška', e.message || 'Odbijanje nije uspjelo.');
+          } finally {
+            setActionLoading(false);
+          }
+        },
+      },
+    ]);
+  };
+
   const handleAssign = async (workerId: string) => {
     if (!task) return;
     setAssigning(true);
@@ -229,7 +266,9 @@ export default function TaskDetailScreen() {
     );
   }
 
-  const isActive = task.status === 'open' || task.status === 'in_progress';
+  const pendingApproval = task.approved === false;
+  const isActive = (task.status === 'open' || task.status === 'in_progress') && !pendingApproval;
+  const canApprove = canManageTasks && !isWorker;
 
   /* ── Render ─────────────────────────────────────────── */
   return (
@@ -266,6 +305,38 @@ export default function TaskDetailScreen() {
           ) : null}
         </Card>
 
+        {/* Odobravanje (radnikov zadatak na čekanju) */}
+        {pendingApproval && (
+          <Card style={[styles.card, styles.approvalCard]}>
+            <View style={styles.costTitleRow}>
+              <AlertTriangle size={18} color="#FF9800" />
+              <Text style={styles.sectionTitleInline}>Čeka odobrenje</Text>
+            </View>
+            <Text style={styles.approvalText}>
+              {canApprove
+                ? 'Ovaj zadatak je kreirao radnik i čeka vaše odobrenje prije nego postane aktivan.'
+                : 'Zadatak je poslan na odobravanje administratoru/finansijama.'}
+            </Text>
+            {canApprove && (
+              <View style={styles.cancelButtons}>
+                <Button
+                  title="Odbij"
+                  variant="outline"
+                  onPress={handleReject}
+                  style={[styles.cancelFormBtn, { borderColor: Colors.error }]}
+                />
+                <Button
+                  title="Odobri zadatak"
+                  leftIcon={<CheckCircle size={18} color="#fff" />}
+                  onPress={handleApprove}
+                  isLoading={actionLoading}
+                  style={styles.cancelFormBtn}
+                />
+              </View>
+            )}
+          </Card>
+        )}
+
         {/* Meta info */}
         <Card style={styles.card}>
           <Text style={styles.sectionTitle}>Informacije</Text>
@@ -295,7 +366,7 @@ export default function TaskDetailScreen() {
         </Card>
 
         {/* Dodjela radniku (finance / admin) */}
-        {canAssign && task.status !== 'done' && task.status !== 'cancelled' && (
+        {canAssign && !pendingApproval && task.status !== 'done' && task.status !== 'cancelled' && (
           <Card style={styles.card}>
             <View style={styles.costHeader}>
               <View style={styles.costTitleRow}>
@@ -523,6 +594,9 @@ const styles = StyleSheet.create({
   costHeader:   { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
   costTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   costTotal:    { fontSize: 15, fontWeight: '800', color: Colors.primary },
+
+  approvalCard:  { borderWidth: 1, borderColor: '#FF980055', backgroundColor: '#FFF8EE' },
+  approvalText:  { fontSize: 13, color: Colors.text, marginTop: 8, marginBottom: 12, lineHeight: 19 },
 
   assignCurrent: { fontSize: 13, color: Colors.text },
   assignEmpty:   { fontSize: 13, color: Colors.textLight, fontStyle: 'italic' },

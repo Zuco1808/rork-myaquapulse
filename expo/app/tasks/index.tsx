@@ -89,8 +89,9 @@ export default function TasksScreen() {
 
   // Task creation requires a utility_id scope — super_admin has global read but no utility
   // scope to assign a new task to, so they can view/update but not create.
+  // Radnici mogu kreirati zadatak, ali ide na odobravanje (admin/finance).
   const canCreateTasks = (
-    ['utility_admin', 'finance'].includes(user?.role ?? '') && !!user?.utility_id
+    ['utility_admin', 'finance', 'worker'].includes(user?.role ?? '') && !!user?.utility_id
   );
 
   const PAGE_SIZE = 40;
@@ -263,7 +264,12 @@ export default function TasksScreen() {
       });
       setTasks(prev => [t, ...prev]);
       setShowCreate(false);
-      Alert.alert('Uspjeh', 'Zadatak je kreiran.');
+      Alert.alert(
+        'Uspjeh',
+        isWorker
+          ? 'Zadatak je poslan na odobravanje administratoru/finansijama.'
+          : 'Zadatak je kreiran.',
+      );
     } catch (e: any) { Alert.alert('Greška', e.message); }
     finally { setCreating(false); }
   };
@@ -290,6 +296,9 @@ export default function TasksScreen() {
             <Badge label={TYPE_LABELS[t.task_type]}     color={TYPE_COLORS[t.task_type]}     size="small" />
             <Badge label={STATUS_LABELS[t.status]}      color={STATUS_COLORS[t.status]}      size="small" style={styles.ml8} />
             <Badge label={PRIORITY_LABELS[t.priority]}  color={PRIORITY_COLORS[t.priority]}  size="small" style={styles.ml8} />
+            {t.approved === false && (
+              <Badge label="Na odobravanju" color="#FF9800" size="small" style={styles.ml8} />
+            )}
           </View>
           {t.description ? <Text style={styles.taskDesc} numberOfLines={2}>{t.description}</Text> : null}
           <View style={styles.metaRow}>

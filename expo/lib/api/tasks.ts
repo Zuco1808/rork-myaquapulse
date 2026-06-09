@@ -20,6 +20,7 @@ const mapTask = (t: any): Task => ({
   completed_at: t.completed_at,
   material_cost: t.material_cost != null ? Number(t.material_cost) : 0,
   labor_cost:    t.labor_cost    != null ? Number(t.labor_cost)    : 0,
+  approved:     t.approved ?? true,
   created_at:   t.created_at,
   updated_at:   t.updated_at,
   // joined data
@@ -128,6 +129,19 @@ export const getTaskById = async (id: string): Promise<Task> => {
       connections:connection_id ( address, meter_serial )
     `)
     .eq('id', id)
+    .single();
+
+  if (error) throw error;
+  return mapTask(data);
+};
+
+/** Odobrava zadatak koji je kreirao radnik (admin/finance). */
+export const approveTask = async (id: string): Promise<Task> => {
+  const { data, error } = await supabase
+    .from('tasks')
+    .update({ approved: true })
+    .eq('id', id)
+    .select(`*, profiles:assigned_to ( full_name ), connections:connection_id ( address, meter_serial )`)
     .single();
 
   if (error) throw error;
