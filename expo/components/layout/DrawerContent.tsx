@@ -112,7 +112,9 @@ export const DrawerContent: React.FC<DrawerContentProps> = ({ onClose }) => {
       <MenuItem icon={<CreditCard size={20} color={Colors.primary} />} label="Računi"       onPress={() => handleNavigation('/bills')} />
       <MenuItem icon={<DollarSign size={20} color={Colors.primary} />} label="Cijene"       onPress={() => handleNavigation('/pricing')} />
       <MenuItem icon={<BarChart3 size={20} color={Colors.primary} />}  label="Izvještaji"   onPress={() => handleNavigation('/(tabs)/reports')} />
+      <MenuItem icon={<ClipboardList size={20} color={Colors.primary} />} label="Zadaci"    onPress={() => handleNavigation('/tasks')} />
       <MenuItem icon={<Bell size={20} color={Colors.primary} />}       label="Obavještenja" onPress={() => handleNavigation('/notifications')} />
+      <MenuItem icon={<AlertTriangle size={20} color={Colors.primary} />} label="Prijavi kvar" onPress={() => handleNavigation('/support/report-issue')} />
       <MenuItem icon={<Settings size={20} color={Colors.primary} />}   label="Postavke"     onPress={() => handleNavigation('/(tabs)/profile')} />
     </>
   );
