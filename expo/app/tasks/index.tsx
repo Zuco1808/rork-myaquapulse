@@ -183,7 +183,8 @@ export default function TasksScreen() {
   const setPriority  = (v: string) => setFilterPriority(v);
 
   /* ── actions ───────────────────────────────────── */
-  const openDetail = (t: Task) => { setSelected(t); setShowDetail(true); };
+  // Otvori puni detalj zadatka (dodjela radniku, odobravanje, troškovi…)
+  const openDetail = (t: Task) => { router.push(`/tasks/${t.id}` as any); };
 
   const startTask = async (t: Task) => {
     setActionLoading(true);
