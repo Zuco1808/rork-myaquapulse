@@ -154,6 +154,9 @@ function RootLayoutNav() {
       {/* ── Map / Mapa ────────────────────────────────────────────────── */}
       <Stack.Screen name="map" />
 
+      {/* ── Materials / Artikli ───────────────────────────────────────── */}
+      <Stack.Screen name="materials" />
+
       {/* ── Readings / Consumption ────────────────────────────────────── */}
       <Stack.Screen name="consumption" />
 
