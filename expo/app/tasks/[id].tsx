@@ -20,8 +20,6 @@ import {
   PlayCircle,
   CheckCircle,
   XCircle,
-  DollarSign,
-  Wrench,
   UserPlus,
   Check,
   AlertTriangle,
@@ -33,8 +31,9 @@ import { Badge } from '@/components/ui/Badge';
 import { Input } from '@/components/ui/Input';
 import { useAuthStore } from '@/store/auth-store';
 import { usePermissions } from '@/lib/use-permissions';
-import { getTaskById, updateTaskStatus, updateTaskCosts, assignTask, approveTask } from '@/lib/api/tasks';
+import { getTaskById, updateTaskStatus, assignTask, approveTask } from '@/lib/api/tasks';
 import { getWorkersByUtility } from '@/lib/api/users';
+import { TaskWorkItems } from '@/components/tasks/TaskWorkItems';
 import { Task, Profile } from '@/types/user';
 import Colors from '@/constants/colors';
 
@@ -76,11 +75,7 @@ export default function TaskDetailScreen() {
   const [actionLoading, setActionLoading] = useState(false);
   const [cancelNote, setCancelNote]       = useState('');
   const [showCancelForm, setShowCancelForm] = useState(false);
-  const { canManageTasks } = usePermissions();
-  const [editCosts, setEditCosts]   = useState(false);
-  const [materialInput, setMaterialInput] = useState('');
-  const [laborInput, setLaborInput]       = useState('');
-  const [costSaving, setCostSaving]       = useState(false);
+  const { canManageTasks, canManageBilling } = usePermissions();
 
   // Dodjela radniku (finance / utility_admin / super_admin — ne radnik)
   const canAssign = canManageTasks && !isWorker;
@@ -89,6 +84,16 @@ export default function TaskDetailScreen() {
   const [assigning, setAssigning]   = useState(false);
 
   /* ── Fetch ──────────────────────────────────────────── */
+  const refetchTask = useCallback(async () => {
+    if (!id) return;
+    try {
+      const data = await getTaskById(id);
+      setTask(data);
+    } catch {
+      // tiho — onChanged poziv, ne ruši ekran
+    }
+  }, [id]);
+
   useFocusEffect(
     useCallback(() => {
       if (!id) return;
@@ -162,33 +167,6 @@ export default function TaskDetailScreen() {
       Alert.alert('Greška', e.message);
     } finally {
       setActionLoading(false);
-    }
-  };
-
-  const openCostEditor = () => {
-    if (!task) return;
-    setMaterialInput(String(task.material_cost ?? 0));
-    setLaborInput(String(task.labor_cost ?? 0));
-    setEditCosts(true);
-  };
-
-  const handleSaveCosts = async () => {
-    if (!task) return;
-    const material = parseFloat(materialInput.replace(',', '.'));
-    const labor    = parseFloat(laborInput.replace(',', '.'));
-    if (isNaN(material) || isNaN(labor) || material < 0 || labor < 0) {
-      Alert.alert('Greška', 'Unesite ispravne iznose (≥ 0).');
-      return;
-    }
-    setCostSaving(true);
-    try {
-      const updated = await updateTaskCosts(task.id, material, labor);
-      setTask(updated);
-      setEditCosts(false);
-    } catch (e: any) {
-      Alert.alert('Greška', e.message || 'Spremanje troškova nije uspjelo.');
-    } finally {
-      setCostSaving(false);
     }
   };
 
@@ -425,76 +403,16 @@ export default function TaskDetailScreen() {
           </Card>
         )}
 
-        {/* Troškovi servisa */}
-        {(() => {
-          const material = task.material_cost ?? 0;
-          const labor    = task.labor_cost ?? 0;
-          const total    = material + labor;
-          const canEdit  = canManageTasks || (isWorker && task.assigned_to === user?.id);
-          if (total === 0 && !canEdit) return null;
-          return (
-            <Card style={styles.card}>
-              <View style={styles.costHeader}>
-                <View style={styles.costTitleRow}>
-                  <Wrench size={18} color={Colors.primary} />
-                  <Text style={styles.sectionTitleInline}>Troškovi servisa</Text>
-                </View>
-                {total > 0 && (
-                  <Text style={styles.costTotal}>{total.toFixed(2)} BAM</Text>
-                )}
-              </View>
-
-              {!editCosts ? (
-                <>
-                  <Row icon={<DollarSign size={16} color={Colors.textLight} />}
-                    label="Materijal" value={`${material.toFixed(2)} BAM`} />
-                  <Row icon={<DollarSign size={16} color={Colors.textLight} />}
-                    label="Rad" value={`${labor.toFixed(2)} BAM`} />
-                  {canEdit && (
-                    <Button
-                      title={total > 0 ? 'Uredi troškove' : 'Dodaj troškove'}
-                      size="small"
-                      variant="outline"
-                      onPress={openCostEditor}
-                      style={{ marginTop: 8 }}
-                    />
-                  )}
-                </>
-              ) : (
-                <View>
-                  <Input
-                    label="Trošak materijala (BAM)"
-                    value={materialInput}
-                    onChangeText={setMaterialInput}
-                    keyboardType="decimal-pad"
-                    placeholder="0.00"
-                  />
-                  <Input
-                    label="Trošak rada (BAM)"
-                    value={laborInput}
-                    onChangeText={setLaborInput}
-                    keyboardType="decimal-pad"
-                    placeholder="0.00"
-                  />
-                  <View style={styles.cancelButtons}>
-                    <Button
-                      title="Odustani"
-                      variant="outline"
-                      onPress={() => setEditCosts(false)}
-                      style={styles.cancelFormBtn}
-                    />
-                    <Button
-                      title="Spremi"
-                      onPress={handleSaveCosts}
-                      isLoading={costSaving}
-                      style={styles.cancelFormBtn}
-                    />
-                  </View>
-                </View>
-              )}
-            </Card>
-          );
-        })()}
+        {/* Stavke naloga: utrošeni materijal + usluge/rad */}
+        {!pendingApproval && task.status !== 'cancelled' && task.utility_id && (
+          <TaskWorkItems
+            taskId={task.id}
+            utilityId={task.utility_id}
+            canEdit={canManageTasks || (isWorker && task.assigned_to === user?.id)}
+            showPrices={canManageBilling}
+            onChanged={refetchTask}
+          />
+        )}
 
         {/* Actions */}
         {isActive && (
