@@ -136,6 +136,28 @@ export const getTaskById = async (id: string): Promise<Task> => {
   return mapTask(data);
 };
 
+/**
+ * Šalje radni nalog (bez cijena) korisniku priključka e-mailom preko
+ * send-work-order-email Edge Function (Resend).
+ */
+export const sendWorkOrderEmail = async (params: {
+  task_id: string;
+  recipient_email?: string;
+}): Promise<{ sent: boolean; email: string }> => {
+  const { data, error } = await supabase.functions.invoke<{ sent: boolean; email: string; error?: string }>(
+    'send-work-order-email',
+    { body: params },
+  );
+  if (error) {
+    const ctx = (error as any)?.context;
+    let msg = error.message;
+    try { const body = await ctx?.json?.(); if (body?.error) msg = body.error; } catch { /* ignore */ }
+    throw new Error(msg);
+  }
+  if (!data?.sent) throw new Error((data as any)?.error || 'Slanje nije uspjelo.');
+  return { sent: data.sent, email: data.email };
+};
+
 /** Ažurira napomenu na nalogu. */
 export const updateTaskNotes = async (id: string, notes: string): Promise<Task> => {
   const { data, error } = await supabase

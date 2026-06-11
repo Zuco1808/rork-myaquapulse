@@ -34,6 +34,7 @@ import { usePermissions } from '@/lib/use-permissions';
 import { getTaskById, updateTaskStatus, assignTask, approveTask, updateTaskNotes } from '@/lib/api/tasks';
 import { getWorkersByUtility } from '@/lib/api/users';
 import { TaskWorkItems } from '@/components/tasks/TaskWorkItems';
+import { WorkOrderActions } from '@/components/tasks/WorkOrderActions';
 import { Task, Profile } from '@/types/user';
 import Colors from '@/constants/colors';
 
@@ -480,6 +481,11 @@ export default function TaskDetailScreen() {
             </Card>
           );
         })()}
+
+        {/* Radni nalog PDF + email */}
+        {!pendingApproval && task.status !== 'cancelled' && (
+          <WorkOrderActions task={task} canSendEmail={canManageBilling} />
+        )}
 
         {/* Actions */}
         {isActive && (
