@@ -31,7 +31,7 @@ import { Badge } from '@/components/ui/Badge';
 import { Input } from '@/components/ui/Input';
 import { useAuthStore } from '@/store/auth-store';
 import { usePermissions } from '@/lib/use-permissions';
-import { getTaskById, updateTaskStatus, assignTask, approveTask } from '@/lib/api/tasks';
+import { getTaskById, updateTaskStatus, assignTask, approveTask, updateTaskNotes } from '@/lib/api/tasks';
 import { getWorkersByUtility } from '@/lib/api/users';
 import { TaskWorkItems } from '@/components/tasks/TaskWorkItems';
 import { Task, Profile } from '@/types/user';
@@ -82,6 +82,11 @@ export default function TaskDetailScreen() {
   const [workers, setWorkers]       = useState<Profile[]>([]);
   const [showAssign, setShowAssign] = useState(false);
   const [assigning, setAssigning]   = useState(false);
+
+  // Napomena
+  const [editingNotes, setEditingNotes] = useState(false);
+  const [notesInput, setNotesInput]     = useState('');
+  const [savingNotes, setSavingNotes]   = useState(false);
 
   /* ── Fetch ──────────────────────────────────────────── */
   const refetchTask = useCallback(async () => {
@@ -167,6 +172,26 @@ export default function TaskDetailScreen() {
       Alert.alert('Greška', e.message);
     } finally {
       setActionLoading(false);
+    }
+  };
+
+  const openNotesEditor = () => {
+    if (!task) return;
+    setNotesInput(task.notes ?? '');
+    setEditingNotes(true);
+  };
+
+  const handleSaveNotes = async () => {
+    if (!task) return;
+    setSavingNotes(true);
+    try {
+      const updated = await updateTaskNotes(task.id, notesInput.trim());
+      setTask(updated);
+      setEditingNotes(false);
+    } catch (e: any) {
+      Alert.alert('Greška', e.message || 'Spremanje napomene nije uspjelo.');
+    } finally {
+      setSavingNotes(false);
     }
   };
 
@@ -414,6 +439,48 @@ export default function TaskDetailScreen() {
           />
         )}
 
+        {/* Napomena */}
+        {task.status !== 'cancelled' && (() => {
+          const canEditNotes = canManageTasks || (isWorker && task.assigned_to === user?.id);
+          if (!task.notes && !canEditNotes) return null;
+          return (
+            <Card style={styles.card}>
+              <Text style={styles.sectionTitle}>Napomena</Text>
+              {!editingNotes ? (
+                <>
+                  <Text style={task.notes ? styles.notesText : styles.notesEmpty}>
+                    {task.notes || 'Nema napomene.'}
+                  </Text>
+                  {canEditNotes && (
+                    <Button
+                      title={task.notes ? 'Uredi napomenu' : 'Dodaj napomenu'}
+                      size="small"
+                      variant="outline"
+                      onPress={openNotesEditor}
+                      style={{ marginTop: 10 }}
+                    />
+                  )}
+                </>
+              ) : (
+                <View>
+                  <Input
+                    value={notesInput}
+                    onChangeText={setNotesInput}
+                    placeholder="Dodatne informacije o nalogu…"
+                    multiline
+                    numberOfLines={4}
+                    style={{ height: 100, textAlignVertical: 'top' }}
+                  />
+                  <View style={styles.cancelButtons}>
+                    <Button title="Odustani" variant="outline" onPress={() => setEditingNotes(false)} style={styles.cancelFormBtn} />
+                    <Button title="Spremi" onPress={handleSaveNotes} isLoading={savingNotes} style={styles.cancelFormBtn} />
+                  </View>
+                </View>
+              )}
+            </Card>
+          );
+        })()}
+
         {/* Actions */}
         {isActive && (
           <Card style={styles.card}>
@@ -512,6 +579,9 @@ const styles = StyleSheet.create({
   costHeader:   { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
   costTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   costTotal:    { fontSize: 15, fontWeight: '800', color: Colors.primary },
+
+  notesText:     { fontSize: 14, color: Colors.text, lineHeight: 20 },
+  notesEmpty:    { fontSize: 13, color: Colors.textLight, fontStyle: 'italic' },
 
   approvalCard:  { borderWidth: 1, borderColor: '#FF980055', backgroundColor: '#FFF8EE' },
   approvalText:  { fontSize: 13, color: Colors.text, marginTop: 8, marginBottom: 12, lineHeight: 19 },

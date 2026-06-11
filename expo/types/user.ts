@@ -254,6 +254,7 @@ export interface Task {
   material_cost?: number;
   labor_cost?: number;
   approved?: boolean;
+  notes?: string | null;
   created_at: string;
   updated_at: string;
   // joined
