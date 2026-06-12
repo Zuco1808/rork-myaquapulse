@@ -2,19 +2,17 @@ import { supabase } from '@/lib/supabase';
 
 const mapCompany = (c: any) => ({
   id: c.id,
-  name: c.name,
-  address: c.address,
-  city: c.city,
-  postalCode: c.postal_code || c.postalCode || '',
-  country: c.country || 'Bosnia and Herzegovina',
-  phone: c.phone,
-  email: c.email,
-  website: c.website || '',
-  logo: c.logo || '',
-  supportEmail: c.support_email || '',
-  usersCount: c.users_count ?? undefined,
-  locationsCount: c.locations_count ?? undefined,
-  metersCount: c.meters_count ?? undefined,
+  name: c.name ?? '',
+  address: c.address ?? '',
+  city: c.city ?? '',
+  postalCode: c.postal_code ?? '',
+  country: c.country ?? 'Bosnia and Herzegovina',
+  phone: c.phone ?? '',
+  email: c.email ?? '',
+  website: c.website ?? '',
+  logo: c.logo_url ?? '',
+  supportEmail: c.support_email ?? '',
+  pib: c.pib ?? '',
   isActive: c.is_active ?? true,
   createdAt: c.created_at ? new Date(c.created_at).getTime() : Date.now(),
   updatedAt: c.updated_at ? new Date(c.updated_at).getTime() : undefined,
@@ -22,7 +20,7 @@ const mapCompany = (c: any) => ({
 
 export const getCompanies = async () => {
   const { data, error } = await supabase
-    .from('companies')
+    .from('water_utilities')
     .select('*')
     .order('name');
 
@@ -32,7 +30,7 @@ export const getCompanies = async () => {
 
 export const getCompanyById = async (id: string) => {
   const { data, error } = await supabase
-    .from('companies')
+    .from('water_utilities')
     .select('*')
     .eq('id', id)
     .single();
@@ -56,9 +54,14 @@ export const updateCompany = async (
     support_email: string;
   }>
 ) => {
+  // Map `logo` → `logo_url` (internal column name in water_utilities)
+  const { logo, ...rest } = updates as any;
+  const patch: Record<string, any> = { ...rest, updated_at: new Date().toISOString() };
+  if (logo !== undefined) patch.logo_url = logo;
+
   const { data, error } = await supabase
-    .from('companies')
-    .update({ ...updates, updated_at: new Date().toISOString() })
+    .from('water_utilities')
+    .update(patch)
     .eq('id', id)
     .select()
     .single();

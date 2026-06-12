@@ -24,15 +24,24 @@ import {
   X,
   Clock,
   FileText,
+  Mail,
 } from 'lucide-react-native';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Header } from '@/components/layout/Header';
+import { PaymentModal } from '@/components/bills/PaymentModal';
 import { useAuthStore } from '@/store/auth-store';
 import { usePermissions } from '@/lib/use-permissions';
-import { getBillById, updateBillStatus } from '@/lib/api/bills';
+import { getBillById, updateBillStatus, sendInvoiceEmail } from '@/lib/api/bills';
+import {
+  getPaymentsByInvoice,
+  deletePayment,
+  Payment,
+  PAYMENT_METHOD_LABEL,
+} from '@/lib/api/payments';
+import { getTaskMaterials, getTaskServices, TaskMaterial, TaskService } from '@/lib/api/task-items';
 import { captureError } from '@/lib/sentry';
 import Colors from '@/constants/colors';
 
@@ -99,7 +108,21 @@ const formatPeriod = (from: string, to: string) => {
   return `${f.toLocaleDateString('bs-BA')} – ${t.toLocaleDateString('bs-BA')}`;
 };
 
-const buildInvoiceHtml = (bill: any): string => `
+type WorkItems = { materials: TaskMaterial[]; services: TaskService[] };
+
+/** Specifikacija stavki radnog naloga (kad je faktura vezana na nalog). */
+const buildWorkItemsHtml = (items: WorkItems | null): string => {
+  if (!items || (items.materials.length === 0 && items.services.length === 0)) return '';
+  const rows = [
+    ...items.materials.map((m) =>
+      `<div class="row"><span class="rl">${m.name} — ${m.quantity} ${m.unit} × ${m.unitPrice.toFixed(2)}</span><span>${m.total.toFixed(2)} BAM</span></div>`),
+    ...items.services.map((s) =>
+      `<div class="row"><span class="rl">${s.description}${s.isExternal ? ' (eksterno)' : ''} — ${s.quantity} ${s.unit} × ${s.unitPrice.toFixed(2)}</span><span>${s.total.toFixed(2)} BAM</span></div>`),
+  ].join('');
+  return `<div class="sec">Specifikacija radnog naloga</div>${rows}`;
+};
+
+const buildInvoiceHtml = (bill: any, workItems: WorkItems | null = null): string => `
 <!DOCTYPE html><html><head><meta charset="utf-8"/>
 <style>
   body{font-family:Arial,sans-serif;padding:30px;color:#333;font-size:13px;}
@@ -129,6 +152,7 @@ const buildInvoiceHtml = (bill: any): string => `
 <div class="sec">Podaci o obračunu</div>
 <div class="row"><span class="rl">Period</span><span>${formatPeriod(bill.period_from, bill.period_to)}</span></div>
 ${bill.consumption_m3 != null ? `<div class="row"><span class="rl">Potrošnja (m³)</span><span>${bill.consumption_m3}</span></div>` : ''}
+${buildWorkItemsHtml(workItems)}
 <div class="sec">Obračun</div>
 <div class="row"><span class="rl">Usluga vodovoda</span><span>${(bill.amount * 0.85).toFixed(2)} BAM</span></div>
 <div class="row"><span class="rl">PDV (17%)</span><span>${(bill.amount * 0.15).toFixed(2)} BAM</span></div>
@@ -151,16 +175,38 @@ export default function BillDetailsScreen() {
   const [actionLoading, setActionLoading] = useState(false);
   const [pdfVisible, setPdfVisible]   = useState(false);
   const [pdfLoading, setPdfLoading]   = useState(false);
+  const [payments, setPayments]       = useState<Payment[]>([]);
+  const [paymentModal, setPaymentModal] = useState(false);
+  const [emailLoading, setEmailLoading] = useState(false);
+  const [workItems, setWorkItems]     = useState<WorkItems | null>(null);
 
   const { canManageBilling: canManageStatus, isEndUser } = usePermissions();
   const canPay = isEndUser && bill && ['pending', 'sent', 'overdue'].includes(bill.status);
+
+  const totalPaid = payments.reduce((s, p) => s + p.amount, 0);
+  const remaining = bill ? Math.max(0, (bill.amount ?? 0) - totalPaid) : 0;
 
   /* ── fetch ───────────────────────────────────── */
   const fetchBill = async () => {
     if (!id) return;
     try {
-      const data = await getBillById(id);
+      const [data, pays] = await Promise.all([
+        getBillById(id),
+        getPaymentsByInvoice(id).catch(() => []),
+      ]);
       setBill(data);
+      setPayments(pays);
+
+      // Faktura iz radnog naloga → učitaj specifikaciju stavki
+      if ((data as any).task_id) {
+        const [materials, services] = await Promise.all([
+          getTaskMaterials((data as any).task_id).catch(() => []),
+          getTaskServices((data as any).task_id).catch(() => []),
+        ]);
+        setWorkItems({ materials, services });
+      } else {
+        setWorkItems(null);
+      }
     } catch {
       Alert.alert('Greška', 'Račun nije pronađen.');
       router.back();
@@ -170,6 +216,25 @@ export default function BillDetailsScreen() {
   };
 
   useFocusEffect(useCallback(() => { fetchBill(); }, [id]));
+
+  /* ── obriši uplatu ───────────────────────────── */
+  const handleDeletePayment = (paymentId: string) => {
+    Alert.alert('Brisanje uplate', 'Obrisati ovu uplatu?', [
+      { text: 'Otkaži', style: 'cancel' },
+      {
+        text: 'Obriši',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await deletePayment(paymentId);
+            await fetchBill();
+          } catch (e: any) {
+            Alert.alert('Greška', e?.message || 'Brisanje nije uspjelo.');
+          }
+        },
+      },
+    ]);
+  };
 
   /* ── status change ───────────────────────────── */
   const handleStatusChange = async (next: InvoiceStatus) => {
@@ -186,13 +251,41 @@ export default function BillDetailsScreen() {
     }
   };
 
+  /* ── Pošalji e-mailom ───────────────────────── */
+  const handleSendEmail = () => {
+    if (!bill) return;
+    Alert.alert(
+      'Slanje računa e-mailom',
+      'Poslati ovaj račun krajnjem korisniku na e-mail?',
+      [
+        { text: 'Otkaži', style: 'cancel' },
+        {
+          text: 'Pošalji',
+          onPress: async () => {
+            setEmailLoading(true);
+            try {
+              const { email } = await sendInvoiceEmail({ invoice_id: bill.id });
+              Alert.alert('Poslano', `Račun je poslan na ${email}.`);
+              fetchBill();
+            } catch (e: any) {
+              captureError(e, { screen: 'bill-detail', action: 'sendEmail' });
+              Alert.alert('Greška', e?.message || 'Slanje e-maila nije uspjelo.');
+            } finally {
+              setEmailLoading(false);
+            }
+          },
+        },
+      ],
+    );
+  };
+
   /* ── PDF / Print ────────────────────────────── */
   const handleDownloadPdf = async () => {
     if (!bill) return;
     if (Platform.OS === 'web') { handlePrint(); return; }
     setPdfLoading(true);
     try {
-      const html = buildInvoiceHtml(bill);
+      const html = buildInvoiceHtml(bill, workItems);
       const { uri } = await Print.printToFileAsync({ html });
       await Sharing.shareAsync(uri, {
         mimeType: 'application/pdf',
@@ -211,7 +304,7 @@ export default function BillDetailsScreen() {
     if (!bill) return;
     setPdfLoading(true);
     try {
-      await Print.printAsync({ html: buildInvoiceHtml(bill) });
+      await Print.printAsync({ html: buildInvoiceHtml(bill, workItems) });
     } catch (e: any) {
       captureError(e, { screen: 'bill-detail', action: 'print' });
       Alert.alert('Greška', e?.message || 'Štampanje nije uspjelo.');
@@ -327,6 +420,51 @@ export default function BillDetailsScreen() {
           </Card>
         )}
 
+        {/* Payments / uplate */}
+        {canManageStatus && bill.status !== 'draft' && bill.status !== 'cancelled' && (
+          <Card style={styles.card}>
+            <View style={styles.payHeaderRow}>
+              <Text style={styles.actionsTitle}>Uplate</Text>
+              <View style={styles.payTotals}>
+                <Text style={styles.payTotalPaid}>{totalPaid.toFixed(2)} BAM</Text>
+                {remaining > 0 && (
+                  <Text style={styles.payRemaining}>preostalo {remaining.toFixed(2)} BAM</Text>
+                )}
+              </View>
+            </View>
+
+            {payments.length === 0 ? (
+              <Text style={styles.payEmpty}>Nema evidentiranih uplata.</Text>
+            ) : (
+              payments.map((p) => (
+                <View key={p.id} style={styles.payRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.payRowAmount}>{p.amount.toFixed(2)} BAM</Text>
+                    <Text style={styles.payRowMeta}>
+                      {PAYMENT_METHOD_LABEL[p.method]} · {formatDate(p.payment_date)}
+                      {p.reference_number ? ` · ${p.reference_number}` : ''}
+                    </Text>
+                  </View>
+                  <TouchableOpacity onPress={() => handleDeletePayment(p.id)} hitSlop={8}>
+                    <X size={18} color={Colors.error} />
+                  </TouchableOpacity>
+                </View>
+              ))
+            )}
+
+            {remaining > 0 && (
+              <Button
+                title="Evidentiraj uplatu"
+                size="small"
+                variant="outline"
+                leftIcon={<DollarSign size={16} color={Colors.primary} />}
+                onPress={() => setPaymentModal(true)}
+                style={{ marginTop: 12 }}
+              />
+            )}
+          </Card>
+        )}
+
         {/* End-user pay button */}
         {canPay && (
           <Button
@@ -335,6 +473,18 @@ export default function BillDetailsScreen() {
             onPress={handlePayRequest}
             isLoading={actionLoading}
             style={styles.payBtn}
+          />
+        )}
+
+        {/* Pošalji e-mailom (finance/admin) */}
+        {canManageStatus && bill.status !== 'cancelled' && (
+          <Button
+            title="Pošalji račun e-mailom"
+            variant="outline"
+            leftIcon={<Mail size={18} color={Colors.primary} />}
+            onPress={handleSendEmail}
+            isLoading={emailLoading}
+            style={{ marginBottom: 14 }}
           />
         )}
 
@@ -434,6 +584,31 @@ export default function BillDetailsScreen() {
                 </View>
               )}
 
+              {/* Specifikacija radnog naloga */}
+              {workItems && (workItems.materials.length > 0 || workItems.services.length > 0) && (
+                <>
+                  <View style={styles.pdfTableHeader}>
+                    <Text style={styles.pdfTableHeaderText}>Specifikacija radnog naloga</Text>
+                  </View>
+                  {workItems.materials.map((m) => (
+                    <View key={m.id} style={styles.pdfRow}>
+                      <Text style={[styles.pdfRowLabel, { flex: 3 }]}>
+                        {m.name} — {m.quantity} {m.unit} × {m.unitPrice.toFixed(2)}
+                      </Text>
+                      <Text style={[styles.pdfRowValue, { flex: 1, textAlign: 'right' }]}>{m.total.toFixed(2)} BAM</Text>
+                    </View>
+                  ))}
+                  {workItems.services.map((s) => (
+                    <View key={s.id} style={styles.pdfRow}>
+                      <Text style={[styles.pdfRowLabel, { flex: 3 }]}>
+                        {s.description}{s.isExternal ? ' (eksterno)' : ''} — {s.quantity} {s.unit} × {s.unitPrice.toFixed(2)}
+                      </Text>
+                      <Text style={[styles.pdfRowValue, { flex: 1, textAlign: 'right' }]}>{s.total.toFixed(2)} BAM</Text>
+                    </View>
+                  ))}
+                </>
+              )}
+
               {/* Amount */}
               <View style={styles.pdfTableHeader}>
                 <Text style={styles.pdfTableHeaderText}>Obračun</Text>
@@ -476,6 +651,18 @@ export default function BillDetailsScreen() {
           </ScrollView>
         </SafeAreaView>
       </Modal>
+
+      {/* ── Payment Modal ── */}
+      {bill && (
+        <PaymentModal
+          visible={paymentModal}
+          invoiceId={bill.id}
+          utilityId={bill.utility_id}
+          remaining={remaining}
+          onClose={() => setPaymentModal(false)}
+          onSuccess={fetchBill}
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -525,6 +712,18 @@ const styles = StyleSheet.create({
   actionBtn:    { minWidth: 90 },
 
   payBtn: { marginBottom: 14 },
+
+  payHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 },
+  payTotals:      { alignItems: 'flex-end' },
+  payTotalPaid:   { fontSize: 15, fontWeight: '700', color: '#4CAF50' },
+  payRemaining:   { fontSize: 11, color: Colors.textLight, marginTop: 1 },
+  payEmpty:       { fontSize: 13, color: Colors.textLight, fontStyle: 'italic' },
+  payRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    paddingVertical: 10, borderTopWidth: 1, borderTopColor: Colors.border,
+  },
+  payRowAmount: { fontSize: 14, fontWeight: '600', color: Colors.text },
+  payRowMeta:   { fontSize: 11, color: Colors.textLight, marginTop: 2 },
 
   utilityRow: {
     flexDirection: 'row', gap: 10,

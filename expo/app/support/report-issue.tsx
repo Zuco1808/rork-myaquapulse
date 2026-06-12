@@ -84,7 +84,9 @@ export default function ReportIssueScreen() {
     if (params.utilityId) return params.utilityId;
     // From selected connection
     const conn = connections.find((c) => c.id === selectedConnectionId);
-    return conn?.utility_id;
+    if (conn?.utility_id) return conn.utility_id;
+    // Fallback: prijavitelj (radnik / osoblje) pripada svom vodovodu
+    return user?.utility_id;
   };
 
   const getSelectedConnectionLabel = () => {

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -18,6 +18,7 @@ import {
   DollarSign,
   Users,
   ClipboardList,
+  Package,
   Download,
 } from 'lucide-react-native';
 import { useFreshFocus } from '@/lib/use-fresh-focus';
@@ -52,13 +53,14 @@ const lastNMonths = (n: number) => {
 };
 
 /* ── Report types ───────────────────────────────── */
-type ReportType = 'consumption' | 'financial' | 'users' | 'tasks';
+type ReportType = 'consumption' | 'financial' | 'users' | 'tasks' | 'materials';
 
 const REPORT_TYPES: { id: ReportType; label: string; icon: React.ReactNode }[] = [
   { id: 'consumption', label: 'Potrošnja vode', icon: <Droplet size={18} color={Colors.primary} /> },
   { id: 'financial', label: 'Finansije', icon: <DollarSign size={18} color={Colors.primary} /> },
   { id: 'users', label: 'Korisnici', icon: <Users size={18} color={Colors.primary} /> },
   { id: 'tasks', label: 'Zadaci / kvarovi', icon: <ClipboardList size={18} color={Colors.primary} /> },
+  { id: 'materials', label: 'Utrošak materijala', icon: <Package size={18} color={Colors.primary} /> },
 ];
 
 /* ════════════════════════════════════════════════ */
@@ -96,7 +98,24 @@ export default function ReportsScreen() {
     done: 0,
     cancelled: 0,
     urgent: 0,
+    materialCost: 0,
+    laborCost: 0,
+    maintenanceCost: 0,
   });
+
+  /* ── Materials usage data ──────────────────────── */
+  type MatPeriod = 'all' | 'this_month' | 'last_3' | 'this_year';
+  const [materialsRows, setMaterialsRows]   = useState<{ name: string; qty: number; total: number }[]>([]);
+  const [materialsTotal, setMaterialsTotal] = useState(0);
+  const [matPeriod, setMatPeriod]           = useState<MatPeriod>('this_month');
+
+  const matPeriodGte = (p: MatPeriod): string | null => {
+    const now = new Date();
+    if (p === 'this_month') return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+    if (p === 'last_3')     { const d = new Date(now); d.setMonth(d.getMonth() - 3); return d.toISOString().split('T')[0]; }
+    if (p === 'this_year')  return `${now.getFullYear()}-01-01`;
+    return null;
+  };
 
   /* ── Fetch ─────────────────────────────────────── */
   const fetchAll = async () => {
@@ -107,6 +126,7 @@ export default function ReportsScreen() {
         fetchFinancial(),
         fetchUsers(),
         fetchTasks(),
+        fetchMaterials(),
       ]);
     } finally {
       setLoading(false);
@@ -219,19 +239,60 @@ export default function ReportsScreen() {
   const fetchTasks = async () => {
     const { data } = await supabase
       .from('tasks')
-      .select('status, priority');
+      .select('status, priority, material_cost, labor_cost');
 
     const tasks = data || [];
+    // Troškovi održavanja se broje samo za završene naloge
+    const doneTasks = tasks.filter((t: any) => t.status === 'done');
+    const materialCost = doneTasks.reduce((s: number, t: any) => s + (Number(t.material_cost) || 0), 0);
+    const laborCost    = doneTasks.reduce((s: number, t: any) => s + (Number(t.labor_cost)    || 0), 0);
+    const round2 = (n: number) => Math.round(n * 100) / 100;
+
     setTasksStats({
       open: tasks.filter((t: any) => t.status === 'open').length,
       inProgress: tasks.filter((t: any) => t.status === 'in_progress').length,
-      done: tasks.filter((t: any) => t.status === 'done').length,
+      done: doneTasks.length,
       cancelled: tasks.filter((t: any) => t.status === 'cancelled').length,
       urgent: tasks.filter((t: any) => t.priority === 'urgent').length,
+      materialCost: round2(materialCost),
+      laborCost: round2(laborCost),
+      maintenanceCost: round2(materialCost + laborCost),
     });
   };
 
+  const fetchMaterials = async (period: MatPeriod = matPeriod) => {
+    // RLS ograničava task_materials na vlastiti utility
+    let q = supabase
+      .from('task_materials')
+      .select('name, quantity, unit_price');
+    const gte = matPeriodGte(period);
+    if (gte) q = q.gte('created_at', gte);
+    const { data } = await q;
+
+    const map: Record<string, { qty: number; total: number }> = {};
+    (data || []).forEach((m: any) => {
+      const key = m.name || '(bez naziva)';
+      const qty = Number(m.quantity) || 0;
+      const total = qty * (Number(m.unit_price) || 0);
+      if (!map[key]) map[key] = { qty: 0, total: 0 };
+      map[key].qty += qty;
+      map[key].total += total;
+    });
+    const rows = Object.entries(map)
+      .map(([name, v]) => ({ name, qty: Math.round(v.qty * 1000) / 1000, total: Math.round(v.total * 100) / 100 }))
+      .sort((a, b) => b.total - a.total);
+    setMaterialsRows(rows);
+    setMaterialsTotal(Math.round(rows.reduce((s, r) => s + r.total, 0) * 100) / 100);
+  };
+
   useFreshFocus(fetchAll);
+
+  // Refetch materijala pri promjeni perioda (preskoči prvi mount — fetchAll pokriva)
+  const matPeriodInit = useRef(false);
+  useEffect(() => {
+    if (!matPeriodInit.current) { matPeriodInit.current = true; return; }
+    fetchMaterials(matPeriod);
+  }, [matPeriod]);
 
   /* ── CSV export ────────────────────────────────── */
   const buildCSV = (): string => {
@@ -266,8 +327,18 @@ export default function ReportsScreen() {
           `Otkazani,${tasksStats.cancelled}`,
           `Hitni (prioritet),${tasksStats.urgent}`,
           `Ukupno,${tot}`,
+          '',
+          'Troškovi održavanja (završeni nalozi),BAM',
+          `Materijal,${tasksStats.materialCost.toFixed(2)}`,
+          `Rad,${tasksStats.laborCost.toFixed(2)}`,
+          `Ukupno troškovi,${tasksStats.maintenanceCost.toFixed(2)}`,
         ].join('\n');
       }
+      case 'materials': return [
+        'Artikal,Količina,Vrijednost (BAM)',
+        ...materialsRows.map((r) => `${r.name},${r.qty},${r.total.toFixed(2)}`),
+        `Ukupno,,${materialsTotal.toFixed(2)}`,
+      ].join('\n');
       default: return '';
     }
   };
@@ -420,9 +491,68 @@ export default function ReportsScreen() {
           {renderStatBox(tasksStats.open + tasksStats.inProgress, 'Aktivnih')}
           {renderStatBox(tasksStats.urgent, 'Hitnih')}
         </View>
+
+        {/* Troškovi održavanja (završeni nalozi) */}
+        <View style={styles.maintBox}>
+          <Text style={styles.maintTitle}>Troškovi održavanja</Text>
+          <Text style={styles.maintSub}>na osnovu {tasksStats.done} završenih naloga</Text>
+          <View style={styles.maintRow}>
+            <Text style={styles.maintLabel}>Materijal</Text>
+            <Text style={styles.maintValue}>{tasksStats.materialCost.toFixed(2)} BAM</Text>
+          </View>
+          <View style={styles.maintRow}>
+            <Text style={styles.maintLabel}>Rad</Text>
+            <Text style={styles.maintValue}>{tasksStats.laborCost.toFixed(2)} BAM</Text>
+          </View>
+          <View style={[styles.maintRow, styles.maintTotalRow]}>
+            <Text style={styles.maintTotalLabel}>Ukupno</Text>
+            <Text style={styles.maintTotalValue}>{tasksStats.maintenanceCost.toFixed(2)} BAM</Text>
+          </View>
+        </View>
       </View>
     );
   };
+
+  const renderMaterials = () => (
+    <View>
+      <View style={styles.matPeriodRow}>
+        {([
+          ['this_month', 'Ovaj mj.'],
+          ['last_3', 'Zadnja 3 mj.'],
+          ['this_year', 'Ova god.'],
+          ['all', 'Sve'],
+        ] as [MatPeriod, string][]).map(([v, label]) => (
+          <TouchableOpacity
+            key={v}
+            style={[styles.matPeriodChip, matPeriod === v && styles.matPeriodChipActive]}
+            onPress={() => setMatPeriod(v)}
+            activeOpacity={0.8}
+          >
+            <Text style={[styles.matPeriodText, matPeriod === v && styles.matPeriodTextActive]}>{label}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      {materialsRows.length === 0 ? (
+        <Text style={styles.maintSub}>Nema evidentiranog utroška materijala u odabranom periodu.</Text>
+      ) : (
+        <>
+          {materialsRows.map((r) => (
+            <View key={r.name} style={styles.matRow}>
+              <Text style={styles.matName} numberOfLines={1}>{r.name}</Text>
+              <Text style={styles.matQty}>{r.qty}</Text>
+              <Text style={styles.matTotal}>{r.total.toFixed(2)} BAM</Text>
+            </View>
+          ))}
+          <View style={[styles.matRow, styles.matTotalRow]}>
+            <Text style={[styles.matName, { fontWeight: '700' }]}>Ukupno</Text>
+            <Text style={styles.matQty} />
+            <Text style={[styles.matTotal, { color: Colors.primary, fontWeight: '800' }]}>{materialsTotal.toFixed(2)} BAM</Text>
+          </View>
+        </>
+      )}
+    </View>
+  );
 
   const renderContent = () => {
     switch (reportType) {
@@ -430,6 +560,7 @@ export default function ReportsScreen() {
       case 'financial':   return renderFinancial();
       case 'users':       return renderUsers();
       case 'tasks':       return renderTasks();
+      case 'materials':   return renderMaterials();
       default:            return renderConsumption();
     }
   };
@@ -684,4 +815,29 @@ const styles = StyleSheet.create({
   },
   taskBar: { height: '100%', borderRadius: 5, minWidth: 4 },
   taskCount: { width: 30, fontSize: 13, fontWeight: 'bold', textAlign: 'right' },
+
+  maintBox: {
+    marginTop: 16, padding: 14, borderRadius: 10,
+    backgroundColor: '#fff', borderWidth: 1, borderColor: Colors.border,
+  },
+  maintTitle: { fontSize: 15, fontWeight: '700', color: Colors.text },
+  maintSub:   { fontSize: 11, color: Colors.textLight, marginBottom: 10 },
+  maintRow:   { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6 },
+  maintLabel: { fontSize: 13, color: Colors.textLight },
+  maintValue: { fontSize: 13, color: Colors.text, fontWeight: '500' },
+  maintTotalRow:   { borderTopWidth: 1, borderTopColor: Colors.border, marginTop: 4, paddingTop: 10 },
+  maintTotalLabel: { fontSize: 14, fontWeight: '700', color: Colors.text },
+  maintTotalValue: { fontSize: 15, fontWeight: '800', color: Colors.primary },
+
+  matRow:      { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: Colors.border },
+  matName:     { flex: 2, fontSize: 13, color: Colors.text },
+  matQty:      { flex: 1, fontSize: 13, color: Colors.textLight, textAlign: 'center' },
+  matTotal:    { flex: 1, fontSize: 13, color: Colors.text, textAlign: 'right', fontWeight: '500' },
+  matTotalRow: { borderBottomWidth: 0, borderTopWidth: 2, borderTopColor: Colors.border, marginTop: 4 },
+
+  matPeriodRow:        { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 },
+  matPeriodChip:       { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 16, borderWidth: 1, borderColor: Colors.border, backgroundColor: '#fff' },
+  matPeriodChipActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
+  matPeriodText:       { fontSize: 12, color: Colors.text },
+  matPeriodTextActive: { color: '#fff', fontWeight: '600' },
 });

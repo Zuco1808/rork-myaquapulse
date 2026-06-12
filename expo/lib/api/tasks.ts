@@ -2,7 +2,7 @@ import { supabase } from '@/lib/supabase';
 import { Task } from '@/types/user';
 
 type TaskStatus = 'open' | 'in_progress' | 'done' | 'cancelled';
-type TaskType  = 'reading' | 'worker' | 'inspection' | 'installation' | 'other';
+type TaskType  = 'reading' | 'maintenance' | 'inspection' | 'installation' | 'other';
 type Priority  = 'low' | 'normal' | 'high' | 'urgent';
 
 const mapTask = (t: any): Task => ({
@@ -18,6 +18,12 @@ const mapTask = (t: any): Task => ({
   status:       t.status,
   due_date:     t.due_date,
   completed_at: t.completed_at,
+  material_cost: t.material_cost != null ? Number(t.material_cost) : 0,
+  labor_cost:    t.labor_cost    != null ? Number(t.labor_cost)    : 0,
+  approved:     t.approved ?? true,
+  notes:        t.notes ?? null,
+  customer_billable: t.customer_billable ?? false,
+  invoiced_at:  t.invoiced_at ?? null,
   created_at:   t.created_at,
   updated_at:   t.updated_at,
   // joined data
@@ -126,6 +132,65 @@ export const getTaskById = async (id: string): Promise<Task> => {
       connections:connection_id ( address, meter_serial )
     `)
     .eq('id', id)
+    .single();
+
+  if (error) throw error;
+  return mapTask(data);
+};
+
+/**
+ * Šalje radni nalog (bez cijena) korisniku priključka e-mailom preko
+ * send-work-order-email Edge Function (Resend).
+ */
+export const sendWorkOrderEmail = async (params: {
+  task_id: string;
+  recipient_email?: string;
+}): Promise<{ sent: boolean; email: string }> => {
+  const { data, error } = await supabase.functions.invoke<{ sent: boolean; email: string; error?: string }>(
+    'send-work-order-email',
+    { body: params },
+  );
+  if (error) {
+    const ctx = (error as any)?.context;
+    let msg = error.message;
+    try { const body = await ctx?.json?.(); if (body?.error) msg = body.error; } catch { /* ignore */ }
+    throw new Error(msg);
+  }
+  if (!data?.sent) throw new Error((data as any)?.error || 'Slanje nije uspjelo.');
+  return { sent: data.sent, email: data.email };
+};
+
+/** Postavlja da li korisnik snosi troškove naloga. */
+export const setCustomerBillable = async (id: string, billable: boolean): Promise<Task> => {
+  const { data, error } = await supabase
+    .from('tasks')
+    .update({ customer_billable: billable })
+    .eq('id', id)
+    .select(`*, profiles:assigned_to ( full_name ), connections:connection_id ( address, meter_serial )`)
+    .single();
+  if (error) throw error;
+  return mapTask(data);
+};
+
+/** Ažurira napomenu na nalogu. */
+export const updateTaskNotes = async (id: string, notes: string): Promise<Task> => {
+  const { data, error } = await supabase
+    .from('tasks')
+    .update({ notes })
+    .eq('id', id)
+    .select(`*, profiles:assigned_to ( full_name ), connections:connection_id ( address, meter_serial )`)
+    .single();
+  if (error) throw error;
+  return mapTask(data);
+};
+
+/** Odobrava zadatak koji je kreirao radnik (admin/finance). */
+export const approveTask = async (id: string): Promise<Task> => {
+  const { data, error } = await supabase
+    .from('tasks')
+    .update({ approved: true })
+    .eq('id', id)
+    .select(`*, profiles:assigned_to ( full_name ), connections:connection_id ( address, meter_serial )`)
     .single();
 
   if (error) throw error;

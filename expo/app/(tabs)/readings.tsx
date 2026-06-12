@@ -26,9 +26,10 @@ import { Button } from '@/components/ui/Button';
 import { ReadingCard } from '@/components/readings/ReadingCard';
 import { OCRCameraView } from '@/components/ocr/CameraView';
 import { OCRResult } from '@/components/ocr/OCRResult';
+import { uploadMeterImage } from '@/lib/api/ocr';
 import { useAuthStore } from '@/store/auth-store';
 import { usePermissions } from '@/lib/use-permissions';
-import { getReadings, getReadingsByUser, createReading, verifyReading, type ReadingsOpts } from '@/lib/api/readings';
+import { getReadings, getReadingsByUser, createReading, verifyReading, getLastReadingValue, type ReadingsOpts } from '@/lib/api/readings';
 import { getMeters, getMetersByUser } from '@/lib/api/meters';
 import Colors from '@/constants/colors';
 import { ReadingDisplay } from '@/types/user';
@@ -148,20 +149,25 @@ export default function ReadingsScreen() {
   };
 
   /* ── Manual submit ──────────────────────────────────────────────────────── */
-  const validateReading = (value: number): boolean => {
+  // Queries the DB for the true last reading value (not the in-memory, possibly
+  // filtered/paginated list) so validation is reliable.
+  const validateReading = async (value: number): Promise<boolean> => {
     const meter = availableMeters.find((m) => m.id === selectedMeterId);
     if (!meter) {
       setReadingError('Odabrani vodomjer nije pronađen');
       return false;
     }
-    const lastReading = readings
-      .filter((r) => r.meterId === selectedMeterId)
-      .sort((a, b) => b.readingDate - a.readingDate)[0];
-    if (lastReading && value < lastReading.value) {
-      setReadingError(
-        `Nova vrijednost mora biti veća ili jednaka posljednjoj (${lastReading.value} m³)`,
-      );
-      return false;
+    try {
+      const lastValue = await getLastReadingValue(selectedMeterId);
+      if (lastValue != null && value < lastValue) {
+        setReadingError(
+          `Nova vrijednost mora biti veća ili jednaka posljednjoj (${lastValue} m³)`,
+        );
+        return false;
+      }
+    } catch (err) {
+      captureError(err, { screen: 'readings', action: 'validateReading' });
+      // Ako provjera padne, ne blokiraj — server-side trigger je posljednja brana
     }
     setReadingError('');
     return true;
@@ -173,7 +179,7 @@ export default function ReadingsScreen() {
       setReadingError('Unesite validnu numeričku vrijednost');
       return;
     }
-    if (!validateReading(value)) return;
+    if (!(await validateReading(value))) return;
 
     const meter = availableMeters.find((m) => m.id === selectedMeterId);
     if (!meter) return;
@@ -208,7 +214,7 @@ export default function ReadingsScreen() {
   };
 
   const handleOCRConfirm = async (value: number) => {
-    if (!validateReading(value)) {
+    if (!(await validateReading(value))) {
       Alert.alert(
         'Greška',
         readingError,
@@ -222,14 +228,21 @@ export default function ReadingsScreen() {
     const meter = availableMeters.find((m) => m.id === selectedMeterId);
     if (!meter) return;
     try {
+      // Priloži fotografiju brojila uz očitanje (best-effort — ne blokira unos)
+      let photoUrl: string | undefined;
+      if (capturedImageBase64) {
+        photoUrl = (await uploadMeterImage(capturedImageBase64, selectedMeterId)) ?? undefined;
+      }
       await createReading({
         connection_id: selectedMeterId,
         utility_id:    meter.utility_id,
         reading_value: value,
         reading_type:  'ocr',
+        photo_url:     photoUrl,
       });
       setShowOCRResult(false);
       setCapturedImage(null);
+      setCapturedImageBase64('');
       Alert.alert('Uspjeh', 'OCR očitanje je uspješno dodano.');
       fetchData();
     } catch (err: any) {

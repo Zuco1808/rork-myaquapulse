@@ -42,11 +42,11 @@ type TaskType   = Task['task_type'];
 type Priority   = Task['priority'];
 
 const TYPE_LABELS: Record<TaskType, string> = {
-  reading: 'Očitanje', worker: 'Radni', inspection: 'Inspekcija',
+  reading: 'Očitanje', maintenance: 'Radni nalog', inspection: 'Inspekcija',
   installation: 'Instalacija', other: 'Ostalo',
 };
 const TYPE_COLORS: Record<TaskType, string> = {
-  reading: Colors.primary, worker: '#9C27B0', inspection: '#4CAF50',
+  reading: Colors.primary, maintenance: '#9C27B0', inspection: '#4CAF50',
   installation: '#FF9800', other: '#9E9E9E',
 };
 const STATUS_LABELS: Record<TaskStatus, string> = {
@@ -85,13 +85,13 @@ const filterTasks = (
 export default function TasksScreen() {
   const router = useRouter();
   const { user } = useAuthStore();
-  const { isWorker } = usePermissions();
+  const { isWorker, canManageTasks } = usePermissions();
 
-  // Task creation requires a utility_id scope — super_admin has global read but no utility
-  // scope to assign a new task to, so they can view/update but not create.
-  const canCreateTasks = (
-    ['utility_admin', 'finance'].includes(user?.role ?? '') && !!user?.utility_id
-  );
+  // Task creation requires a utility_id scope. canManageTasks pokriva
+  // utility_admin / finance / worker; svi oni imaju utility_id. super_admin
+  // ima canManageTasks ali nema utility_id (globalni nivo) pa je isključen.
+  // Radnici mogu kreirati, ali zadatak ide na odobravanje (admin/finance).
+  const canCreateTasks = canManageTasks && !!user?.utility_id;
 
   const PAGE_SIZE = 40;
   const [tasks, setTasks]               = useState<Task[]>([]);
@@ -108,7 +108,6 @@ export default function TasksScreen() {
 
   // selected task for detail / action
   const [selected, setSelected]           = useState<Task | null>(null);
-  const [showDetail, setShowDetail]       = useState(false);
   const [showComplete, setShowComplete]   = useState(false);
   const [showCancel, setShowCancel]       = useState(false);
   const [cancelNote, setCancelNote]       = useState('');
@@ -118,7 +117,7 @@ export default function TasksScreen() {
   const [showCreate, setShowCreate]       = useState(false);
   const [newTitle, setNewTitle]           = useState('');
   const [newDesc, setNewDesc]             = useState('');
-  const [newType, setNewType]             = useState<TaskType>('worker');
+  const [newType, setNewType]             = useState<TaskType>('maintenance');
   const [newPriority, setNewPriority]     = useState<Priority>('normal');
   const [newDueDate, setNewDueDate]       = useState('');
   const [newAssignedTo, setNewAssignedTo] = useState('');
@@ -183,7 +182,8 @@ export default function TasksScreen() {
   const setPriority  = (v: string) => setFilterPriority(v);
 
   /* ── actions ───────────────────────────────────── */
-  const openDetail = (t: Task) => { setSelected(t); setShowDetail(true); };
+  // Otvori puni detalj zadatka (dodjela radniku, odobravanje, troškovi…)
+  const openDetail = (t: Task) => { router.push(`/tasks/${t.id}` as any); };
 
   const startTask = async (t: Task) => {
     setActionLoading(true);
@@ -202,7 +202,7 @@ export default function TasksScreen() {
     try {
       const updated = await updateTaskStatus(selected.id, 'done');
       patchLocal(updated);
-      setShowComplete(false); setShowDetail(false); setSelected(null);
+      setShowComplete(false); setSelected(null);
       Alert.alert('Uspjeh', 'Zadatak označen kao završen.');
     } catch (e: any) { Alert.alert('Greška', e.message); }
     finally { setActionLoading(false); }
@@ -215,7 +215,7 @@ export default function TasksScreen() {
     try {
       const updated = await updateTaskStatus(selected.id, 'cancelled', cancelNote.trim());
       patchLocal(updated);
-      setShowCancel(false); setShowDetail(false); setSelected(null); setCancelNote('');
+      setShowCancel(false); setSelected(null); setCancelNote('');
       Alert.alert('Uspjeh', 'Zadatak je otkazan.');
     } catch (e: any) { Alert.alert('Greška', e.message); }
     finally { setActionLoading(false); }
@@ -240,7 +240,7 @@ export default function TasksScreen() {
     } catch (e: any) {
       captureError(e, { screen: 'tasks', action: 'openCreateModal' });
     }
-    setNewTitle(''); setNewDesc(''); setNewType('worker');
+    setNewTitle(''); setNewDesc(''); setNewType('maintenance');
     setNewPriority('normal'); setNewDueDate(''); setShowDatePicker(false);
     setNewAssignedTo(''); setNewConnectionId(''); setTitleError('');
     setShowCreate(true);
@@ -263,7 +263,12 @@ export default function TasksScreen() {
       });
       setTasks(prev => [t, ...prev]);
       setShowCreate(false);
-      Alert.alert('Uspjeh', 'Zadatak je kreiran.');
+      Alert.alert(
+        'Uspjeh',
+        isWorker
+          ? 'Zadatak je poslan na odobravanje administratoru/finansijama.'
+          : 'Zadatak je kreiran.',
+      );
     } catch (e: any) { Alert.alert('Greška', e.message); }
     finally { setCreating(false); }
   };
@@ -290,6 +295,9 @@ export default function TasksScreen() {
             <Badge label={TYPE_LABELS[t.task_type]}     color={TYPE_COLORS[t.task_type]}     size="small" />
             <Badge label={STATUS_LABELS[t.status]}      color={STATUS_COLORS[t.status]}      size="small" style={styles.ml8} />
             <Badge label={PRIORITY_LABELS[t.priority]}  color={PRIORITY_COLORS[t.priority]}  size="small" style={styles.ml8} />
+            {t.approved === false && (
+              <Badge label="Na odobravanju" color="#FF9800" size="small" style={styles.ml8} />
+            )}
           </View>
           {t.description ? <Text style={styles.taskDesc} numberOfLines={2}>{t.description}</Text> : null}
           <View style={styles.metaRow}>
@@ -407,7 +415,7 @@ export default function TasksScreen() {
             </View>
             <Text style={styles.filterLabel}>Tip:</Text>
             <View style={styles.chipRow}>
-              {(['all', 'reading', 'worker', 'inspection', 'installation', 'other'] as const).map(v => (
+              {(['all', 'reading', 'maintenance', 'inspection', 'installation', 'other'] as const).map(v => (
                 <FilterChip key={v} value={v} label={v === 'all' ? 'Svi' : TYPE_LABELS[v as TaskType]} current={filterType} onSelect={setType} />
               ))}
             </View>
@@ -445,59 +453,6 @@ export default function TasksScreen() {
             <Plus size={24} color="#fff" />
           </TouchableOpacity>
         )}
-
-        {/* ── Detail modal ── */}
-        <Modal visible={showDetail} transparent animationType="slide" onRequestClose={() => setShowDetail(false)}>
-          <View style={styles.overlay}>
-            <View style={styles.detailModal}>
-              <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>Detalji zadatka</Text>
-                <TouchableOpacity onPress={() => setShowDetail(false)}><X size={24} color={Colors.text} /></TouchableOpacity>
-              </View>
-              {selected && (
-                <RNScrollView style={{ paddingHorizontal: 20 }}>
-                  <Text style={styles.detailName}>{selected.title}</Text>
-                  <View style={styles.badgeRow}>
-                    <Badge label={TYPE_LABELS[selected.task_type]}    color={TYPE_COLORS[selected.task_type]}    size="small" />
-                    <Badge label={STATUS_LABELS[selected.status]}     color={STATUS_COLORS[selected.status]}     size="small" style={styles.ml8} />
-                    <Badge label={PRIORITY_LABELS[selected.priority]} color={PRIORITY_COLORS[selected.priority]} size="small" style={styles.ml8} />
-                  </View>
-
-                  {selected.description ? <Text style={styles.detailDesc}>{selected.description}</Text> : null}
-
-                  <View style={styles.detailGrid}>
-                    {selected.assigned_to_name && <DetailRow icon={<User size={15} color={Colors.primary} />}     label="Radnik" value={selected.assigned_to_name} />}
-                    {selected.connection_address && <DetailRow icon={<MapPin size={15} color={Colors.primary} />}   label="Adresa" value={selected.connection_address} />}
-                    {selected.connection_serial && <DetailRow icon={<Droplet size={15} color={Colors.primary} />}  label="Vodomjer" value={selected.connection_serial} />}
-                    {selected.due_date && <DetailRow icon={<Calendar size={15} color={Colors.primary} />} label="Rok" value={selected.due_date} />}
-                    {selected.completed_at && <DetailRow icon={<Clock size={15} color={Colors.success} />}  label="Završeno" value={selected.completed_at.split('T')[0]} />}
-                    <DetailRow icon={<Clock size={15} color={Colors.textLight} />} label="Kreirano" value={selected.created_at.split('T')[0]} />
-                  </View>
-
-                  {(selected.status === 'open' || selected.status === 'in_progress') && (
-                    <View style={{ marginVertical: 16 }}>
-                      {selected.status === 'open' && (
-                        <Button title="Počni zadatak" leftIcon={<PlayCircle size={18} color="#fff" />}
-                          isLoading={actionLoading}
-                          onPress={() => { startTask(selected); setShowDetail(false); }}
-                          style={{ marginBottom: 10 }} />
-                      )}
-                      {selected.status === 'in_progress' && (
-                        <Button title="Označi kao završen" leftIcon={<CheckCircle size={18} color="#fff" />}
-                          onPress={() => { setShowDetail(false); setShowComplete(true); }}
-                          style={{ marginBottom: 10 }} />
-                      )}
-                      <Button title="Otkaži zadatak" variant="outline"
-                        leftIcon={<XCircle size={18} color={Colors.error} />}
-                        onPress={() => { setShowDetail(false); setCancelNote(''); setShowCancel(true); }}
-                        style={{ borderColor: Colors.error }} />
-                    </View>
-                  )}
-                </RNScrollView>
-              )}
-            </View>
-          </View>
-        </Modal>
 
         {/* ── Complete modal ── */}
         <Modal visible={showComplete} transparent animationType="slide" onRequestClose={() => setShowComplete(false)}>
@@ -579,7 +534,7 @@ export default function TasksScreen() {
 
                 <Text style={styles.filterLabel}>Tip:</Text>
                 <View style={styles.chipRow}>
-                  {(['reading', 'worker', 'inspection', 'installation', 'other'] as TaskType[]).map(v => (
+                  {(['reading', 'maintenance', 'inspection', 'installation', 'other'] as TaskType[]).map(v => (
                     <FilterChip key={v} value={v} label={TYPE_LABELS[v]} current={newType} onSelect={v => setNewType(v as TaskType)} />
                   ))}
                 </View>
@@ -623,17 +578,6 @@ export default function TasksScreen() {
         </Modal>
       </View>
     </SafeAreaView>
-  );
-}
-
-/* ─── DetailRow ──────────────────────────────────── */
-function DetailRow({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
-  return (
-    <View style={styles.detailRow}>
-      {icon}
-      <Text style={styles.detailLabel}>{label}:</Text>
-      <Text style={styles.detailValue}>{value}</Text>
-    </View>
   );
 }
 

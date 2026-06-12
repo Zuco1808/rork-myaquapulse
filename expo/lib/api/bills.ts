@@ -25,6 +25,7 @@ const mapInvoice = (b: any) => ({
   due_date: b.due_date,
   paid_at: b.paid_at,
   created_by: b.created_by,
+  task_id: b.task_id ?? null,
   periodFrom: new Date(b.period_from).getTime(),
   periodTo: new Date(b.period_to).getTime(),
   dueDate: b.due_date ? new Date(b.due_date).getTime() : null,
@@ -170,6 +171,146 @@ export const calculateInvoice = async (params: {
   if (error) throw error;
   if (!data?.invoice) throw new Error('No invoice returned from calculate-invoice');
   return mapInvoice(data.invoice);
+};
+
+/**
+ * Kreira draft fakturu iz servisnog naloga (korisnik snosi troškove).
+ * Iznos = material_cost + labor_cost. Veže fakturu na task i označava nalog
+ * fakturisanim. Vraća kreiranu fakturu.
+ */
+export const createInvoiceFromTask = async (task: {
+  id: string;
+  utility_id: string;
+  connection_id?: string | null;
+  material_cost?: number;
+  labor_cost?: number;
+}) => {
+  if (!task.connection_id) {
+    throw new Error('Nalog nema priključak — nije moguće fakturisati korisniku.');
+  }
+  const amount = Math.round(((task.material_cost ?? 0) + (task.labor_cost ?? 0)) * 100) / 100;
+  if (amount <= 0) {
+    throw new Error('Ukupan trošak naloga je 0 — nema šta fakturisati.');
+  }
+  const today = new Date().toISOString().split('T')[0];
+  const { data, error } = await supabase
+    .from('invoices')
+    .insert({
+      connection_id: task.connection_id,
+      utility_id:    task.utility_id,
+      period_from:   today,
+      period_to:     today,
+      amount_bam:    amount,
+      status:        'draft',
+      task_id:       task.id,
+    })
+    .select()
+    .single();
+  if (error) throw error;
+
+  // Označi nalog fakturisanim
+  await supabase.from('tasks').update({ invoiced_at: new Date().toISOString() }).eq('id', task.id);
+
+  return mapInvoice(data);
+};
+
+/**
+ * Šalje fakturu e-mailom krajnjem korisniku preko send-invoice-email Edge
+ * Function (Resend). Postavlja status na 'sent' ako je bio draft/pending.
+ * Vraća e-mail na koji je poslano.
+ */
+export const sendInvoiceEmail = async (params: {
+  invoice_id: string;
+  recipient_email?: string;
+}): Promise<{ sent: boolean; email: string }> => {
+  const { data, error } = await supabase.functions.invoke<{ sent: boolean; email: string; error?: string }>(
+    'send-invoice-email',
+    { body: params },
+  );
+  if (error) {
+    // Edge Function vraća poruku u tijelu — pokušaj je izvući
+    const ctx = (error as any)?.context;
+    let msg = error.message;
+    try { const body = await ctx?.json?.(); if (body?.error) msg = body.error; } catch { /* ignore */ }
+    throw new Error(msg);
+  }
+  if (!data?.sent) throw new Error((data as any)?.error || 'Slanje e-maila nije uspjelo.');
+  return { sent: data.sent, email: data.email };
+};
+
+/* ── Tiered pricing helper ─────────────────────────────── */
+function applyTiers(tiers: any[], consumption: number): number {
+  if (!tiers.length || consumption <= 0) return 0;
+  const sorted = [...tiers].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+  let total = 0;
+  let remaining = consumption;
+  for (const t of sorted) {
+    if (remaining <= 0) break;
+    const inTier = Math.min(remaining, (t.max_consumption ?? Infinity) - t.min_consumption);
+    if (inTier > 0) { total += inTier * (t.price_per_unit ?? 0); remaining -= inTier; }
+  }
+  return Math.round(total * 100) / 100;
+}
+
+/**
+ * Recalculates amount_bam for an existing draft invoice using the utility's
+ * tiered pricing packages. Falls back to 0 if no pricing is configured.
+ */
+export const recalculateDraftInvoice = async (invoiceId: string) => {
+  const { data: inv, error: invErr } = await supabase
+    .from('invoices')
+    .select('*, connections(user_group, utility_id)')
+    .eq('id', invoiceId)
+    .single();
+  if (invErr) throw invErr;
+
+  const consumption = Number(inv.consumption_m3 ?? 0);
+  const userGroup   = (inv as any).connections?.user_group ?? 'residential';
+  const utilityId   = inv.utility_id;
+
+  // 1. Find user_group record matching connection's user_group type
+  const { data: ugRows } = await supabase
+    .from('user_groups')
+    .select('id')
+    .eq('utility_id', utilityId)
+    .eq('type', userGroup)
+    .limit(1);
+
+  // 2. Find pricing package — by user_group or default
+  let tiers: any[] = [];
+  const ugId = ugRows?.[0]?.id;
+  const pkgQuery = supabase
+    .from('pricing_packages')
+    .select('id, pricing_tiers(*)')
+    .eq('utility_id', utilityId);
+
+  const { data: pkgs } = ugId
+    ? await pkgQuery.contains('user_group_ids', [ugId]).limit(1)
+    : await pkgQuery.eq('is_default', true).limit(1);
+
+  if (pkgs?.length) {
+    tiers = (pkgs[0] as any).pricing_tiers ?? [];
+  } else {
+    // Last resort: default package
+    const { data: defaults } = await supabase
+      .from('pricing_packages')
+      .select('id, pricing_tiers(*)')
+      .eq('utility_id', utilityId)
+      .eq('is_default', true)
+      .limit(1);
+    tiers = (defaults?.[0] as any)?.pricing_tiers ?? [];
+  }
+
+  const amount = applyTiers(tiers, consumption);
+
+  const { data, error } = await supabase
+    .from('invoices')
+    .update({ amount_bam: amount })
+    .eq('id', invoiceId)
+    .select('*, connections(meter_serial, address)')
+    .single();
+  if (error) throw error;
+  return mapInvoice(data);
 };
 
 export const getInvoicesByUser = async (userId: string, opts?: BillsOpts) => {

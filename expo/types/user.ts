@@ -85,6 +85,7 @@ export const getPermissions = (role: UserRole): UserPermissions => {
       return { ...none,
         canReadMeters:     true,
         canVerifyReadings: true,   // finance approves readings for billing
+        canManageTasks:    true,   // finance can create/assign service tasks
         canViewReports:    true,
         canManageBilling:  true,
       };
@@ -245,11 +246,17 @@ export interface Task {
   connection_id?: string;
   title: string;
   description?: string;
-  task_type: 'reading' | 'worker' | 'inspection' | 'installation' | 'other';
+  task_type: 'reading' | 'maintenance' | 'inspection' | 'installation' | 'other';
   priority: 'low' | 'normal' | 'high' | 'urgent';
   status: 'open' | 'in_progress' | 'done' | 'cancelled';
   due_date?: string;
   completed_at?: string;
+  material_cost?: number;
+  labor_cost?: number;
+  approved?: boolean;
+  notes?: string | null;
+  customer_billable?: boolean;
+  invoiced_at?: string | null;
   created_at: string;
   updated_at: string;
   // joined
