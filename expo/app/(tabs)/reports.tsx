@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -104,8 +104,18 @@ export default function ReportsScreen() {
   });
 
   /* ── Materials usage data ──────────────────────── */
+  type MatPeriod = 'all' | 'this_month' | 'last_3' | 'this_year';
   const [materialsRows, setMaterialsRows]   = useState<{ name: string; qty: number; total: number }[]>([]);
   const [materialsTotal, setMaterialsTotal] = useState(0);
+  const [matPeriod, setMatPeriod]           = useState<MatPeriod>('this_month');
+
+  const matPeriodGte = (p: MatPeriod): string | null => {
+    const now = new Date();
+    if (p === 'this_month') return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+    if (p === 'last_3')     { const d = new Date(now); d.setMonth(d.getMonth() - 3); return d.toISOString().split('T')[0]; }
+    if (p === 'this_year')  return `${now.getFullYear()}-01-01`;
+    return null;
+  };
 
   /* ── Fetch ─────────────────────────────────────── */
   const fetchAll = async () => {
@@ -250,11 +260,14 @@ export default function ReportsScreen() {
     });
   };
 
-  const fetchMaterials = async () => {
+  const fetchMaterials = async (period: MatPeriod = matPeriod) => {
     // RLS ograničava task_materials na vlastiti utility
-    const { data } = await supabase
+    let q = supabase
       .from('task_materials')
       .select('name, quantity, unit_price');
+    const gte = matPeriodGte(period);
+    if (gte) q = q.gte('created_at', gte);
+    const { data } = await q;
 
     const map: Record<string, { qty: number; total: number }> = {};
     (data || []).forEach((m: any) => {
@@ -273,6 +286,13 @@ export default function ReportsScreen() {
   };
 
   useFreshFocus(fetchAll);
+
+  // Refetch materijala pri promjeni perioda (preskoči prvi mount — fetchAll pokriva)
+  const matPeriodInit = useRef(false);
+  useEffect(() => {
+    if (!matPeriodInit.current) { matPeriodInit.current = true; return; }
+    fetchMaterials(matPeriod);
+  }, [matPeriod]);
 
   /* ── CSV export ────────────────────────────────── */
   const buildCSV = (): string => {
@@ -495,8 +515,26 @@ export default function ReportsScreen() {
 
   const renderMaterials = () => (
     <View>
+      <View style={styles.matPeriodRow}>
+        {([
+          ['this_month', 'Ovaj mj.'],
+          ['last_3', 'Zadnja 3 mj.'],
+          ['this_year', 'Ova god.'],
+          ['all', 'Sve'],
+        ] as [MatPeriod, string][]).map(([v, label]) => (
+          <TouchableOpacity
+            key={v}
+            style={[styles.matPeriodChip, matPeriod === v && styles.matPeriodChipActive]}
+            onPress={() => setMatPeriod(v)}
+            activeOpacity={0.8}
+          >
+            <Text style={[styles.matPeriodText, matPeriod === v && styles.matPeriodTextActive]}>{label}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
       {materialsRows.length === 0 ? (
-        <Text style={styles.maintSub}>Nema evidentiranog utroška materijala.</Text>
+        <Text style={styles.maintSub}>Nema evidentiranog utroška materijala u odabranom periodu.</Text>
       ) : (
         <>
           {materialsRows.map((r) => (
@@ -796,4 +834,10 @@ const styles = StyleSheet.create({
   matQty:      { flex: 1, fontSize: 13, color: Colors.textLight, textAlign: 'center' },
   matTotal:    { flex: 1, fontSize: 13, color: Colors.text, textAlign: 'right', fontWeight: '500' },
   matTotalRow: { borderBottomWidth: 0, borderTopWidth: 2, borderTopColor: Colors.border, marginTop: 4 },
+
+  matPeriodRow:        { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 },
+  matPeriodChip:       { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 16, borderWidth: 1, borderColor: Colors.border, backgroundColor: '#fff' },
+  matPeriodChipActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
+  matPeriodText:       { fontSize: 12, color: Colors.text },
+  matPeriodTextActive: { color: '#fff', fontWeight: '600' },
 });
