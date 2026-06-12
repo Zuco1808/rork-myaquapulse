@@ -173,6 +173,47 @@ export const calculateInvoice = async (params: {
 };
 
 /**
+ * Kreira draft fakturu iz servisnog naloga (korisnik snosi troškove).
+ * Iznos = material_cost + labor_cost. Veže fakturu na task i označava nalog
+ * fakturisanim. Vraća kreiranu fakturu.
+ */
+export const createInvoiceFromTask = async (task: {
+  id: string;
+  utility_id: string;
+  connection_id?: string | null;
+  material_cost?: number;
+  labor_cost?: number;
+}) => {
+  if (!task.connection_id) {
+    throw new Error('Nalog nema priključak — nije moguće fakturisati korisniku.');
+  }
+  const amount = Math.round(((task.material_cost ?? 0) + (task.labor_cost ?? 0)) * 100) / 100;
+  if (amount <= 0) {
+    throw new Error('Ukupan trošak naloga je 0 — nema šta fakturisati.');
+  }
+  const today = new Date().toISOString().split('T')[0];
+  const { data, error } = await supabase
+    .from('invoices')
+    .insert({
+      connection_id: task.connection_id,
+      utility_id:    task.utility_id,
+      period_from:   today,
+      period_to:     today,
+      amount_bam:    amount,
+      status:        'draft',
+      task_id:       task.id,
+    })
+    .select()
+    .single();
+  if (error) throw error;
+
+  // Označi nalog fakturisanim
+  await supabase.from('tasks').update({ invoiced_at: new Date().toISOString() }).eq('id', task.id);
+
+  return mapInvoice(data);
+};
+
+/**
  * Šalje fakturu e-mailom krajnjem korisniku preko send-invoice-email Edge
  * Function (Resend). Postavlja status na 'sent' ako je bio draft/pending.
  * Vraća e-mail na koji je poslano.

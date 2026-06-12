@@ -22,6 +22,8 @@ const mapTask = (t: any): Task => ({
   labor_cost:    t.labor_cost    != null ? Number(t.labor_cost)    : 0,
   approved:     t.approved ?? true,
   notes:        t.notes ?? null,
+  customer_billable: t.customer_billable ?? false,
+  invoiced_at:  t.invoiced_at ?? null,
   created_at:   t.created_at,
   updated_at:   t.updated_at,
   // joined data
@@ -156,6 +158,18 @@ export const sendWorkOrderEmail = async (params: {
   }
   if (!data?.sent) throw new Error((data as any)?.error || 'Slanje nije uspjelo.');
   return { sent: data.sent, email: data.email };
+};
+
+/** Postavlja da li korisnik snosi troškove naloga. */
+export const setCustomerBillable = async (id: string, billable: boolean): Promise<Task> => {
+  const { data, error } = await supabase
+    .from('tasks')
+    .update({ customer_billable: billable })
+    .eq('id', id)
+    .select(`*, profiles:assigned_to ( full_name ), connections:connection_id ( address, meter_serial )`)
+    .single();
+  if (error) throw error;
+  return mapTask(data);
 };
 
 /** Ažurira napomenu na nalogu. */

@@ -18,6 +18,7 @@ import {
   DollarSign,
   Users,
   ClipboardList,
+  Package,
   Download,
 } from 'lucide-react-native';
 import { useFreshFocus } from '@/lib/use-fresh-focus';
@@ -52,13 +53,14 @@ const lastNMonths = (n: number) => {
 };
 
 /* ── Report types ───────────────────────────────── */
-type ReportType = 'consumption' | 'financial' | 'users' | 'tasks';
+type ReportType = 'consumption' | 'financial' | 'users' | 'tasks' | 'materials';
 
 const REPORT_TYPES: { id: ReportType; label: string; icon: React.ReactNode }[] = [
   { id: 'consumption', label: 'Potrošnja vode', icon: <Droplet size={18} color={Colors.primary} /> },
   { id: 'financial', label: 'Finansije', icon: <DollarSign size={18} color={Colors.primary} /> },
   { id: 'users', label: 'Korisnici', icon: <Users size={18} color={Colors.primary} /> },
   { id: 'tasks', label: 'Zadaci / kvarovi', icon: <ClipboardList size={18} color={Colors.primary} /> },
+  { id: 'materials', label: 'Utrošak materijala', icon: <Package size={18} color={Colors.primary} /> },
 ];
 
 /* ════════════════════════════════════════════════ */
@@ -101,6 +103,10 @@ export default function ReportsScreen() {
     maintenanceCost: 0,
   });
 
+  /* ── Materials usage data ──────────────────────── */
+  const [materialsRows, setMaterialsRows]   = useState<{ name: string; qty: number; total: number }[]>([]);
+  const [materialsTotal, setMaterialsTotal] = useState(0);
+
   /* ── Fetch ─────────────────────────────────────── */
   const fetchAll = async () => {
     setLoading(true);
@@ -110,6 +116,7 @@ export default function ReportsScreen() {
         fetchFinancial(),
         fetchUsers(),
         fetchTasks(),
+        fetchMaterials(),
       ]);
     } finally {
       setLoading(false);
@@ -243,6 +250,28 @@ export default function ReportsScreen() {
     });
   };
 
+  const fetchMaterials = async () => {
+    // RLS ograničava task_materials na vlastiti utility
+    const { data } = await supabase
+      .from('task_materials')
+      .select('name, quantity, unit_price');
+
+    const map: Record<string, { qty: number; total: number }> = {};
+    (data || []).forEach((m: any) => {
+      const key = m.name || '(bez naziva)';
+      const qty = Number(m.quantity) || 0;
+      const total = qty * (Number(m.unit_price) || 0);
+      if (!map[key]) map[key] = { qty: 0, total: 0 };
+      map[key].qty += qty;
+      map[key].total += total;
+    });
+    const rows = Object.entries(map)
+      .map(([name, v]) => ({ name, qty: Math.round(v.qty * 1000) / 1000, total: Math.round(v.total * 100) / 100 }))
+      .sort((a, b) => b.total - a.total);
+    setMaterialsRows(rows);
+    setMaterialsTotal(Math.round(rows.reduce((s, r) => s + r.total, 0) * 100) / 100);
+  };
+
   useFreshFocus(fetchAll);
 
   /* ── CSV export ────────────────────────────────── */
@@ -285,6 +314,11 @@ export default function ReportsScreen() {
           `Ukupno troškovi,${tasksStats.maintenanceCost.toFixed(2)}`,
         ].join('\n');
       }
+      case 'materials': return [
+        'Artikal,Količina,Vrijednost (BAM)',
+        ...materialsRows.map((r) => `${r.name},${r.qty},${r.total.toFixed(2)}`),
+        `Ukupno,,${materialsTotal.toFixed(2)}`,
+      ].join('\n');
       default: return '';
     }
   };
@@ -459,12 +493,36 @@ export default function ReportsScreen() {
     );
   };
 
+  const renderMaterials = () => (
+    <View>
+      {materialsRows.length === 0 ? (
+        <Text style={styles.maintSub}>Nema evidentiranog utroška materijala.</Text>
+      ) : (
+        <>
+          {materialsRows.map((r) => (
+            <View key={r.name} style={styles.matRow}>
+              <Text style={styles.matName} numberOfLines={1}>{r.name}</Text>
+              <Text style={styles.matQty}>{r.qty}</Text>
+              <Text style={styles.matTotal}>{r.total.toFixed(2)} BAM</Text>
+            </View>
+          ))}
+          <View style={[styles.matRow, styles.matTotalRow]}>
+            <Text style={[styles.matName, { fontWeight: '700' }]}>Ukupno</Text>
+            <Text style={styles.matQty} />
+            <Text style={[styles.matTotal, { color: Colors.primary, fontWeight: '800' }]}>{materialsTotal.toFixed(2)} BAM</Text>
+          </View>
+        </>
+      )}
+    </View>
+  );
+
   const renderContent = () => {
     switch (reportType) {
       case 'consumption': return renderConsumption();
       case 'financial':   return renderFinancial();
       case 'users':       return renderUsers();
       case 'tasks':       return renderTasks();
+      case 'materials':   return renderMaterials();
       default:            return renderConsumption();
     }
   };
@@ -732,4 +790,10 @@ const styles = StyleSheet.create({
   maintTotalRow:   { borderTopWidth: 1, borderTopColor: Colors.border, marginTop: 4, paddingTop: 10 },
   maintTotalLabel: { fontSize: 14, fontWeight: '700', color: Colors.text },
   maintTotalValue: { fontSize: 15, fontWeight: '800', color: Colors.primary },
+
+  matRow:      { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: Colors.border },
+  matName:     { flex: 2, fontSize: 13, color: Colors.text },
+  matQty:      { flex: 1, fontSize: 13, color: Colors.textLight, textAlign: 'center' },
+  matTotal:    { flex: 1, fontSize: 13, color: Colors.text, textAlign: 'right', fontWeight: '500' },
+  matTotalRow: { borderBottomWidth: 0, borderTopWidth: 2, borderTopColor: Colors.border, marginTop: 4 },
 });

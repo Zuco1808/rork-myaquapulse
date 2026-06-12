@@ -9,6 +9,7 @@ import {
   Platform,
   ActivityIndicator,
   TouchableOpacity,
+  Switch,
 } from 'react-native';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import {
@@ -31,7 +32,8 @@ import { Badge } from '@/components/ui/Badge';
 import { Input } from '@/components/ui/Input';
 import { useAuthStore } from '@/store/auth-store';
 import { usePermissions } from '@/lib/use-permissions';
-import { getTaskById, updateTaskStatus, assignTask, approveTask, updateTaskNotes } from '@/lib/api/tasks';
+import { getTaskById, updateTaskStatus, assignTask, approveTask, updateTaskNotes, setCustomerBillable } from '@/lib/api/tasks';
+import { createInvoiceFromTask } from '@/lib/api/bills';
 import { getWorkersByUtility } from '@/lib/api/users';
 import { TaskWorkItems } from '@/components/tasks/TaskWorkItems';
 import { WorkOrderActions } from '@/components/tasks/WorkOrderActions';
@@ -88,6 +90,10 @@ export default function TaskDetailScreen() {
   const [editingNotes, setEditingNotes] = useState(false);
   const [notesInput, setNotesInput]     = useState('');
   const [savingNotes, setSavingNotes]   = useState(false);
+
+  // Naplata
+  const [billableSaving, setBillableSaving] = useState(false);
+  const [invoicing, setInvoicing]           = useState(false);
 
   /* ── Fetch ──────────────────────────────────────────── */
   const refetchTask = useCallback(async () => {
@@ -174,6 +180,48 @@ export default function TaskDetailScreen() {
     } finally {
       setActionLoading(false);
     }
+  };
+
+  const handleToggleBillable = async (value: boolean) => {
+    if (!task) return;
+    setBillableSaving(true);
+    try {
+      const updated = await setCustomerBillable(task.id, value);
+      setTask(updated);
+    } catch (e: any) {
+      Alert.alert('Greška', e.message || 'Izmjena nije uspjela.');
+    } finally {
+      setBillableSaving(false);
+    }
+  };
+
+  const handleInvoice = () => {
+    if (!task) return;
+    const total = (task.material_cost ?? 0) + (task.labor_cost ?? 0);
+    Alert.alert('Fakturisanje', `Kreirati draft fakturu korisniku na ${total.toFixed(2)} BAM?`, [
+      { text: 'Otkaži', style: 'cancel' },
+      {
+        text: 'Fakturiši',
+        onPress: async () => {
+          setInvoicing(true);
+          try {
+            const inv = await createInvoiceFromTask({
+              id: task.id, utility_id: task.utility_id, connection_id: task.connection_id,
+              material_cost: task.material_cost, labor_cost: task.labor_cost,
+            });
+            await refetchTask();
+            Alert.alert('Fakturisano', 'Draft faktura je kreirana.', [
+              { text: 'Otvori račun', onPress: () => router.push(`/bills/${inv.id}` as any) },
+              { text: 'OK', style: 'cancel' },
+            ]);
+          } catch (e: any) {
+            Alert.alert('Greška', e.message || 'Fakturisanje nije uspjelo.');
+          } finally {
+            setInvoicing(false);
+          }
+        },
+      },
+    ]);
   };
 
   const openNotesEditor = () => {
@@ -487,6 +535,38 @@ export default function TaskDetailScreen() {
           <WorkOrderActions task={task} canSendEmail={canManageBilling} />
         )}
 
+        {/* Naplata korisniku (admin/finance) */}
+        {canManageBilling && !pendingApproval && task.status !== 'cancelled' && task.connection_id && (() => {
+          const total = (task.material_cost ?? 0) + (task.labor_cost ?? 0);
+          return (
+            <Card style={styles.card}>
+              <Text style={styles.sectionTitle}>Naplata korisniku</Text>
+
+              <View style={styles.billRow}>
+                <Text style={styles.billLabel}>Korisnik snosi troškove</Text>
+                <Switch
+                  value={!!task.customer_billable}
+                  onValueChange={handleToggleBillable}
+                  disabled={billableSaving || !!task.invoiced_at}
+                />
+              </View>
+
+              <Text style={styles.billTotal}>Ukupno za naplatu: {total.toFixed(2)} BAM</Text>
+
+              {task.invoiced_at ? (
+                <View style={{ marginTop: 10 }}>
+                  <Text style={styles.invoicedNote}>✓ Fakturisano {task.invoiced_at.split('T')[0]}</Text>
+                  <Button title="Otvori račune" size="small" variant="outline"
+                    onPress={() => router.push('/bills' as any)} style={{ marginTop: 8 }} />
+                </View>
+              ) : task.customer_billable && total > 0 ? (
+                <Button title="Fakturiši korisniku" leftIcon={<CheckCircle size={18} color="#fff" />}
+                  onPress={handleInvoice} isLoading={invoicing} style={{ marginTop: 10 }} />
+              ) : null}
+            </Card>
+          );
+        })()}
+
         {/* Actions */}
         {isActive && (
           <Card style={styles.card}>
@@ -585,6 +665,11 @@ const styles = StyleSheet.create({
   costHeader:   { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
   costTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   costTotal:    { fontSize: 15, fontWeight: '800', color: Colors.primary },
+
+  billRow:      { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  billLabel:    { fontSize: 14, color: Colors.text },
+  billTotal:    { fontSize: 13, color: Colors.textLight },
+  invoicedNote: { fontSize: 13, fontWeight: '600', color: Colors.success },
 
   notesText:     { fontSize: 14, color: Colors.text, lineHeight: 20 },
   notesEmpty:    { fontSize: 13, color: Colors.textLight, fontStyle: 'italic' },

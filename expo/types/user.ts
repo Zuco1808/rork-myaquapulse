@@ -255,6 +255,8 @@ export interface Task {
   labor_cost?: number;
   approved?: boolean;
   notes?: string | null;
+  customer_billable?: boolean;
+  invoiced_at?: string | null;
   created_at: string;
   updated_at: string;
   // joined
