@@ -37,10 +37,13 @@ export function TaskWorkItems({ taskId, utilityId, canEdit, showPrices, onChange
   const [savingMat, setSavingMat] = useState(false);
 
   const [svcModal, setSvcModal]   = useState(false);
+  const [svcFromCatalog, setSvcFromCatalog] = useState(true);
+  const [svcPicked, setSvcPicked] = useState<Material | null>(null);
   const [svcDesc, setSvcDesc]     = useState('');
   const [svcExternal, setSvcExternal] = useState(false);
   const [svcHours, setSvcHours]   = useState('1');
   const [svcProvider, setSvcProvider] = useState('');
+  const [svcPrice, setSvcPrice]   = useState('');
   const [savingSvc, setSavingSvc] = useState(false);
 
   const fetchItems = async () => {
@@ -97,18 +100,37 @@ export function TaskWorkItems({ taskId, utilityId, canEdit, showPrices, onChange
   };
 
   /* ── Usluga ── */
+  const openSvcModal = async () => {
+    setSvcFromCatalog(true); setSvcPicked(null);
+    setSvcDesc(''); setSvcHours('1'); setSvcExternal(false); setSvcProvider(''); setSvcPrice('');
+    setSvcModal(true);
+    if (catalog.length === 0) {
+      try { setCatalog(await getMaterials(utilityId)); }
+      catch { /* katalog opcionalan za slobodan unos */ }
+    }
+  };
+
   const handleAddService = async () => {
-    if (!svcDesc.trim()) { Alert.alert('Greška', 'Opis usluge je obavezan.'); return; }
     const hours = parseFloat(svcHours.replace(',', '.'));
-    if (!hours || hours <= 0) { Alert.alert('Greška', 'Unesite ispravan broj sati.'); return; }
+    if (!hours || hours <= 0) { Alert.alert('Greška', 'Unesite ispravnu količinu/sate.'); return; }
+    if (svcFromCatalog && !svcPicked) { Alert.alert('Greška', 'Odaberite uslugu iz kataloga.'); return; }
+    if (!svcFromCatalog && !svcDesc.trim()) { Alert.alert('Greška', 'Opis usluge je obavezan.'); return; }
     setSavingSvc(true);
     try {
       await addTaskService({
-        task_id: taskId, description: svcDesc.trim(), is_external: svcExternal,
-        quantity: hours, unit: 'h', provider: svcExternal ? (svcProvider.trim() || undefined) : undefined,
+        task_id: taskId,
+        material_id: svcFromCatalog ? svcPicked!.id : undefined,
+        description: svcFromCatalog ? '' : svcDesc.trim(),
+        is_external: svcExternal,
+        quantity: hours,
+        unit: 'h',
+        provider: svcExternal ? (svcProvider.trim() || undefined) : undefined,
+        // Cijenu kod slobodnog unosa može upisati samo admin/finance
+        unit_price: !svcFromCatalog && showPrices
+          ? (parseFloat(svcPrice.replace(',', '.')) || 0)
+          : undefined,
       });
       setSvcModal(false);
-      setSvcDesc(''); setSvcHours('1'); setSvcExternal(false); setSvcProvider('');
       await fetchItems();
       onChanged?.();
     } catch (e: any) {
@@ -189,7 +211,7 @@ export function TaskWorkItems({ taskId, utilityId, canEdit, showPrices, onChange
 
         {canEdit && (
           <Button title="Dodaj uslugu" size="small" variant="outline"
-            leftIcon={<Plus size={16} color={Colors.primary} />} onPress={() => setSvcModal(true)} style={{ marginTop: 12 }} />
+            leftIcon={<Plus size={16} color={Colors.primary} />} onPress={openSvcModal} style={{ marginTop: 12 }} />
         )}
       </Card>
 
@@ -232,8 +254,39 @@ export function TaskWorkItems({ taskId, utilityId, canEdit, showPrices, onChange
             <View style={{ width: 24 }} />
           </View>
           <ScrollView contentContainerStyle={styles.modalBody} keyboardShouldPersistTaps="handled">
-            <Input label="Opis usluge" value={svcDesc} onChangeText={setSvcDesc} placeholder="npr. Iskop kanala, rad bagera" />
-            <Text style={styles.fieldLabel}>Vrsta</Text>
+            {/* Izvor usluge: katalog (sa satnicom) ili slobodan unos */}
+            <Text style={styles.fieldLabel}>Usluga</Text>
+            <View style={styles.toggleRow}>
+              <TouchableOpacity style={[styles.toggleChip, svcFromCatalog && styles.toggleChipActive]} onPress={() => setSvcFromCatalog(true)}>
+                <Text style={[styles.toggleText, svcFromCatalog && styles.toggleTextActive]}>Iz kataloga</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.toggleChip, !svcFromCatalog && styles.toggleChipActive]} onPress={() => setSvcFromCatalog(false)}>
+                <Text style={[styles.toggleText, !svcFromCatalog && styles.toggleTextActive]}>Slobodan unos</Text>
+              </TouchableOpacity>
+            </View>
+
+            {svcFromCatalog ? (
+              <View style={{ marginTop: 14 }}>
+                {catalog.length === 0 ? (
+                  <Text style={styles.empty}>Katalog je prazan. Dodajte usluge u "Artikli" (npr. "Rad montera", jedinica h).</Text>
+                ) : catalog.map((c) => {
+                  const active = svcPicked?.id === c.id;
+                  return (
+                    <TouchableOpacity key={c.id} style={[styles.catItem, active && styles.catItemActive]} onPress={() => setSvcPicked(c)}>
+                      <Text style={[styles.catName, active && { color: Colors.primary, fontWeight: '700' }]}>
+                        {c.code ? `${c.code} · ` : ''}{c.name} ({c.unit})
+                      </Text>
+                      {active && <Check size={16} color={Colors.primary} />}
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            ) : (
+              <Input label="Opis usluge" value={svcDesc} onChangeText={setSvcDesc}
+                placeholder="npr. Iskop kanala, rad bagera" containerStyle={{ marginTop: 14 }} />
+            )}
+
+            <Text style={[styles.fieldLabel, { marginTop: 6 }]}>Vrsta</Text>
             <View style={styles.toggleRow}>
               <TouchableOpacity style={[styles.toggleChip, !svcExternal && styles.toggleChipActive]} onPress={() => setSvcExternal(false)}>
                 <Text style={[styles.toggleText, !svcExternal && styles.toggleTextActive]}>Interno</Text>
@@ -248,6 +301,10 @@ export function TaskWorkItems({ taskId, utilityId, canEdit, showPrices, onChange
             )}
             <Input label="Sati / jedinica" value={svcHours} onChangeText={setSvcHours} keyboardType="decimal-pad"
               placeholder="1" containerStyle={{ marginTop: 16 }} />
+            {!svcFromCatalog && showPrices && (
+              <Input label="Cijena po satu/jedinici (BAM)" value={svcPrice} onChangeText={setSvcPrice}
+                keyboardType="decimal-pad" placeholder="0.00" />
+            )}
             <Button title="Dodaj" onPress={handleAddService} isLoading={savingSvc} style={{ marginTop: 4 }} />
           </ScrollView>
         </SafeAreaView>

@@ -14,6 +14,7 @@ export interface TaskMaterial {
 export interface TaskService {
   id: string;
   task_id: string;
+  material_id: string | null;
   description: string;
   isExternal: boolean;
   provider: string | null;
@@ -37,6 +38,7 @@ const mapMaterial = (m: any): TaskMaterial => ({
 const mapService = (s: any): TaskService => ({
   id: s.id,
   task_id: s.task_id,
+  material_id: s.material_id ?? null,
   description: s.description,
   isExternal: !!s.is_external,
   provider: s.provider,
@@ -102,12 +104,15 @@ export const addTaskService = async (input: {
   unit?: string;
   provider?: string;
   unit_price?: number;
+  /** Usluga iz kataloga — server snapshot-uje naziv/jedinicu/satnicu. */
+  material_id?: string;
 }): Promise<TaskService> => {
   const { data: auth } = await supabase.auth.getUser();
   const { data, error } = await supabase
     .from('task_services')
     .insert({
       task_id:     input.task_id,
+      material_id: input.material_id ?? null,
       description: input.description,
       is_external: input.is_external,
       quantity:    input.quantity,
