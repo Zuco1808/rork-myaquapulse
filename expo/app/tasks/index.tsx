@@ -108,7 +108,6 @@ export default function TasksScreen() {
 
   // selected task for detail / action
   const [selected, setSelected]           = useState<Task | null>(null);
-  const [showDetail, setShowDetail]       = useState(false);
   const [showComplete, setShowComplete]   = useState(false);
   const [showCancel, setShowCancel]       = useState(false);
   const [cancelNote, setCancelNote]       = useState('');
@@ -203,7 +202,7 @@ export default function TasksScreen() {
     try {
       const updated = await updateTaskStatus(selected.id, 'done');
       patchLocal(updated);
-      setShowComplete(false); setShowDetail(false); setSelected(null);
+      setShowComplete(false); setSelected(null);
       Alert.alert('Uspjeh', 'Zadatak označen kao završen.');
     } catch (e: any) { Alert.alert('Greška', e.message); }
     finally { setActionLoading(false); }
@@ -216,7 +215,7 @@ export default function TasksScreen() {
     try {
       const updated = await updateTaskStatus(selected.id, 'cancelled', cancelNote.trim());
       patchLocal(updated);
-      setShowCancel(false); setShowDetail(false); setSelected(null); setCancelNote('');
+      setShowCancel(false); setSelected(null); setCancelNote('');
       Alert.alert('Uspjeh', 'Zadatak je otkazan.');
     } catch (e: any) { Alert.alert('Greška', e.message); }
     finally { setActionLoading(false); }
@@ -455,59 +454,6 @@ export default function TasksScreen() {
           </TouchableOpacity>
         )}
 
-        {/* ── Detail modal ── */}
-        <Modal visible={showDetail} transparent animationType="slide" onRequestClose={() => setShowDetail(false)}>
-          <View style={styles.overlay}>
-            <View style={styles.detailModal}>
-              <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>Detalji zadatka</Text>
-                <TouchableOpacity onPress={() => setShowDetail(false)}><X size={24} color={Colors.text} /></TouchableOpacity>
-              </View>
-              {selected && (
-                <RNScrollView style={{ paddingHorizontal: 20 }}>
-                  <Text style={styles.detailName}>{selected.title}</Text>
-                  <View style={styles.badgeRow}>
-                    <Badge label={TYPE_LABELS[selected.task_type]}    color={TYPE_COLORS[selected.task_type]}    size="small" />
-                    <Badge label={STATUS_LABELS[selected.status]}     color={STATUS_COLORS[selected.status]}     size="small" style={styles.ml8} />
-                    <Badge label={PRIORITY_LABELS[selected.priority]} color={PRIORITY_COLORS[selected.priority]} size="small" style={styles.ml8} />
-                  </View>
-
-                  {selected.description ? <Text style={styles.detailDesc}>{selected.description}</Text> : null}
-
-                  <View style={styles.detailGrid}>
-                    {selected.assigned_to_name && <DetailRow icon={<User size={15} color={Colors.primary} />}     label="Radnik" value={selected.assigned_to_name} />}
-                    {selected.connection_address && <DetailRow icon={<MapPin size={15} color={Colors.primary} />}   label="Adresa" value={selected.connection_address} />}
-                    {selected.connection_serial && <DetailRow icon={<Droplet size={15} color={Colors.primary} />}  label="Vodomjer" value={selected.connection_serial} />}
-                    {selected.due_date && <DetailRow icon={<Calendar size={15} color={Colors.primary} />} label="Rok" value={selected.due_date} />}
-                    {selected.completed_at && <DetailRow icon={<Clock size={15} color={Colors.success} />}  label="Završeno" value={selected.completed_at.split('T')[0]} />}
-                    <DetailRow icon={<Clock size={15} color={Colors.textLight} />} label="Kreirano" value={selected.created_at.split('T')[0]} />
-                  </View>
-
-                  {(selected.status === 'open' || selected.status === 'in_progress') && (
-                    <View style={{ marginVertical: 16 }}>
-                      {selected.status === 'open' && (
-                        <Button title="Počni zadatak" leftIcon={<PlayCircle size={18} color="#fff" />}
-                          isLoading={actionLoading}
-                          onPress={() => { startTask(selected); setShowDetail(false); }}
-                          style={{ marginBottom: 10 }} />
-                      )}
-                      {selected.status === 'in_progress' && (
-                        <Button title="Označi kao završen" leftIcon={<CheckCircle size={18} color="#fff" />}
-                          onPress={() => { setShowDetail(false); setShowComplete(true); }}
-                          style={{ marginBottom: 10 }} />
-                      )}
-                      <Button title="Otkaži zadatak" variant="outline"
-                        leftIcon={<XCircle size={18} color={Colors.error} />}
-                        onPress={() => { setShowDetail(false); setCancelNote(''); setShowCancel(true); }}
-                        style={{ borderColor: Colors.error }} />
-                    </View>
-                  )}
-                </RNScrollView>
-              )}
-            </View>
-          </View>
-        </Modal>
-
         {/* ── Complete modal ── */}
         <Modal visible={showComplete} transparent animationType="slide" onRequestClose={() => setShowComplete(false)}>
           <View style={styles.overlay}>
@@ -632,17 +578,6 @@ export default function TasksScreen() {
         </Modal>
       </View>
     </SafeAreaView>
-  );
-}
-
-/* ─── DetailRow ──────────────────────────────────── */
-function DetailRow({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
-  return (
-    <View style={styles.detailRow}>
-      {icon}
-      <Text style={styles.detailLabel}>{label}:</Text>
-      <Text style={styles.detailValue}>{value}</Text>
-    </View>
   );
 }
 

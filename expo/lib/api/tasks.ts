@@ -197,23 +197,6 @@ export const approveTask = async (id: string): Promise<Task> => {
   return mapTask(data);
 };
 
-/** Ažurira troškove materijala i rada na servisnom nalogu. */
-export const updateTaskCosts = async (
-  id: string,
-  materialCost: number,
-  laborCost: number,
-): Promise<Task> => {
-  const { data, error } = await supabase
-    .from('tasks')
-    .update({ material_cost: materialCost, labor_cost: laborCost })
-    .eq('id', id)
-    .select(`*, profiles:assigned_to ( full_name ), connections:connection_id ( address, meter_serial )`)
-    .single();
-
-  if (error) throw error;
-  return mapTask(data);
-};
-
 export const assignTask = async (id: string, workerId: string): Promise<Task> => {
   const { data, error } = await supabase
     .from('tasks')
