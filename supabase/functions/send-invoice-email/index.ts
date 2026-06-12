@@ -78,6 +78,7 @@ function buildInvoiceHtml(bill: any): string {
 <div class="sec">Podaci o obračunu</div>
 <div class="row"><span class="rl">Period</span><span>${fmtPeriod(bill.period_from, bill.period_to)}</span></div>
 ${bill.consumption_m3 != null ? `<div class="row"><span class="rl">Potrošnja (m³)</span><span>${bill.consumption_m3}</span></div>` : ''}
+${bill.workItemsHtml ?? ''}
 <div class="sec">Obračun</div>
 <div class="row"><span class="rl">Usluga vodovoda</span><span>${(amount * 0.85).toFixed(2)} BAM</span></div>
 <div class="row"><span class="rl">PDV (17%)</span><span>${(amount * 0.15).toFixed(2)} BAM</span></div>
@@ -131,7 +132,7 @@ serve(async (req) => {
       .from('invoices')
       .select(`
         id, utility_id, status, period_from, period_to, consumption_m3,
-        amount_bam, due_date,
+        amount_bam, due_date, task_id,
         connections ( meter_serial, address, user_id ),
         water_utilities ( name, city, email, support_email )
       `)
@@ -167,6 +168,26 @@ serve(async (req) => {
     if (!apiKey) return json({ error: 'RESEND_API_KEY nije konfigurisan na serveru.' }, 500);
     const from = Deno.env.get('RESEND_FROM') ?? 'AquaPulse <onboarding@resend.dev>';
 
+    /* ── Specifikacija radnog naloga (ako je faktura vezana na nalog) ── */
+    let workItemsHtml = '';
+    if ((inv as any).task_id) {
+      const [{ data: mats }, { data: svcs }] = await Promise.all([
+        adminClient.from('task_materials').select('name, unit, quantity, unit_price').eq('task_id', (inv as any).task_id).order('created_at'),
+        adminClient.from('task_services').select('description, is_external, quantity, unit, unit_price').eq('task_id', (inv as any).task_id).order('created_at'),
+      ]);
+      const rows = [
+        ...(mats ?? []).map((m: any) => {
+          const total = Number(m.quantity) * Number(m.unit_price);
+          return `<div class="row"><span class="rl">${m.name} — ${m.quantity} ${m.unit} × ${Number(m.unit_price).toFixed(2)}</span><span>${total.toFixed(2)} BAM</span></div>`;
+        }),
+        ...(svcs ?? []).map((s: any) => {
+          const total = Number(s.quantity) * Number(s.unit_price);
+          return `<div class="row"><span class="rl">${s.description}${s.is_external ? ' (eksterno)' : ''} — ${s.quantity} ${s.unit} × ${Number(s.unit_price).toFixed(2)}</span><span>${total.toFixed(2)} BAM</span></div>`;
+        }),
+      ].join('');
+      if (rows) workItemsHtml = `<div class="sec">Specifikacija radnog naloga</div>${rows}`;
+    }
+
     const util = (inv as any).water_utilities;
     const html = buildInvoiceHtml({
       ...inv,
@@ -175,6 +196,7 @@ serve(async (req) => {
       meterSerial:  conn?.meter_serial ?? '',
       address:      conn?.address ?? '',
       customerName,
+      workItemsHtml,
     });
     const idShort = String(inv.id).substring(0, 8).toUpperCase();
     const replyTo = util?.support_email || util?.email || undefined;

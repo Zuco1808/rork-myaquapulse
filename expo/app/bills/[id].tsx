@@ -41,6 +41,7 @@ import {
   Payment,
   PAYMENT_METHOD_LABEL,
 } from '@/lib/api/payments';
+import { getTaskMaterials, getTaskServices, TaskMaterial, TaskService } from '@/lib/api/task-items';
 import { captureError } from '@/lib/sentry';
 import Colors from '@/constants/colors';
 
@@ -107,7 +108,21 @@ const formatPeriod = (from: string, to: string) => {
   return `${f.toLocaleDateString('bs-BA')} – ${t.toLocaleDateString('bs-BA')}`;
 };
 
-const buildInvoiceHtml = (bill: any): string => `
+type WorkItems = { materials: TaskMaterial[]; services: TaskService[] };
+
+/** Specifikacija stavki radnog naloga (kad je faktura vezana na nalog). */
+const buildWorkItemsHtml = (items: WorkItems | null): string => {
+  if (!items || (items.materials.length === 0 && items.services.length === 0)) return '';
+  const rows = [
+    ...items.materials.map((m) =>
+      `<div class="row"><span class="rl">${m.name} — ${m.quantity} ${m.unit} × ${m.unitPrice.toFixed(2)}</span><span>${m.total.toFixed(2)} BAM</span></div>`),
+    ...items.services.map((s) =>
+      `<div class="row"><span class="rl">${s.description}${s.isExternal ? ' (eksterno)' : ''} — ${s.quantity} ${s.unit} × ${s.unitPrice.toFixed(2)}</span><span>${s.total.toFixed(2)} BAM</span></div>`),
+  ].join('');
+  return `<div class="sec">Specifikacija radnog naloga</div>${rows}`;
+};
+
+const buildInvoiceHtml = (bill: any, workItems: WorkItems | null = null): string => `
 <!DOCTYPE html><html><head><meta charset="utf-8"/>
 <style>
   body{font-family:Arial,sans-serif;padding:30px;color:#333;font-size:13px;}
@@ -137,6 +152,7 @@ const buildInvoiceHtml = (bill: any): string => `
 <div class="sec">Podaci o obračunu</div>
 <div class="row"><span class="rl">Period</span><span>${formatPeriod(bill.period_from, bill.period_to)}</span></div>
 ${bill.consumption_m3 != null ? `<div class="row"><span class="rl">Potrošnja (m³)</span><span>${bill.consumption_m3}</span></div>` : ''}
+${buildWorkItemsHtml(workItems)}
 <div class="sec">Obračun</div>
 <div class="row"><span class="rl">Usluga vodovoda</span><span>${(bill.amount * 0.85).toFixed(2)} BAM</span></div>
 <div class="row"><span class="rl">PDV (17%)</span><span>${(bill.amount * 0.15).toFixed(2)} BAM</span></div>
@@ -162,6 +178,7 @@ export default function BillDetailsScreen() {
   const [payments, setPayments]       = useState<Payment[]>([]);
   const [paymentModal, setPaymentModal] = useState(false);
   const [emailLoading, setEmailLoading] = useState(false);
+  const [workItems, setWorkItems]     = useState<WorkItems | null>(null);
 
   const { canManageBilling: canManageStatus, isEndUser } = usePermissions();
   const canPay = isEndUser && bill && ['pending', 'sent', 'overdue'].includes(bill.status);
@@ -179,6 +196,17 @@ export default function BillDetailsScreen() {
       ]);
       setBill(data);
       setPayments(pays);
+
+      // Faktura iz radnog naloga → učitaj specifikaciju stavki
+      if ((data as any).task_id) {
+        const [materials, services] = await Promise.all([
+          getTaskMaterials((data as any).task_id).catch(() => []),
+          getTaskServices((data as any).task_id).catch(() => []),
+        ]);
+        setWorkItems({ materials, services });
+      } else {
+        setWorkItems(null);
+      }
     } catch {
       Alert.alert('Greška', 'Račun nije pronađen.');
       router.back();
@@ -257,7 +285,7 @@ export default function BillDetailsScreen() {
     if (Platform.OS === 'web') { handlePrint(); return; }
     setPdfLoading(true);
     try {
-      const html = buildInvoiceHtml(bill);
+      const html = buildInvoiceHtml(bill, workItems);
       const { uri } = await Print.printToFileAsync({ html });
       await Sharing.shareAsync(uri, {
         mimeType: 'application/pdf',
@@ -276,7 +304,7 @@ export default function BillDetailsScreen() {
     if (!bill) return;
     setPdfLoading(true);
     try {
-      await Print.printAsync({ html: buildInvoiceHtml(bill) });
+      await Print.printAsync({ html: buildInvoiceHtml(bill, workItems) });
     } catch (e: any) {
       captureError(e, { screen: 'bill-detail', action: 'print' });
       Alert.alert('Greška', e?.message || 'Štampanje nije uspjelo.');
@@ -554,6 +582,31 @@ export default function BillDetailsScreen() {
                   <Text style={styles.pdfRowLabel}>Potrošnja (m³)</Text>
                   <Text style={styles.pdfRowValue}>{bill.consumption_m3}</Text>
                 </View>
+              )}
+
+              {/* Specifikacija radnog naloga */}
+              {workItems && (workItems.materials.length > 0 || workItems.services.length > 0) && (
+                <>
+                  <View style={styles.pdfTableHeader}>
+                    <Text style={styles.pdfTableHeaderText}>Specifikacija radnog naloga</Text>
+                  </View>
+                  {workItems.materials.map((m) => (
+                    <View key={m.id} style={styles.pdfRow}>
+                      <Text style={[styles.pdfRowLabel, { flex: 3 }]}>
+                        {m.name} — {m.quantity} {m.unit} × {m.unitPrice.toFixed(2)}
+                      </Text>
+                      <Text style={[styles.pdfRowValue, { flex: 1, textAlign: 'right' }]}>{m.total.toFixed(2)} BAM</Text>
+                    </View>
+                  ))}
+                  {workItems.services.map((s) => (
+                    <View key={s.id} style={styles.pdfRow}>
+                      <Text style={[styles.pdfRowLabel, { flex: 3 }]}>
+                        {s.description}{s.isExternal ? ' (eksterno)' : ''} — {s.quantity} {s.unit} × {s.unitPrice.toFixed(2)}
+                      </Text>
+                      <Text style={[styles.pdfRowValue, { flex: 1, textAlign: 'right' }]}>{s.total.toFixed(2)} BAM</Text>
+                    </View>
+                  ))}
+                </>
               )}
 
               {/* Amount */}
