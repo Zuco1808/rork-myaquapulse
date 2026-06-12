@@ -142,7 +142,7 @@ const buildInvoiceHtml = (bill: any, workItems: WorkItems | null = null): string
 </style></head><body>
 <div class="header">
   <div><div class="co">${bill.utilityName ?? 'JAVNO KOMUNALNO PREDUZEĆE'}</div>${bill.utilityCity ? `<div class="sub">${bill.utilityCity}</div>` : ''}<div class="sub">AquaPulse platforma</div></div>
-  <div style="text-align:right"><div class="sub">RAČUN</div><div class="bill-no">${bill.id.substring(0, 8).toUpperCase()}</div><div class="sub">za utrošenu vodu</div></div>
+  <div style="text-align:right"><div class="sub">RAČUN BR.</div><div class="bill-no">${bill.invoiceNumber ?? bill.id.substring(0, 8).toUpperCase()}</div><div class="sub">za utrošenu vodu</div></div>
 </div>
 <div class="dates"><span>Datum: ${formatDate(bill.createdAt)}</span><span>Valuta: ${formatDate(bill.due_date)}</span></div>
 <div class="cbox">
@@ -289,7 +289,7 @@ export default function BillDetailsScreen() {
       const { uri } = await Print.printToFileAsync({ html });
       await Sharing.shareAsync(uri, {
         mimeType: 'application/pdf',
-        dialogTitle: `Račun ${bill.id.substring(0, 8).toUpperCase()}`,
+        dialogTitle: `Račun ${bill.invoiceNumber ?? bill.id.substring(0, 8).toUpperCase()}`,
         UTI: 'com.adobe.pdf',
       });
     } catch (e: any) {
@@ -371,6 +371,10 @@ export default function BillDetailsScreen() {
 
           <View style={styles.divider} />
 
+          {bill.invoiceNumber && (
+            <InfoRow icon={<FileText size={15} color={Colors.primary} />}
+              label="Br. računa" value={bill.invoiceNumber} />
+          )}
           <InfoRow icon={<MapPin size={15} color={Colors.primary} />}
             label="Adresa" value={bill.address || '—'} />
           <InfoRow icon={<Droplet size={15} color={Colors.primary} />}
@@ -546,7 +550,7 @@ export default function BillDetailsScreen() {
                 </View>
                 <View style={{ alignItems: 'flex-end' }}>
                   <Text style={styles.pdfBillTitle}>RAČUN</Text>
-                  <Text style={styles.pdfBillId}>{bill.id.substring(0, 8).toUpperCase()}</Text>
+                  <Text style={styles.pdfBillId}>{bill.invoiceNumber ?? bill.id.substring(0, 8).toUpperCase()}</Text>
                   <Text style={styles.pdfBillSub}>za utrošenu vodu</Text>
                 </View>
               </View>

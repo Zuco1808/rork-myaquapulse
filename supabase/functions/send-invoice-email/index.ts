@@ -50,7 +50,7 @@ const fmtPeriod = (from: string, to: string): string =>
 
 function buildInvoiceHtml(bill: any): string {
   const amount = Number(bill.amount_bam ?? 0);
-  const idShort = String(bill.id).substring(0, 8).toUpperCase();
+  const idShort = bill.displayNo ?? String(bill.id).substring(0, 8).toUpperCase();
   return `<!DOCTYPE html><html><head><meta charset="utf-8"/>
 <style>
   body{font-family:Arial,sans-serif;padding:24px;color:#333;font-size:13px;max-width:640px;margin:0 auto;}
@@ -132,7 +132,7 @@ serve(async (req) => {
       .from('invoices')
       .select(`
         id, utility_id, status, period_from, period_to, consumption_m3,
-        amount_bam, due_date, task_id,
+        amount_bam, due_date, task_id, invoice_number,
         connections ( meter_serial, address, user_id ),
         water_utilities ( name, city, email, support_email )
       `)
@@ -188,9 +188,24 @@ serve(async (req) => {
       if (rows) workItemsHtml = `<div class="sec">Specifikacija radnog naloga</div>${rows}`;
     }
 
+    /* ── Izdavanje prije slanja: status→sent dodjeljuje broj računa (trigger) ── */
+    const wasDraftOrPending = ['draft', 'pending'].includes(inv.status);
+    let invoiceNumber: string | null = (inv as any).invoice_number ?? null;
+    if (wasDraftOrPending) {
+      const { data: issued } = await adminClient
+        .from('invoices')
+        .update({ status: 'sent' })
+        .eq('id', inv.id)
+        .select('invoice_number')
+        .single();
+      invoiceNumber = issued?.invoice_number ?? invoiceNumber;
+    }
+
     const util = (inv as any).water_utilities;
+    const displayNo = invoiceNumber ?? String(inv.id).substring(0, 8).toUpperCase();
     const html = buildInvoiceHtml({
       ...inv,
+      displayNo,
       utilityName:  util?.name ?? null,
       utilityCity:  util?.city ?? null,
       meterSerial:  conn?.meter_serial ?? '',
@@ -198,7 +213,6 @@ serve(async (req) => {
       customerName,
       workItemsHtml,
     });
-    const idShort = String(inv.id).substring(0, 8).toUpperCase();
     const replyTo = util?.support_email || util?.email || undefined;
 
     /* ── 7. Send via Resend ── */
@@ -209,7 +223,7 @@ serve(async (req) => {
         from,
         to: [toEmail],
         ...(replyTo ? { reply_to: replyTo } : {}),
-        subject: `Račun za vodu ${idShort} — ${util?.name ?? 'AquaPulse'}`,
+        subject: `Račun za vodu ${displayNo} — ${util?.name ?? 'AquaPulse'}`,
         html,
       }),
     });
@@ -217,12 +231,11 @@ serve(async (req) => {
     if (!res.ok) {
       const errText = await res.text();
       console.error('[send-invoice-email] Resend error:', res.status, errText);
+      // Vrati prethodni status (broj računa ostaje dodijeljen — faktura je izdana)
+      if (wasDraftOrPending) {
+        await adminClient.from('invoices').update({ status: inv.status }).eq('id', inv.id);
+      }
       return json({ error: `Slanje e-maila nije uspjelo (${res.status}).`, detail: errText }, 502);
-    }
-
-    /* ── 8. Mark sent (ako je draft/pending) ── */
-    if (['draft', 'pending'].includes(inv.status)) {
-      await adminClient.from('invoices').update({ status: 'sent' }).eq('id', inv.id);
     }
 
     return json({ sent: true, email: toEmail });

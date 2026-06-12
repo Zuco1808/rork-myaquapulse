@@ -26,6 +26,7 @@ const mapInvoice = (b: any) => ({
   paid_at: b.paid_at,
   created_by: b.created_by,
   task_id: b.task_id ?? null,
+  invoiceNumber: b.invoice_number ?? null,
   periodFrom: new Date(b.period_from).getTime(),
   periodTo: new Date(b.period_to).getTime(),
   dueDate: b.due_date ? new Date(b.due_date).getTime() : null,
