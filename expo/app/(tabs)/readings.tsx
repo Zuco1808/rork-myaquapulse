@@ -26,6 +26,7 @@ import { Button } from '@/components/ui/Button';
 import { ReadingCard } from '@/components/readings/ReadingCard';
 import { OCRCameraView } from '@/components/ocr/CameraView';
 import { OCRResult } from '@/components/ocr/OCRResult';
+import { SerialScanner } from '@/components/meters/SerialScanner';
 import { uploadMeterImage } from '@/lib/api/ocr';
 import { useAuthStore } from '@/store/auth-store';
 import { usePermissions } from '@/lib/use-permissions';
@@ -60,6 +61,24 @@ export default function ReadingsScreen() {
   const [manualReading, setManualReading] = useState('');
   const [selectedMeterId, setSelectedMeterId] = useState('');
   const [availableMeters, setAvailableMeters] = useState<any[]>([]);
+  const [showScanner, setShowScanner] = useState(false);
+
+  /* ── QR/barcode sken serijskog broja → odaberi vodomjer ── */
+  const handleSerialScanned = (serial: string) => {
+    const norm = serial.trim().toLowerCase();
+    const meter = availableMeters.find(
+      (m) => (m.serialNumber ?? '').trim().toLowerCase() === norm,
+    );
+    if (meter) {
+      setSelectedMeterId(meter.id);
+      setReadingError('');
+    } else {
+      Alert.alert(
+        'Vodomjer nije pronađen',
+        `Serijski broj "${serial}" ne odgovara nijednom dostupnom vodomjeru.`,
+      );
+    }
+  };
   const [readings, setReadings] = useState<ExtendedReading[]>([]);
   const [showFilters, setShowFilters] = useState(false);
   const [filterStatus, setFilterStatus] = useState('all');
@@ -390,7 +409,13 @@ export default function ReadingsScreen() {
 
             {availableMeters.length > 0 ? (
               <>
-                <Text style={styles.inputLabel}>Vodomjer:</Text>
+                <View style={styles.meterLabelRow}>
+                  <Text style={styles.inputLabel}>Vodomjer:</Text>
+                  <TouchableOpacity style={styles.scanBtn} onPress={() => setShowScanner(true)} activeOpacity={0.7}>
+                    <Camera size={15} color={Colors.primary} />
+                    <Text style={styles.scanBtnText}>Skeniraj</Text>
+                  </TouchableOpacity>
+                </View>
                 <View style={styles.meterOptions}>
                   {availableMeters.map((meter) => (
                     <TouchableOpacity
@@ -495,6 +520,12 @@ export default function ReadingsScreen() {
           onCancel={handleOCRCancel}
         />
       </Modal>
+
+      <SerialScanner
+        visible={showScanner}
+        onClose={() => setShowScanner(false)}
+        onScanned={handleSerialScanned}
+      />
     </View>
   );
 }
@@ -569,6 +600,14 @@ const styles = StyleSheet.create({
   modalTitle: { fontSize: 20, fontWeight: 'bold', color: Colors.text },
   modalSubtitle: { fontSize: 16, color: Colors.textLight, marginBottom: 16 },
   inputLabel: { fontSize: 14, fontWeight: '500', color: Colors.text, marginBottom: 8 },
+  meterLabelRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  scanBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16,
+    borderWidth: 1, borderColor: Colors.primary, backgroundColor: Colors.primary + '10',
+    marginBottom: 8,
+  },
+  scanBtnText: { fontSize: 12, fontWeight: '600', color: Colors.primary },
   meterOptions: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: 16, gap: 8 },
   meterOption: {
     paddingHorizontal: 12,

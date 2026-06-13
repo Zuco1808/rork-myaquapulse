@@ -8,6 +8,8 @@ export interface Material {
   unit: string;
   purchasePrice: number;
   salePrice: number;
+  stock: number;
+  minStock: number;
   is_active: boolean;
   createdAt: number;
 }
@@ -22,6 +24,8 @@ const mapMaterial = (m: any): Material => ({
   unit: m.unit ?? 'kom',
   purchasePrice: m.purchase_price != null ? Number(m.purchase_price) : 0,
   salePrice: m.sale_price != null ? Number(m.sale_price) : 0,
+  stock: m.stock_quantity != null ? Number(m.stock_quantity) : 0,
+  minStock: m.min_stock != null ? Number(m.min_stock) : 0,
   is_active: m.is_active ?? true,
   createdAt: m.created_at ? new Date(m.created_at).getTime() : 0,
 });
@@ -46,6 +50,8 @@ export const createMaterial = async (input: {
   code?: string;
   purchase_price?: number;
   sale_price?: number;
+  stock_quantity?: number;
+  min_stock?: number;
 }): Promise<Material> => {
   const { data, error } = await supabase
     .from('materials')
@@ -56,6 +62,8 @@ export const createMaterial = async (input: {
       code:           input.code ?? null,
       purchase_price: input.purchase_price ?? 0,
       sale_price:     input.sale_price ?? 0,
+      stock_quantity: input.stock_quantity ?? 0,
+      min_stock:      input.min_stock ?? 0,
     })
     .select()
     .single();
@@ -63,9 +71,23 @@ export const createMaterial = async (input: {
   return mapMaterial(data);
 };
 
+/** Zaduženje zalihe (prijem robe): povećava stanje za qty. */
+export const addStock = async (id: string, qty: number): Promise<Material> => {
+  const { data: cur, error: e1 } = await supabase
+    .from('materials').select('stock_quantity').eq('id', id).single();
+  if (e1) throw e1;
+  const newQty = Number(cur.stock_quantity ?? 0) + qty;
+  const { data, error } = await supabase
+    .from('materials')
+    .update({ stock_quantity: newQty, updated_at: new Date().toISOString() })
+    .eq('id', id).select().single();
+  if (error) throw error;
+  return mapMaterial(data);
+};
+
 export const updateMaterial = async (
   id: string,
-  updates: Partial<{ name: string; unit: string; code: string; purchase_price: number; sale_price: number; is_active: boolean }>,
+  updates: Partial<{ name: string; unit: string; code: string; purchase_price: number; sale_price: number; min_stock: number; is_active: boolean }>,
 ): Promise<Material> => {
   const { data, error } = await supabase
     .from('materials')

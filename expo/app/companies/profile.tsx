@@ -46,6 +46,7 @@ export default function CompanyProfileScreen() {
   const [website, setWebsite] = useState('');
   const [logo, setLogo] = useState('');
   const [supportEmail, setSupportEmail] = useState('');
+  const [vatRate, setVatRate] = useState('17');
 
   const [nameError, setNameError] = useState('');
   const [emailError, setEmailError] = useState('');
@@ -87,6 +88,7 @@ export default function CompanyProfileScreen() {
     setWebsite(data.website || '');
     setLogo(data.logo || '');
     setSupportEmail(data.supportEmail || data.support_email || '');
+    setVatRate(String(data.vatRate ?? 17));
   };
 
   const validate = () => {
@@ -113,6 +115,7 @@ export default function CompanyProfileScreen() {
           website: website.trim(),
           logo: logo.trim(),
           support_email: supportEmail.trim(),
+          vat_rate: parseFloat(vatRate.replace(',', '.')) || 0,
         });
       }
       if (Platform.OS === 'web') {
@@ -249,6 +252,14 @@ export default function CompanyProfileScreen() {
           keyboardType="email-address"
           autoCapitalize="none"
           leftIcon={<HeadphonesIcon size={18} color={Colors.textLight} />}
+        />
+
+        <Input
+          label="PDV stopa (%)"
+          placeholder="17"
+          value={vatRate}
+          onChangeText={setVatRate}
+          keyboardType="decimal-pad"
         />
 
         <Input
