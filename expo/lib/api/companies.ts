@@ -13,6 +13,7 @@ const mapCompany = (c: any) => ({
   logo: c.logo_url ?? '',
   supportEmail: c.support_email ?? '',
   pib: c.pib ?? '',
+  vatRate: c.vat_rate != null ? Number(c.vat_rate) : 17,
   isActive: c.is_active ?? true,
   createdAt: c.created_at ? new Date(c.created_at).getTime() : Date.now(),
   updatedAt: c.updated_at ? new Date(c.updated_at).getTime() : undefined,
@@ -52,6 +53,7 @@ export const updateCompany = async (
     website: string;
     logo: string;
     support_email: string;
+    vat_rate: number;
   }>
 ) => {
   // Map `logo` → `logo_url` (internal column name in water_utilities)

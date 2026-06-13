@@ -110,6 +110,14 @@ const formatPeriod = (from: string, to: string) => {
 
 type WorkItems = { materials: TaskMaterial[]; services: TaskService[] };
 
+/** Izvlači osnovicu i PDV iz bruto iznosa (PDV uključen u amount_bam). */
+const vatBreakdown = (bill: any): { net: number; vat: number; rate: number } => {
+  const gross = Number(bill.amount ?? 0);
+  const rate = Number(bill.vatRate ?? 17);
+  const net = rate > 0 ? gross / (1 + rate / 100) : gross;
+  return { net, vat: gross - net, rate };
+};
+
 /** Specifikacija stavki radnog naloga (kad je faktura vezana na nalog). */
 const buildWorkItemsHtml = (items: WorkItems | null): string => {
   if (!items || (items.materials.length === 0 && items.services.length === 0)) return '';
@@ -154,8 +162,8 @@ const buildInvoiceHtml = (bill: any, workItems: WorkItems | null = null): string
 ${bill.consumption_m3 != null ? `<div class="row"><span class="rl">Potrošnja (m³)</span><span>${bill.consumption_m3}</span></div>` : ''}
 ${buildWorkItemsHtml(workItems)}
 <div class="sec">Obračun</div>
-<div class="row"><span class="rl">Usluga vodovoda</span><span>${(bill.amount * 0.85).toFixed(2)} BAM</span></div>
-<div class="row"><span class="rl">PDV (17%)</span><span>${(bill.amount * 0.15).toFixed(2)} BAM</span></div>
+<div class="row"><span class="rl">Osnovica</span><span>${vatBreakdown(bill).net.toFixed(2)} BAM</span></div>
+<div class="row"><span class="rl">PDV (${vatBreakdown(bill).rate}%)</span><span>${vatBreakdown(bill).vat.toFixed(2)} BAM</span></div>
 <div class="total"><span>UKUPNO (s PDV)</span><span class="tv">${bill.amount?.toFixed(2)} BAM</span></div>
 <div class="sec" style="margin-top:18px">UPLATNI NALOG</div>
 <div class="row"><span class="rl">Iznos</span><span><strong>${bill.amount?.toFixed(2)} BAM</strong></span></div>
@@ -618,15 +626,15 @@ export default function BillDetailsScreen() {
                 <Text style={styles.pdfTableHeaderText}>Obračun</Text>
               </View>
               <View style={styles.pdfRow}>
-                <Text style={[styles.pdfRowLabel, { flex: 3 }]}>Usluga vodovoda</Text>
+                <Text style={[styles.pdfRowLabel, { flex: 3 }]}>Osnovica</Text>
                 <Text style={[styles.pdfRowValue, { flex: 1, textAlign: 'right' }]}>
-                  {(bill.amount * 0.85).toFixed(2)} BAM
+                  {vatBreakdown(bill).net.toFixed(2)} BAM
                 </Text>
               </View>
               <View style={styles.pdfRow}>
-                <Text style={[styles.pdfRowLabel, { flex: 3 }]}>PDV (17%)</Text>
+                <Text style={[styles.pdfRowLabel, { flex: 3 }]}>PDV ({vatBreakdown(bill).rate}%)</Text>
                 <Text style={[styles.pdfRowValue, { flex: 1, textAlign: 'right' }]}>
-                  {(bill.amount * 0.15).toFixed(2)} BAM
+                  {vatBreakdown(bill).vat.toFixed(2)} BAM
                 </Text>
               </View>
               <View style={styles.pdfTotalRow}>

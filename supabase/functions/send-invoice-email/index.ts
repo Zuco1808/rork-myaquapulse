@@ -50,6 +50,9 @@ const fmtPeriod = (from: string, to: string): string =>
 
 function buildInvoiceHtml(bill: any): string {
   const amount = Number(bill.amount_bam ?? 0);
+  const rate = Number(bill.vat_rate ?? 17);
+  const net = rate > 0 ? amount / (1 + rate / 100) : amount;
+  const vat = amount - net;
   const idShort = bill.displayNo ?? String(bill.id).substring(0, 8).toUpperCase();
   return `<!DOCTYPE html><html><head><meta charset="utf-8"/>
 <style>
@@ -80,8 +83,8 @@ function buildInvoiceHtml(bill: any): string {
 ${bill.consumption_m3 != null ? `<div class="row"><span class="rl">Potrošnja (m³)</span><span>${bill.consumption_m3}</span></div>` : ''}
 ${bill.workItemsHtml ?? ''}
 <div class="sec">Obračun</div>
-<div class="row"><span class="rl">Usluga vodovoda</span><span>${(amount * 0.85).toFixed(2)} BAM</span></div>
-<div class="row"><span class="rl">PDV (17%)</span><span>${(amount * 0.15).toFixed(2)} BAM</span></div>
+<div class="row"><span class="rl">Osnovica</span><span>${net.toFixed(2)} BAM</span></div>
+<div class="row"><span class="rl">PDV (${rate}%)</span><span>${vat.toFixed(2)} BAM</span></div>
 <div class="total"><span>UKUPNO (s PDV)</span><span class="tv">${amount.toFixed(2)} BAM</span></div>
 <div class="sec" style="margin-top:18px">UPLATNI NALOG</div>
 <div class="row"><span class="rl">Iznos</span><span><strong>${amount.toFixed(2)} BAM</strong></span></div>
@@ -132,7 +135,7 @@ serve(async (req) => {
       .from('invoices')
       .select(`
         id, utility_id, status, period_from, period_to, consumption_m3,
-        amount_bam, due_date, task_id, invoice_number,
+        amount_bam, due_date, task_id, invoice_number, vat_rate,
         connections ( meter_serial, address, user_id ),
         water_utilities ( name, city, email, support_email )
       `)
