@@ -4,7 +4,7 @@ import {
   RefreshControl, ActivityIndicator, Modal, ScrollView, Alert, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
-import { Package, Plus, X, Edit2, Trash2 } from 'lucide-react-native';
+import { Package, Plus, X, Edit2, Trash2, PackagePlus, AlertTriangle } from 'lucide-react-native';
 import { Header } from '@/components/layout/Header';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -13,7 +13,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { useAuthStore } from '@/store/auth-store';
 import { usePermissions } from '@/lib/use-permissions';
 import {
-  getMaterials, createMaterial, updateMaterial, deactivateMaterial,
+  getMaterials, createMaterial, updateMaterial, deactivateMaterial, addStock,
   Material, MATERIAL_UNITS,
 } from '@/lib/api/materials';
 import { captureError } from '@/lib/sentry';
@@ -35,7 +35,12 @@ export default function MaterialsScreen() {
   const [unit, setUnit]         = useState<string>('kom');
   const [purchase, setPurchase] = useState('');
   const [sale, setSale]         = useState('');
+  const [minStock, setMinStock] = useState('');
   const [saving, setSaving]     = useState(false);
+
+  const [stockMat, setStockMat] = useState<Material | null>(null);
+  const [stockQty, setStockQty] = useState('');
+  const [stockSaving, setStockSaving] = useState(false);
 
   const fetchData = async () => {
     if (!user?.utility_id) { setLoading(false); return; }
@@ -53,14 +58,14 @@ export default function MaterialsScreen() {
 
   const openCreate = () => {
     setEditing(null);
-    setName(''); setCode(''); setUnit('kom'); setPurchase(''); setSale('');
+    setName(''); setCode(''); setUnit('kom'); setPurchase(''); setSale(''); setMinStock('');
     setShowForm(true);
   };
 
   const openEdit = (m: Material) => {
     setEditing(m);
     setName(m.name); setCode(m.code ?? ''); setUnit(m.unit);
-    setPurchase(String(m.purchasePrice)); setSale(String(m.salePrice));
+    setPurchase(String(m.purchasePrice)); setSale(String(m.salePrice)); setMinStock(String(m.minStock));
     setShowForm(true);
   };
 
@@ -69,17 +74,18 @@ export default function MaterialsScreen() {
     if (!user?.utility_id) return;
     const p = parseFloat(purchase.replace(',', '.')) || 0;
     const s = parseFloat(sale.replace(',', '.')) || 0;
+    const mn = parseFloat(minStock.replace(',', '.')) || 0;
     setSaving(true);
     try {
       if (editing) {
         const upd = await updateMaterial(editing.id, {
-          name: name.trim(), code: code.trim(), unit, purchase_price: p, sale_price: s,
+          name: name.trim(), code: code.trim(), unit, purchase_price: p, sale_price: s, min_stock: mn,
         });
         setItems(prev => prev.map(x => x.id === upd.id ? upd : x));
       } else {
         const created = await createMaterial({
           utility_id: user.utility_id, name: name.trim(), code: code.trim() || undefined,
-          unit, purchase_price: p, sale_price: s,
+          unit, purchase_price: p, sale_price: s, min_stock: mn,
         });
         setItems(prev => [created, ...prev]);
       }
@@ -88,6 +94,22 @@ export default function MaterialsScreen() {
       Alert.alert('Greška', e.message || 'Spremanje nije uspjelo.');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleAddStock = async () => {
+    if (!stockMat) return;
+    const qty = parseFloat(stockQty.replace(',', '.'));
+    if (!qty || qty <= 0) { Alert.alert('Greška', 'Unesite ispravnu količinu.'); return; }
+    setStockSaving(true);
+    try {
+      const upd = await addStock(stockMat.id, qty);
+      setItems(prev => prev.map(x => x.id === upd.id ? upd : x));
+      setStockMat(null); setStockQty('');
+    } catch (e: any) {
+      Alert.alert('Greška', e.message || 'Zaduženje nije uspjelo.');
+    } finally {
+      setStockSaving(false);
     }
   };
 
@@ -106,32 +128,49 @@ export default function MaterialsScreen() {
     ]);
   };
 
-  const renderItem = ({ item }: { item: Material }) => (
-    <Card style={[styles.row, !item.is_active && styles.rowInactive]}>
-      <View style={{ flex: 1 }}>
-        <Text style={styles.name}>
-          {item.code ? `${item.code} · ` : ''}{item.name}
-          {!item.is_active ? '  (neaktivan)' : ''}
-        </Text>
-        <Text style={styles.meta}>
-          Jedinica: {item.unit}
-          {canManageBilling ? `  ·  Prodajna: ${item.salePrice.toFixed(2)} BAM` : ''}
-        </Text>
-      </View>
-      {canManageBilling && (
-        <View style={styles.actions}>
-          <TouchableOpacity onPress={() => openEdit(item)} hitSlop={8} style={styles.iconBtn}>
-            <Edit2 size={18} color={Colors.primary} />
-          </TouchableOpacity>
-          {item.is_active && (
-            <TouchableOpacity onPress={() => handleDeactivate(item)} hitSlop={8} style={styles.iconBtn}>
-              <Trash2 size={18} color={Colors.error} />
-            </TouchableOpacity>
+  const renderItem = ({ item }: { item: Material }) => {
+    const isService = item.unit === 'h';            // usluge se ne prate kao zaliha
+    const low = !isService && item.stock <= item.minStock;
+    return (
+      <Card style={[styles.row, !item.is_active && styles.rowInactive]}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.name}>
+            {item.code ? `${item.code} · ` : ''}{item.name}
+            {!item.is_active ? '  (neaktivan)' : ''}
+          </Text>
+          <Text style={styles.meta}>
+            Jedinica: {item.unit}
+            {canManageBilling ? `  ·  Prodajna: ${item.salePrice.toFixed(2)} BAM` : ''}
+          </Text>
+          {!isService && (
+            <View style={styles.stockRow}>
+              {low && <AlertTriangle size={13} color={Colors.error} />}
+              <Text style={[styles.stock, low && { color: Colors.error, fontWeight: '700' }]}>
+                Zaliha: {item.stock} {item.unit}{item.minStock > 0 ? `  (min ${item.minStock})` : ''}
+              </Text>
+            </View>
           )}
         </View>
-      )}
-    </Card>
-  );
+        {canManageBilling && (
+          <View style={styles.actions}>
+            {!isService && item.is_active && (
+              <TouchableOpacity onPress={() => { setStockMat(item); setStockQty(''); }} hitSlop={8} style={styles.iconBtn}>
+                <PackagePlus size={18} color="#4CAF50" />
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity onPress={() => openEdit(item)} hitSlop={8} style={styles.iconBtn}>
+              <Edit2 size={18} color={Colors.primary} />
+            </TouchableOpacity>
+            {item.is_active && (
+              <TouchableOpacity onPress={() => handleDeactivate(item)} hitSlop={8} style={styles.iconBtn}>
+                <Trash2 size={18} color={Colors.error} />
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
+      </Card>
+    );
+  };
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -190,11 +229,31 @@ export default function MaterialsScreen() {
                 keyboardType="decimal-pad" placeholder="0.00" containerStyle={{ marginTop: 16 }} />
               <Input label="Prodajna cijena (BAM)" value={sale} onChangeText={setSale}
                 keyboardType="decimal-pad" placeholder="0.00" />
+              {unit !== 'h' && (
+                <Input label="Minimalna zaliha (prag upozorenja)" value={minStock} onChangeText={setMinStock}
+                  keyboardType="decimal-pad" placeholder="0" />
+              )}
 
               <Button title={editing ? 'Spremi' : 'Dodaj'} onPress={handleSave} isLoading={saving} style={{ marginTop: 8 }} />
             </ScrollView>
           </View>
         </KeyboardAvoidingView>
+      </Modal>
+
+      {/* ── Zaduženje zalihe ── */}
+      <Modal visible={!!stockMat} transparent animationType="fade" onRequestClose={() => setStockMat(null)}>
+        <View style={styles.stockOverlay}>
+          <View style={styles.stockCard}>
+            <Text style={styles.stockTitle}>Zaduži zalihu</Text>
+            <Text style={styles.stockSub}>{stockMat?.name} · trenutno {stockMat?.stock} {stockMat?.unit}</Text>
+            <Input label={`Prijem količine (${stockMat?.unit ?? ''})`} value={stockQty} onChangeText={setStockQty}
+              keyboardType="decimal-pad" placeholder="0" />
+            <View style={styles.stockBtns}>
+              <Button title="Odustani" variant="outline" onPress={() => setStockMat(null)} style={{ flex: 1 }} />
+              <Button title="Zaduži" onPress={handleAddStock} isLoading={stockSaving} style={{ flex: 1 }} />
+            </View>
+          </View>
+        </View>
       </Modal>
     </SafeAreaView>
   );
@@ -209,6 +268,14 @@ const styles = StyleSheet.create({
   rowInactive: { opacity: 0.55 },
   name:        { fontSize: 14, fontWeight: '600', color: Colors.text },
   meta:        { fontSize: 12, color: Colors.textLight, marginTop: 3 },
+  stockRow:    { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 3 },
+  stock:       { fontSize: 12, color: Colors.text },
+
+  stockOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'center', padding: 24 },
+  stockCard:    { backgroundColor: '#fff', borderRadius: 14, padding: 20 },
+  stockTitle:   { fontSize: 16, fontWeight: '700', color: Colors.text },
+  stockSub:     { fontSize: 12, color: Colors.textLight, marginTop: 4, marginBottom: 12 },
+  stockBtns:    { flexDirection: 'row', gap: 10, marginTop: 4 },
   actions:     { flexDirection: 'row', gap: 12 },
   iconBtn:     { padding: 4 },
 
