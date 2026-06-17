@@ -59,6 +59,7 @@ export const DrawerContent: React.FC<DrawerContentProps> = ({ onClose }) => {
       <MenuItem icon={<Home size={20} color={Colors.primary} />}        label="Početna"      onPress={() => handleNavigation('/(tabs)')} />
       <MenuItem icon={<Building2 size={20} color={Colors.primary} />}   label="Distributeri" onPress={() => handleNavigation('/distributors')} />
       <MenuItem icon={<Building size={20} color={Colors.primary} />}    label="Vodovodi"     onPress={() => handleNavigation('/companies')} />
+      <MenuItem icon={<DollarSign size={20} color={Colors.primary} />}  label="Provizije"    onPress={() => handleNavigation('/commissions')} />
       <MenuItem icon={<Users size={20} color={Colors.primary} />}       label="Korisnici"    onPress={() => handleNavigation('/users')} />
       <MenuItem icon={<MapPin size={20} color={Colors.primary} />}      label="Lokacije"     onPress={() => handleNavigation('/locations')} />
       <MenuItem icon={<Droplet size={20} color={Colors.primary} />}     label="Vodomjeri"    onPress={() => handleNavigation('/meters')} />
@@ -81,6 +82,7 @@ export const DrawerContent: React.FC<DrawerContentProps> = ({ onClose }) => {
       <MenuItem icon={<Home size={20} color={Colors.primary} />}       label="Početna"      onPress={() => handleNavigation('/(tabs)')} />
       <MenuItem icon={<Building2 size={20} color={Colors.primary} />}  label="Distributeri" onPress={() => handleNavigation('/distributors')} />
       <MenuItem icon={<Building size={20} color={Colors.primary} />}   label="Vodovodi"     onPress={() => handleNavigation('/companies')} />
+      <MenuItem icon={<DollarSign size={20} color={Colors.primary} />} label="Provizije"    onPress={() => handleNavigation('/commissions')} />
       <MenuItem icon={<Users size={20} color={Colors.primary} />}      label="Korisnici"    onPress={() => handleNavigation('/users')} />
       <MenuItem icon={<BarChart3 size={20} color={Colors.primary} />}  label="Izvještaji"   onPress={() => handleNavigation('/(tabs)/reports')} />
       <MenuItem icon={<Bell size={20} color={Colors.primary} />}       label="Obavještenja" onPress={() => handleNavigation('/notifications')} />

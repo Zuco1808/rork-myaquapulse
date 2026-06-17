@@ -160,6 +160,9 @@ function RootLayoutNav() {
       {/* ── Audit / Evidencija izmjena ────────────────────────────────── */}
       <Stack.Screen name="audit" />
 
+      {/* ── Commissions / Provizije ───────────────────────────────────── */}
+      <Stack.Screen name="commissions" />
+
       {/* ── Readings / Consumption ────────────────────────────────────── */}
       <Stack.Screen name="consumption" />
 
