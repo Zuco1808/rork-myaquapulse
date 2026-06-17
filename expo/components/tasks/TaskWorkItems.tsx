@@ -4,14 +4,14 @@ import {
   SafeAreaView, ActivityIndicator,
 } from 'react-native';
 import { useFocusEffect } from 'expo-router';
-import { Package, Wrench, Plus, X, Trash2, Check } from 'lucide-react-native';
+import { Package, Wrench, Plus, X, Trash2, Check, Pencil } from 'lucide-react-native';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { getMaterials, Material } from '@/lib/api/materials';
 import {
-  getTaskMaterials, addTaskMaterial, deleteTaskMaterial,
-  getTaskServices, addTaskService, deleteTaskService,
+  getTaskMaterials, addTaskMaterial, updateTaskMaterial, deleteTaskMaterial,
+  getTaskServices, addTaskService, updateTaskService, deleteTaskService,
   TaskMaterial, TaskService,
 } from '@/lib/api/task-items';
 import { captureError } from '@/lib/sentry';
@@ -45,6 +45,14 @@ export function TaskWorkItems({ taskId, utilityId, canEdit, showPrices, onChange
   const [svcProvider, setSvcProvider] = useState('');
   const [svcPrice, setSvcPrice]   = useState('');
   const [savingSvc, setSavingSvc] = useState(false);
+
+  // Uređivanje stavki
+  const [editMat, setEditMat]       = useState<TaskMaterial | null>(null);
+  const [editMatQty, setEditMatQty] = useState('');
+  const [editSvc, setEditSvc]       = useState<TaskService | null>(null);
+  const [editSvcQty, setEditSvcQty] = useState('');
+  const [editSvcPrice, setEditSvcPrice] = useState('');
+  const [savingEdit, setSavingEdit] = useState(false);
 
   const fetchItems = async () => {
     try {
@@ -86,6 +94,53 @@ export function TaskWorkItems({ taskId, utilityId, canEdit, showPrices, onChange
       Alert.alert('Greška', e.message || 'Dodavanje nije uspjelo.');
     } finally {
       setSavingMat(false);
+    }
+  };
+
+  const openEditMaterial = (m: TaskMaterial) => {
+    setEditMat(m); setEditMatQty(String(m.quantity));
+  };
+
+  const handleSaveEditMaterial = async () => {
+    if (!editMat) return;
+    const qty = parseFloat(editMatQty.replace(',', '.'));
+    if (!qty || qty <= 0) { Alert.alert('Greška', 'Unesite ispravnu količinu.'); return; }
+    setSavingEdit(true);
+    try {
+      await updateTaskMaterial(editMat.id, qty);
+      setEditMat(null);
+      await fetchItems();
+      onChanged?.();
+    } catch (e: any) {
+      Alert.alert('Greška', e.message || 'Izmjena nije uspjela.');
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  const openEditService = (s: TaskService) => {
+    setEditSvc(s); setEditSvcQty(String(s.quantity)); setEditSvcPrice(String(s.unitPrice));
+  };
+
+  const handleSaveEditService = async () => {
+    if (!editSvc) return;
+    const qty = parseFloat(editSvcQty.replace(',', '.'));
+    if (!qty || qty <= 0) { Alert.alert('Greška', 'Unesite ispravnu količinu.'); return; }
+    const updates: any = { quantity: qty };
+    // Cijenu mogu mijenjati samo admin/finance i samo na stavkama bez kataloga
+    if (showPrices && !editSvc.material_id) {
+      updates.unit_price = parseFloat(editSvcPrice.replace(',', '.')) || 0;
+    }
+    setSavingEdit(true);
+    try {
+      await updateTaskService(editSvc.id, updates);
+      setEditSvc(null);
+      await fetchItems();
+      onChanged?.();
+    } catch (e: any) {
+      Alert.alert('Greška', e.message || 'Izmjena nije uspjela.');
+    } finally {
+      setSavingEdit(false);
     }
   };
 
@@ -174,7 +229,10 @@ export function TaskWorkItems({ taskId, utilityId, canEdit, showPrices, onChange
               </Text>
             </View>
             {canEdit && (
-              <TouchableOpacity onPress={() => handleDeleteMaterial(m)} hitSlop={8}><Trash2 size={16} color={Colors.error} /></TouchableOpacity>
+              <View style={styles.rowActions}>
+                <TouchableOpacity onPress={() => openEditMaterial(m)} hitSlop={8}><Pencil size={15} color={Colors.primary} /></TouchableOpacity>
+                <TouchableOpacity onPress={() => handleDeleteMaterial(m)} hitSlop={8}><Trash2 size={16} color={Colors.error} /></TouchableOpacity>
+              </View>
             )}
           </View>
         ))}
@@ -204,7 +262,10 @@ export function TaskWorkItems({ taskId, utilityId, canEdit, showPrices, onChange
               </Text>
             </View>
             {canEdit && (
-              <TouchableOpacity onPress={() => handleDeleteService(s)} hitSlop={8}><Trash2 size={16} color={Colors.error} /></TouchableOpacity>
+              <View style={styles.rowActions}>
+                <TouchableOpacity onPress={() => openEditService(s)} hitSlop={8}><Pencil size={15} color={Colors.primary} /></TouchableOpacity>
+                <TouchableOpacity onPress={() => handleDeleteService(s)} hitSlop={8}><Trash2 size={16} color={Colors.error} /></TouchableOpacity>
+              </View>
             )}
           </View>
         ))}
@@ -309,6 +370,40 @@ export function TaskWorkItems({ taskId, utilityId, canEdit, showPrices, onChange
           </ScrollView>
         </SafeAreaView>
       </Modal>
+
+      {/* ── Edit materijal ── */}
+      <Modal visible={!!editMat} transparent animationType="fade" onRequestClose={() => setEditMat(null)}>
+        <View style={styles.editOverlay}>
+          <View style={styles.editCard}>
+            <Text style={styles.editTitle}>{editMat?.name}</Text>
+            <Input label={`Količina (${editMat?.unit ?? ''})`} value={editMatQty} onChangeText={setEditMatQty}
+              keyboardType="decimal-pad" placeholder="1" />
+            <View style={styles.editBtns}>
+              <Button title="Odustani" variant="outline" onPress={() => setEditMat(null)} style={{ flex: 1 }} />
+              <Button title="Spremi" onPress={handleSaveEditMaterial} isLoading={savingEdit} style={{ flex: 1 }} />
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ── Edit usluga ── */}
+      <Modal visible={!!editSvc} transparent animationType="fade" onRequestClose={() => setEditSvc(null)}>
+        <View style={styles.editOverlay}>
+          <View style={styles.editCard}>
+            <Text style={styles.editTitle}>{editSvc?.description}</Text>
+            <Input label={`Količina (${editSvc?.unit ?? 'h'})`} value={editSvcQty} onChangeText={setEditSvcQty}
+              keyboardType="decimal-pad" placeholder="1" />
+            {showPrices && editSvc && !editSvc.material_id && (
+              <Input label="Cijena po jedinici (BAM)" value={editSvcPrice} onChangeText={setEditSvcPrice}
+                keyboardType="decimal-pad" placeholder="0.00" />
+            )}
+            <View style={styles.editBtns}>
+              <Button title="Odustani" variant="outline" onPress={() => setEditSvc(null)} style={{ flex: 1 }} />
+              <Button title="Spremi" onPress={handleSaveEditService} isLoading={savingEdit} style={{ flex: 1 }} />
+            </View>
+          </View>
+        </View>
+      </Modal>
     </>
   );
 }
@@ -322,6 +417,12 @@ const styles = StyleSheet.create({
   empty:     { fontSize: 13, color: Colors.textLight, fontStyle: 'italic' },
 
   itemRow:   { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 9, borderTopWidth: 1, borderTopColor: Colors.border },
+  rowActions: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+
+  editOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'center', padding: 24 },
+  editCard:    { backgroundColor: '#fff', borderRadius: 14, padding: 20 },
+  editTitle:   { fontSize: 15, fontWeight: '700', color: Colors.text, marginBottom: 14 },
+  editBtns:    { flexDirection: 'row', gap: 10, marginTop: 4 },
   itemName:  { fontSize: 14, fontWeight: '500', color: Colors.text },
   itemMeta:  { fontSize: 12, color: Colors.textLight, marginTop: 2 },
 

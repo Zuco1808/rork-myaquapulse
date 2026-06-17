@@ -80,6 +80,18 @@ export const addTaskMaterial = async (input: {
   return mapMaterial(data);
 };
 
+/** Ažurira količinu stavke materijala (cijena/artikal ostaju — snapshot). */
+export const updateTaskMaterial = async (id: string, quantity: number): Promise<TaskMaterial> => {
+  const { data, error } = await supabase
+    .from('task_materials')
+    .update({ quantity })
+    .eq('id', id)
+    .select()
+    .single();
+  if (error) throw error;
+  return mapMaterial(data);
+};
+
 export const deleteTaskMaterial = async (id: string): Promise<void> => {
   const { error } = await supabase.from('task_materials').delete().eq('id', id);
   if (error) throw error;

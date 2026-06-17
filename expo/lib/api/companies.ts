@@ -13,6 +13,10 @@ const mapCompany = (c: any) => ({
   logo: c.logo_url ?? '',
   supportEmail: c.support_email ?? '',
   pib: c.pib ?? '',
+  vatRate: c.vat_rate != null ? Number(c.vat_rate) : 17,
+  packageTier: (c.package_tier ?? 'basic') as 'basic' | 'standard' | 'premium',
+  subscriptionFee: c.subscription_fee != null ? Number(c.subscription_fee) : 0,
+  distributorId: c.distributor_id ?? null,
   isActive: c.is_active ?? true,
   createdAt: c.created_at ? new Date(c.created_at).getTime() : Date.now(),
   updatedAt: c.updated_at ? new Date(c.updated_at).getTime() : undefined,
@@ -52,6 +56,9 @@ export const updateCompany = async (
     website: string;
     logo: string;
     support_email: string;
+    vat_rate: number;
+    package_tier: string;
+    subscription_fee: number;
   }>
 ) => {
   // Map `logo` → `logo_url` (internal column name in water_utilities)

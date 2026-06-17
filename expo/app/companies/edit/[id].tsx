@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, Alert, ActivityIndicator, SafeAreaView } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Alert, ActivityIndicator, SafeAreaView, TouchableOpacity } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { Building, MapPin, FileText } from 'lucide-react-native';
+import { Building, MapPin, FileText, DollarSign } from 'lucide-react-native';
 import { Header } from '@/components/layout/Header';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
@@ -26,6 +26,8 @@ export default function EditCompanyScreen() {
   const [city, setCity] = useState('');
   const [address, setAddress] = useState('');
   const [pib, setPib] = useState('');
+  const [packageTier, setPackageTier] = useState<'basic'|'standard'|'premium'>('basic');
+  const [subscriptionFee, setSubscriptionFee] = useState('');
 
   const [nameError, setNameError] = useState('');
   const [cityError, setCityError] = useState('');
@@ -52,6 +54,8 @@ export default function EditCompanyScreen() {
       setCity(data.city || '');
       setAddress(data.address || '');
       setPib(data.pib || '');
+      setPackageTier((data.package_tier as any) || 'basic');
+      setSubscriptionFee(String(data.subscription_fee ?? ''));
     } catch {
       Alert.alert('Greška', 'Vodovod nije pronađen.');
       router.back();
@@ -78,6 +82,8 @@ export default function EditCompanyScreen() {
           city: city.trim(),
           address: address.trim() || null,
           pib: pib.trim() || null,
+          package_tier: packageTier,
+          subscription_fee: parseFloat(subscriptionFee.replace(',', '.')) || 0,
         })
         .eq('id', id);
 
@@ -140,6 +146,29 @@ export default function EditCompanyScreen() {
               onChangeText={setPib}
               leftIcon={<FileText size={20} color={Colors.textLight} />}
             />
+
+            <Text style={styles.fieldLabel}>Paket</Text>
+            <View style={styles.tierRow}>
+              {([['basic','Osnovni'],['standard','Standard'],['premium','Premium']] as const).map(([v, label]) => (
+                <TouchableOpacity
+                  key={v}
+                  style={[styles.tierChip, packageTier === v && styles.tierChipActive]}
+                  onPress={() => setPackageTier(v)}
+                >
+                  <Text style={[styles.tierText, packageTier === v && styles.tierTextActive]}>{label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <Text style={styles.hint}>Provizija distributera: {packageTier === 'premium' ? '15%' : '20%'} mjesečne pretplate</Text>
+
+            <Input
+              label="Mjesečna pretplata (€)"
+              placeholder="0.00"
+              value={subscriptionFee}
+              onChangeText={setSubscriptionFee}
+              keyboardType="decimal-pad"
+              leftIcon={<DollarSign size={20} color={Colors.textLight} />}
+            />
           </Card>
 
           <View style={styles.buttons}>
@@ -161,4 +190,12 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: 16, fontWeight: 'bold', color: Colors.text, marginBottom: 16 },
   buttons: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 8 },
   button: { flex: 1, marginHorizontal: 8 },
+
+  fieldLabel: { fontSize: 14, fontWeight: '500', color: Colors.text, marginBottom: 8 },
+  tierRow:    { flexDirection: 'row', gap: 8 },
+  tierChip:   { flex: 1, paddingVertical: 10, borderRadius: 8, borderWidth: 1, borderColor: Colors.border, alignItems: 'center', backgroundColor: '#fff' },
+  tierChipActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
+  tierText:   { fontSize: 13, color: Colors.text },
+  tierTextActive: { color: '#fff', fontWeight: '600' },
+  hint:       { fontSize: 12, color: Colors.textLight, marginTop: 6, marginBottom: 14 },
 });
