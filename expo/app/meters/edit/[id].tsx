@@ -49,6 +49,9 @@ export default function EditMeterScreen() {
   const [meterType, setMeterType]     = useState<MeterType>('standard');
   const [isActive, setIsActive]       = useState(true);
   const [selectedUserId, setSelectedUserId] = useState('');
+  const [locationId, setLocationId]   = useState('');
+  const [isShared, setIsShared]       = useState(false);
+  const [locations, setLocations]     = useState<{ id: string; name: string }[]>([]);
   const [gpsCoords, setGpsCoords]     = useState<GpsCoords | null>(null);
 
   /* ── picker data ────────────────────────────── */
@@ -75,12 +78,20 @@ export default function EditMeterScreen() {
       setMeterType((meter.meter_type as MeterType) || 'standard');
       setIsActive(meter.is_active ?? true);
       setSelectedUserId(meter.user_id || '');
+      setLocationId((meter as any).location_id || '');
+      setIsShared((meter as any).isShared ?? false);
       if (meter.latitude != null && meter.longitude != null) {
         setGpsCoords({ latitude: meter.latitude, longitude: meter.longitude });
       }
 
       // Load end users scoped to utility
       const utilityId = meter.utility_id || user?.utility_id;
+      if (utilityId) {
+        const { data: locs } = await supabase
+          .from('locations').select('id, name').eq('utility_id', utilityId).eq('is_active', true)
+          .in('type', ['building', 'street', 'settlement']).order('name');
+        setLocations(locs || []);
+      }
       let query = supabase
         .from('profiles')
         .select('id, full_name, email')
@@ -117,6 +128,8 @@ export default function EditMeterScreen() {
         address:      address.trim(),
         meter_type:   meterType,
         is_active:    isActive,
+        location_id:  locationId || null,
+        is_shared:    isShared,
         latitude:     gpsCoords?.latitude ?? null,
         longitude:    gpsCoords?.longitude ?? null,
         ...(selectedUserId ? { user_id: selectedUserId } : {}),
@@ -199,6 +212,30 @@ export default function EditMeterScreen() {
             </View>
 
             <GpsLocationPicker value={gpsCoords} onChange={setGpsCoords} />
+          </Card>
+
+          {/* Lokacija / zgrada */}
+          <Card style={styles.section}>
+            <Text style={styles.sectionTitle}>Lokacija / zgrada</Text>
+            <View style={styles.chips}>
+              <TouchableOpacity style={[styles.chip, !locationId && styles.chipActive]} onPress={() => setLocationId('')}>
+                <Text style={[styles.chipText, !locationId && styles.chipTextActive]}>Bez lokacije</Text>
+              </TouchableOpacity>
+              {locations.map((l) => (
+                <TouchableOpacity key={l.id} style={[styles.chip, locationId === l.id && styles.chipActive]} onPress={() => setLocationId(l.id)}>
+                  <Text style={[styles.chipText, locationId === l.id && styles.chipTextActive]}>{l.name}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <View style={styles.switchRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.switchLabel}>Zajedničko (kontrolno) brojilo</Text>
+                <Text style={styles.switchDesc}>Glavno brojilo zgrade nasuprot individualnim.</Text>
+              </View>
+              <Switch value={isShared} onValueChange={setIsShared}
+                trackColor={{ false: Colors.border, true: Colors.primary + '88' }}
+                thumbColor={isShared ? Colors.primary : Colors.textLight} />
+            </View>
           </Card>
 
           {/* Status */}

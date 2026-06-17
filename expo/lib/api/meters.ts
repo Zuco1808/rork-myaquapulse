@@ -9,6 +9,9 @@ const mapConnection = (c: any) => ({
   meter_type: c.meter_type,
   user_group: c.user_group,
   is_active: c.is_active,
+  location_id: c.location_id ?? null,
+  locationName: c.locations?.name ?? null,
+  isShared: !!c.is_shared,
   latitude: c.latitude != null ? Number(c.latitude) : null,
   longitude: c.longitude != null ? Number(c.longitude) : null,
   userId: c.user_id,
@@ -23,7 +26,7 @@ export const getMeters = async (opts?: { limit?: number; offset?: number }) => {
   const offset = opts?.offset ?? 0;
   const { data, error } = await supabase
     .from('connections')
-    .select('*, profiles(full_name, email)')
+    .select('*, profiles(full_name, email), locations(name)')
     .order('created_at', { ascending: false })
     .range(offset, offset + limit - 1);
 
@@ -34,7 +37,7 @@ export const getMeters = async (opts?: { limit?: number; offset?: number }) => {
 export const getMeterById = async (id: string) => {
   const { data, error } = await supabase
     .from('connections')
-    .select('*, profiles(full_name, email)')
+    .select('*, profiles(full_name, email), locations(name)')
     .eq('id', id)
     .single();
 
@@ -47,7 +50,7 @@ export const getMetersByUser = async (userId: string, opts?: { limit?: number; o
   const offset = opts?.offset ?? 0;
   const { data, error } = await supabase
     .from('connections')
-    .select('*, profiles(full_name, email)')
+    .select('*, profiles(full_name, email), locations(name)')
     .eq('user_id', userId)
     .order('created_at', { ascending: false })
     .range(offset, offset + limit - 1);
@@ -63,6 +66,8 @@ export const createMeter = async (meter: {
   meter_serial: string;
   meter_type?: string;
   user_group?: string;
+  location_id?: string | null;
+  is_shared?: boolean;
   latitude?: number | null;
   longitude?: number | null;
 }) => {
@@ -83,6 +88,8 @@ export const updateMeter = async (id: string, updates: Partial<{
   user_group: string;
   is_active: boolean;
   user_id: string;
+  location_id: string | null;
+  is_shared: boolean;
   latitude: number | null;
   longitude: number | null;
 }>) => {
@@ -95,4 +102,16 @@ export const updateMeter = async (id: string, updates: Partial<{
 
   if (error) throw error;
   return mapConnection(data);
+};
+
+/** Brojila vezana za lokaciju (zgradu) — zajednička i individualna. */
+export const getMetersByLocation = async (locationId: string) => {
+  const { data, error } = await supabase
+    .from('connections')
+    .select('*, profiles(full_name, email), locations(name)')
+    .eq('location_id', locationId)
+    .order('is_shared', { ascending: false })
+    .order('meter_serial');
+  if (error) throw error;
+  return (data || []).map(mapConnection);
 };
