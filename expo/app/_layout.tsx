@@ -163,6 +163,9 @@ function RootLayoutNav() {
       {/* ── Commissions / Provizije ───────────────────────────────────── */}
       <Stack.Screen name="commissions" />
 
+      {/* ── Buildings / Zgrade ────────────────────────────────────────── */}
+      <Stack.Screen name="buildings/[id]" />
+
       {/* ── Readings / Consumption ────────────────────────────────────── */}
       <Stack.Screen name="consumption" />
 
