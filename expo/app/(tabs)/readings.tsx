@@ -28,6 +28,9 @@ import { OCRCameraView } from '@/components/ocr/CameraView';
 import { OCRResult } from '@/components/ocr/OCRResult';
 import { SerialScanner } from '@/components/meters/SerialScanner';
 import { uploadMeterImage } from '@/lib/api/ocr';
+import { isOnline, enqueueReading } from '@/lib/offline/reading-queue';
+import { useOfflineSync } from '@/lib/offline/use-offline-sync';
+import { CloudOff, RefreshCw } from 'lucide-react-native';
 import { useAuthStore } from '@/store/auth-store';
 import { usePermissions } from '@/lib/use-permissions';
 import { getReadings, getReadingsByUser, createReading, verifyReading, getLastReadingValue, type ReadingsOpts } from '@/lib/api/readings';
@@ -87,6 +90,18 @@ export default function ReadingsScreen() {
   const filterInitialized = useRef(false);
 
   const { canVerifyReadings: isStaff, canManageReadings, isWorker, isEndUser } = usePermissions();
+  const offline = useOfflineSync();
+
+  const handleManualSync = async () => {
+    const res = await offline.sync();
+    if (res.synced > 0) { fetchData(); }
+    Alert.alert(
+      'Sinkronizacija',
+      res.synced === 0 && res.failed === 0
+        ? 'Nema očitanja za sinkronizaciju.'
+        : `Sinkronizovano: ${res.synced}${res.failed ? `, neuspjelo: ${res.failed}` : ''}.`,
+    );
+  };
 
   /* ── Build API opts ────────────────────────────────────────────────────── */
   const buildReadingsOpts = (offset: number): ReadingsOpts => ({
@@ -203,20 +218,42 @@ export default function ReadingsScreen() {
     const meter = availableMeters.find((m) => m.id === selectedMeterId);
     if (!meter) return;
 
+    const payload = {
+      connection_id: selectedMeterId,
+      utility_id:    meter.utility_id,
+      reading_value: value,
+      reading_type:  'manual',
+    };
+
+    // Offline → spremi u red (uz serijski za prikaz u listi čekanja)
+    if (!(await isOnline())) {
+      await enqueueReading({ ...payload, meterSerial: meter.serialNumber });
+      await offline.refresh();
+      setShowAddReadingModal(false);
+      setManualReading('');
+      setReadingError('');
+      Alert.alert('Spremljeno offline', 'Očitanje će biti sinkronizovano kad se vrati konekcija.');
+      return;
+    }
+
     try {
-      await createReading({
-        connection_id: selectedMeterId,
-        utility_id:    meter.utility_id,
-        reading_value: value,
-        reading_type:  'manual',
-      });
+      await createReading(payload);
       setShowAddReadingModal(false);
       setManualReading('');
       setReadingError('');
       Alert.alert('Uspjeh', 'Očitanje je uspješno dodano.');
       fetchData();
     } catch (err: any) {
-      Alert.alert('Greška', err.message || 'Greška pri unosu očitanja.');
+      const msg = String(err?.message || '').toLowerCase();
+      if (msg.includes('network') || msg.includes('fetch') || msg.includes('timeout')) {
+        await enqueueReading({ ...payload, meterSerial: meter.serialNumber });
+        await offline.refresh();
+        setShowAddReadingModal(false);
+        setManualReading('');
+        Alert.alert('Spremljeno offline', 'Mreža nije dostupna — očitanje je u redu za sinkronizaciju.');
+      } else {
+        Alert.alert('Greška', err.message || 'Greška pri unosu očitanja.');
+      }
     }
   };
 
@@ -315,6 +352,18 @@ export default function ReadingsScreen() {
           <Filter size={20} color={Colors.text} />
         </TouchableOpacity>
       </View>
+
+      {offline.pending > 0 && (
+        <TouchableOpacity style={styles.offlineBar} onPress={handleManualSync} activeOpacity={0.8} disabled={offline.syncing}>
+          <CloudOff size={18} color="#fff" />
+          <Text style={styles.offlineText}>
+            {offline.pending} očitanje(a) čeka sinkronizaciju
+          </Text>
+          {offline.syncing
+            ? <ActivityIndicator size="small" color="#fff" />
+            : <View style={styles.offlineSync}><RefreshCw size={14} color="#fff" /><Text style={styles.offlineSyncText}>Sinkronizuj</Text></View>}
+        </TouchableOpacity>
+      )}
 
       {showFilters && (
         <View style={styles.filtersContainer}>
@@ -532,6 +581,14 @@ export default function ReadingsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff' },
+  offlineBar: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: '#FF9800', paddingHorizontal: 16, paddingVertical: 10,
+  },
+  offlineText:     { flex: 1, color: '#fff', fontSize: 13, fontWeight: '600' },
+  offlineSync:     { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: 'rgba(255,255,255,0.25)', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 14 },
+  offlineSyncText: { color: '#fff', fontSize: 12, fontWeight: '700' },
+
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
