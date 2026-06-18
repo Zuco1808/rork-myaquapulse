@@ -21,6 +21,7 @@ import {
   Plus,
   User,
   Edit,
+  Building,
 } from 'lucide-react-native';
 import { Header } from '@/components/layout/Header';
 import { Card } from '@/components/ui/Card';
@@ -152,6 +153,15 @@ export default function MetersScreen() {
           {item.address || '—'}
         </Text>
       </View>
+      {(item.locationName || item.isShared) && (
+        <View style={styles.detailRow}>
+          <Building size={14} color={Colors.textLight} />
+          <Text style={styles.detailText}>{item.locationName || '—'}</Text>
+          {item.isShared && (
+            <View style={styles.sharedTag}><Text style={styles.sharedTagText}>Zajedničko</Text></View>
+          )}
+        </View>
+      )}
       {!isEndUser && (
         <View style={styles.detailRow}>
           <User size={14} color={Colors.textLight} />
@@ -319,6 +329,17 @@ const styles = StyleSheet.create({
     color: Colors.textLight,
     marginLeft: 6,
     flex: 1,
+  },
+  sharedTag: {
+    backgroundColor: Colors.primary + '18',
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  sharedTagText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: Colors.primary,
   },
 
   actions: {

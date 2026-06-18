@@ -176,6 +176,14 @@ export default function LocationsScreen() {
             style={styles.actionButton}
           />
           <Button
+            title="Brojila"
+            variant="outline"
+            size="small"
+            leftIcon={<Droplet size={16} color={Colors.primary} />}
+            onPress={() => router.push(`/buildings/${item.id}` as any)}
+            style={styles.actionButton}
+          />
+          <Button
             title="Obriši"
             variant="outline"
             size="small"

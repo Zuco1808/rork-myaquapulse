@@ -47,10 +47,13 @@ export default function AddMeterScreen() {
   const [meterType, setMeterType]       = useState<MeterType>('standard');
   const [utilityId, setUtilityId]       = useState(user?.utility_id ?? '');
   const [selectedUserId, setSelectedUserId] = useState('');
+  const [locationId, setLocationId]     = useState('');
+  const [isShared, setIsShared]         = useState(false);
 
   /* ── picker data ─────────────────────────────── */
   const [utilities, setUtilities]   = useState<{ id: string; name: string }[]>([]);
   const [endUsers, setEndUsers]     = useState<{ id: string; full_name: string; email: string }[]>([]);
+  const [locations, setLocations]   = useState<{ id: string; name: string; type: string }[]>([]);
   const [loadingData, setLoadingData] = useState(true);
 
   const [gpsCoords, setGpsCoords] = useState<GpsCoords | null>(null);
@@ -93,6 +96,10 @@ export default function AddMeterScreen() {
 
       const { data: usersData } = await usersQ;
       setEndUsers(usersData || []);
+
+      // 3. Lokacije (zgrade/ulice) za vezivanje brojila
+      const utilForLoc = isSuperAdmin ? utilityId : user?.utility_id;
+      if (utilForLoc) await loadLocations(utilForLoc);
     } catch (e) {
       captureError(e, { screen: 'meter-add', action: 'loadFormData' });
     } finally {
@@ -100,10 +107,22 @@ export default function AddMeterScreen() {
     }
   };
 
+  const loadLocations = async (utilId: string) => {
+    const { data } = await supabase
+      .from('locations')
+      .select('id, name, type')
+      .eq('utility_id', utilId)
+      .eq('is_active', true)
+      .in('type', ['building', 'street', 'settlement'])
+      .order('name');
+    setLocations(data || []);
+  };
+
   /* ── when super_admin picks a utility, reload users ── */
   const handleUtilityChange = async (id: string) => {
     setUtilityId(id);
     setSelectedUserId('');
+    setLocationId('');
     if (!id) return;
     try {
       const { data } = await supabase
@@ -113,6 +132,7 @@ export default function AddMeterScreen() {
         .eq('utility_id', id)
         .order('full_name');
       setEndUsers(data || []);
+      await loadLocations(id);
     } catch {}
   };
 
@@ -137,6 +157,8 @@ export default function AddMeterScreen() {
         address:      address.trim(),
         meter_serial: serial.trim(),
         meter_type:   meterType,
+        location_id:  locationId || null,
+        is_shared:    isShared,
         latitude:     gpsCoords?.latitude ?? null,
         longitude:    gpsCoords?.longitude ?? null,
       });
@@ -218,6 +240,42 @@ export default function AddMeterScreen() {
             </View>
 
             <GpsLocationPicker value={gpsCoords} onChange={setGpsCoords} />
+          </Card>
+
+          {/* Lokacija / zgrada */}
+          <Card style={styles.section}>
+            <Text style={styles.sectionTitle}>Lokacija / zgrada</Text>
+            {locations.length === 0 ? (
+              <Text style={styles.emptyNote}>Nema definisanih lokacija. (Lokacije → dodaj zgradu)</Text>
+            ) : (
+              <View style={styles.chips}>
+                <TouchableOpacity
+                  style={[styles.chip, !locationId && styles.chipActive]}
+                  onPress={() => setLocationId('')}
+                >
+                  <Text style={[styles.chipText, !locationId && styles.chipTextActive]}>Bez lokacije</Text>
+                </TouchableOpacity>
+                {locations.map((l) => (
+                  <TouchableOpacity
+                    key={l.id}
+                    style={[styles.chip, locationId === l.id && styles.chipActive]}
+                    onPress={() => setLocationId(l.id)}
+                  >
+                    <Text style={[styles.chipText, locationId === l.id && styles.chipTextActive]}>{l.name}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+
+            <TouchableOpacity style={styles.sharedRow} onPress={() => setIsShared(v => !v)} activeOpacity={0.7}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.sharedTitle}>Zajedničko (kontrolno) brojilo</Text>
+                <Text style={styles.sharedSub}>Glavno brojilo zgrade nasuprot individualnim</Text>
+              </View>
+              <View style={[styles.toggle, isShared && styles.toggleOn]}>
+                <View style={[styles.toggleThumb, isShared && styles.toggleThumbOn]} />
+              </View>
+            </TouchableOpacity>
           </Card>
 
           {/* Vodovod (samo super_admin bira, ostali imaju predefiniran) */}
@@ -312,6 +370,13 @@ const styles = StyleSheet.create({
   label:        { fontSize: 14, fontWeight: '600', color: Colors.text, marginBottom: 8, marginTop: 4 },
   errorText:    { fontSize: 13, color: Colors.error, marginBottom: 8 },
   emptyNote:    { fontSize: 13, color: Colors.textLight, fontStyle: 'italic', textAlign: 'center', paddingVertical: 10 },
+  sharedRow:    { flexDirection: 'row', alignItems: 'center', marginTop: 14, paddingTop: 14, borderTopWidth: 1, borderTopColor: Colors.border },
+  sharedTitle:  { fontSize: 14, fontWeight: '600', color: Colors.text },
+  sharedSub:    { fontSize: 12, color: Colors.textLight, marginTop: 2 },
+  toggle:       { width: 44, height: 26, borderRadius: 13, backgroundColor: Colors.border, padding: 3, justifyContent: 'center' },
+  toggleOn:     { backgroundColor: Colors.primary },
+  toggleThumb:  { width: 20, height: 20, borderRadius: 10, backgroundColor: '#fff', alignSelf: 'flex-start' },
+  toggleThumbOn:{ alignSelf: 'flex-end' },
 
   chips:        { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   chip:         { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, backgroundColor: Colors.highlight },

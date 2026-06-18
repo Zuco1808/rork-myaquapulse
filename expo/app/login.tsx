@@ -31,10 +31,11 @@ const DEV_ACCOUNTS = __DEV__ ? [
 
 export default function LoginScreen() {
   const router = useRouter();
-  const { login, isLoading, error, clearError, user } = useAuthStore();
+  const { login, isLoading, error, clearError, user, mfaRequired, completeMfa, cancelMfa } = useAuthStore();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [mfaCode, setMfaCode] = useState('');
   const [emailError, setEmailError] = useState('');
   const [resetLoading, setResetLoading] = useState(false);
 
@@ -123,6 +124,32 @@ export default function LoginScreen() {
             </View>
           ) : null}
 
+          {mfaRequired ? (
+            <>
+              <Text style={styles.mfaInfo}>
+                Unesite 6-cifreni kod iz vaše authenticator aplikacije.
+              </Text>
+              <Input
+                label="2FA kod"
+                placeholder="123456"
+                value={mfaCode}
+                onChangeText={setMfaCode}
+                keyboardType="number-pad"
+                maxLength={6}
+                leftIcon={<Lock size={20} color={Colors.textLight} />}
+              />
+              <Button
+                title="Potvrdi"
+                onPress={() => { clearError(); completeMfa(mfaCode); }}
+                isLoading={isLoading}
+                style={styles.loginButton}
+              />
+              <TouchableOpacity style={styles.forgotRow} onPress={() => { setMfaCode(''); cancelMfa(); }}>
+                <Text style={styles.forgotText}>Odustani</Text>
+              </TouchableOpacity>
+            </>
+          ) : (
+          <>
           <Input
             label="Email adresa"
             placeholder="Unesite vašu email adresu"
@@ -187,6 +214,8 @@ export default function LoginScreen() {
                 ))}
               </View>
             </View>
+          )}
+          </>
           )}
         </View>
       </ScrollView>
@@ -261,6 +290,12 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: Colors.primary,
     fontWeight: '500',
+  },
+  mfaInfo: {
+    fontSize: 13,
+    color: Colors.textLight,
+    marginBottom: 14,
+    lineHeight: 19,
   },
   loginButton: {
     marginTop: 8,

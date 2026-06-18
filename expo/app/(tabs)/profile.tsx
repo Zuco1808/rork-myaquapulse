@@ -31,6 +31,7 @@ import {
 } from 'lucide-react-native';
 import { Avatar } from '@/components/ui/Avatar';
 import { Card } from '@/components/ui/Card';
+import { TwoFactorSection } from '@/components/profile/TwoFactorSection';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import * as ImagePicker from 'expo-image-picker';
@@ -399,6 +400,11 @@ export default function ProfileScreen() {
           </View>
           <ChevronRight size={20} color={Colors.textLight} />
         </TouchableOpacity>
+      </Card>
+
+      {/* ── Sigurnost / 2FA ── */}
+      <Card style={styles.optionsCard}>
+        <TwoFactorSection />
       </Card>
 
       {/* ── Logout ── */}
