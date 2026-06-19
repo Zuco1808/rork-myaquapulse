@@ -1,11 +1,11 @@
 import { supabase } from '@/lib/supabase';
+import { commissionRate } from '@/lib/logic/billing-math';
+
+export { commissionRate };
 
 export const TIER_LABELS: Record<string, string> = {
   basic: 'Osnovni', standard: 'Standard', premium: 'Premium',
 };
-
-/** Stopa provizije po paketu (spec §5.3): 20% Basic/Standard, 15% Premium. */
-export const commissionRate = (tier: string): number => (tier === 'premium' ? 0.15 : 0.20);
 
 export interface UtilityCommission {
   utilityId: string;

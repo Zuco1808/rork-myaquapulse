@@ -8,6 +8,7 @@ import { Header } from '@/components/layout/Header';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { getMetersByLocation } from '@/lib/api/meters';
+import { consumptionMismatch } from '@/lib/logic/billing-math';
 import { supabase } from '@/lib/supabase';
 import { captureError } from '@/lib/sentry';
 import Colors from '@/constants/colors';
@@ -73,10 +74,8 @@ export default function BuildingDetailScreen() {
   const individualTotal = individual.reduce((s, m) => s + (m.lastValue ?? 0), 0);
   const hasSharedReading = shared.some((m) => m.lastValue != null);
   const hasIndividualReadings = individual.some((m) => m.lastValue != null);
-  const diff = sharedTotal - individualTotal;
-  // Tolerancija: 5% zajedničkog ili min 1 m³ (gubici u mreži su normalni)
-  const tolerance = Math.max(1, sharedTotal * 0.05);
-  const mismatch = hasSharedReading && hasIndividualReadings && Math.abs(diff) > tolerance;
+  const { diff, mismatch: rawMismatch } = consumptionMismatch(sharedTotal, individualTotal);
+  const mismatch = hasSharedReading && hasIndividualReadings && rawMismatch;
 
   const renderMeter = (m: MeterRow) => (
     <TouchableOpacity key={m.id} style={styles.meterRow} onPress={() => router.push(`/meters/${m.id}` as any)} activeOpacity={0.7}>
