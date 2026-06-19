@@ -108,15 +108,13 @@ const formatPeriod = (from: string, to: string) => {
   return `${f.toLocaleDateString('bs-BA')} – ${t.toLocaleDateString('bs-BA')}`;
 };
 
+import { vatBreakdown as vatBreakdownPure } from '@/lib/logic/billing-math';
+
 type WorkItems = { materials: TaskMaterial[]; services: TaskService[] };
 
 /** Izvlači osnovicu i PDV iz bruto iznosa (PDV uključen u amount_bam). */
-const vatBreakdown = (bill: any): { net: number; vat: number; rate: number } => {
-  const gross = Number(bill.amount ?? 0);
-  const rate = Number(bill.vatRate ?? 17);
-  const net = rate > 0 ? gross / (1 + rate / 100) : gross;
-  return { net, vat: gross - net, rate };
-};
+const vatBreakdown = (bill: any) =>
+  vatBreakdownPure(Number(bill.amount ?? 0), Number(bill.vatRate ?? 17));
 
 /** Specifikacija stavki radnog naloga (kad je faktura vezana na nalog). */
 const buildWorkItemsHtml = (items: WorkItems | null): string => {

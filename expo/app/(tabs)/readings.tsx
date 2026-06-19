@@ -29,6 +29,7 @@ import { OCRResult } from '@/components/ocr/OCRResult';
 import { SerialScanner } from '@/components/meters/SerialScanner';
 import { uploadMeterImage } from '@/lib/api/ocr';
 import { isOnline, enqueueReading } from '@/lib/offline/reading-queue';
+import { isReadingNotLower } from '@/lib/logic/readings-validation';
 import { useOfflineSync } from '@/lib/offline/use-offline-sync';
 import { CloudOff, RefreshCw } from 'lucide-react-native';
 import { useAuthStore } from '@/store/auth-store';
@@ -193,7 +194,7 @@ export default function ReadingsScreen() {
     }
     try {
       const lastValue = await getLastReadingValue(selectedMeterId);
-      if (lastValue != null && value < lastValue) {
+      if (!isReadingNotLower(value, lastValue)) {
         setReadingError(
           `Nova vrijednost mora biti veća ili jednaka posljednjoj (${lastValue} m³)`,
         );

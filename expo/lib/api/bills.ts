@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import { applyTiers } from '@/lib/logic/billing-math';
 
 export type BillPeriodFilter = 'all' | 'this_month' | 'last_3' | 'this_year';
 
@@ -240,19 +241,6 @@ export const sendInvoiceEmail = async (params: {
   return { sent: data.sent, email: data.email };
 };
 
-/* ── Tiered pricing helper ─────────────────────────────── */
-function applyTiers(tiers: any[], consumption: number): number {
-  if (!tiers.length || consumption <= 0) return 0;
-  const sorted = [...tiers].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
-  let total = 0;
-  let remaining = consumption;
-  for (const t of sorted) {
-    if (remaining <= 0) break;
-    const inTier = Math.min(remaining, (t.max_consumption ?? Infinity) - t.min_consumption);
-    if (inTier > 0) { total += inTier * (t.price_per_unit ?? 0); remaining -= inTier; }
-  }
-  return Math.round(total * 100) / 100;
-}
 
 /**
  * Recalculates amount_bam for an existing draft invoice using the utility's
