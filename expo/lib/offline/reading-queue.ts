@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import NetInfo from '@react-native-community/netinfo';
 import { createReading } from '@/lib/api/readings';
+import { processSyncBatch } from '@/lib/logic/offline-sync';
 
 const KEY = 'offline_reading_queue_v1';
 
@@ -58,31 +59,16 @@ export const syncQueue = async (): Promise<{ synced: number; failed: number }> =
   const items = await read();
   if (items.length === 0) return { synced: 0, failed: 0 };
 
-  const remaining: QueuedReading[] = [];
-  let synced = 0;
-  let failed = 0;
+  const outcome = await processSyncBatch(items, (item) =>
+    createReading({
+      connection_id: item.connection_id,
+      utility_id:    item.utility_id,
+      reading_value: item.reading_value,
+      reading_type:  item.reading_type,
+      note:          item.note,
+    }).then(() => undefined),
+  );
 
-  for (const item of items) {
-    try {
-      await createReading({
-        connection_id: item.connection_id,
-        utility_id:    item.utility_id,
-        reading_value: item.reading_value,
-        reading_type:  item.reading_type,
-        note:          item.note,
-      });
-      synced++;
-    } catch (e: any) {
-      const msg = String(e?.message || '').toLowerCase();
-      const isNetwork = msg.includes('network') || msg.includes('fetch') || msg.includes('timeout') || msg.includes('connection');
-      if (isNetwork) {
-        remaining.push(item); // pokušaj kasnije
-      } else {
-        failed++; // validaciona ili druga greška — ne ponavljaj
-      }
-    }
-  }
-
-  await write(remaining);
-  return { synced, failed };
+  await write(outcome.remaining);
+  return { synced: outcome.synced, failed: outcome.failed };
 };
